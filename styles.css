@@ -1,0 +1,318 @@
+body {
+    margin: 0;
+    font-family: 'Segoe UI', 'Roboto', sans-serif;
+    background-color: #f5f5f5;
+    color: #333;
+}
+
+.topbar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 60px;
+    background-color: #004D64;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 20px;
+    z-index: 1000;
+}
+
+.sidebar {
+    width: 220px;
+    background-color: #ffffff;
+    border-right: 1px solid #ddd;
+    position: fixed;
+    height: 100%;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    transition: width 0.3s ease;
+}
+
+.sidebar.collapsed {
+    width: 55px;
+}
+
+.sidebar-toggle {
+    display: flex;
+    justify-content: flex-end;
+    padding: 10px;
+    cursor: pointer;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 10px;
+}
+
+.toggle-icon {
+    width: 20px;
+    /* transition: transform 0.3s ease; */
+}
+
+.sidebar-item {
+    padding: 15px 15px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    color: #333;
+    text-decoration: none !important;
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.sidebar-item:hover, .sidebar-item.active {
+    background-color: #C0DAF0;
+}
+
+.sidebar-icon {
+    width: 25px;
+    flex-shrink: 0;
+}
+
+.sidebar-label {
+    transition: opacity 0.3s ease;
+}
+
+.sidebar.collapsed .sidebar-label {
+    opacity: 0;
+    width: 0;
+}
+
+.sidebar-logo {
+    width: 65px;
+    height: auto;
+    position: absolute;
+    bottom: 100px;
+    left: 20px;
+    margin-top: auto;
+    transition: left 0.3s ease, width 0.3s ease;
+}
+
+.sidebar.collapsed .sidebar-logo {
+    left: 8px;
+    width: 40px;
+    transition: left 0.3s ease, width 0.3s ease;
+}
+
+.content-wrapper {
+    margin-left: 220px;
+    margin-top: 60px;
+    padding: 20px;
+    flex-grow: 1;
+    overflow-y: auto;
+    transition: margin-left 0.3s ease;
+}
+
+h1 {
+    font-size: 28px;
+    color: #004D64;
+    margin: 0;
+}
+
+h2 {
+    font-size: 20px;
+    color: #004D64;
+    margin: 0;
+}
+
+h3 {
+    font-size: 16px;
+    color: #666;
+    margin-bottom: 10px;
+}
+
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000; 
+}
+
+.popup-modal {
+    background-color: white;
+    border-radius: 10px;
+    padding: 20px;
+    overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    position: absolute;
+}
+
+.modal-close-button {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #666;
+}
+
+.action-button {
+    padding: 10px 20px;
+    /* background-color: #004D64; */
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.3);
+    transition: background-color 0.2s ease;
+}
+
+.icon {
+    width: 20px;
+    height: 20px;
+    vertical-align: middle;
+    margin-right: 15px;
+}
+
+.card {
+    background-color: #fff;
+    border-radius: 10px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    padding: 20px;
+}
+
+.action-btn {
+    padding: 6px 12px;
+    margin-right: 5px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.delete-btn {
+    background-color: #d32f2f;
+    color: white;
+}
+
+/* Modal Styles */
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.4);
+}
+
+.modal-content {
+    background-color: #fff;
+    margin: 5% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+
+.close-btn {
+    cursor: pointer;
+    font-size: 24px;
+    font-weight: bold;
+    line-height: 1;
+    color: #333;
+    opacity: 0.5;
+}
+
+.close-btn:hover {
+    opacity: 1;
+}
+
+/* Error Messages */
+.error-message {
+    color: #d32f2f;
+    font-size: 12px;
+    margin-top: 5px;
+    text-align: center;
+    padding: 20px;
+}
+
+.ir-lock-icon {
+    transition: transform 0.2s ease;
+}
+
+/* Common Styles */
+.primary-btn {
+    padding: 14px 22px;
+    background-color: #004D64;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 18px;
+    /* font-weight: 500; */
+    /* width: 120px; */
+    box-shadow: 0 4px 4px rgba(0,0,0,0.2);
+}
+
+.primary-btn:hover {
+    background-color: #00324C;
+}
+
+.save-btn {
+    padding: 8px 12px;
+    background-color: #004D64;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.save-btn:hover {
+    background-color: #00324C;
+}
+
+.loading {
+    text-align: center;
+    padding: 20px;
+    color: #666;
+}
+
+.retry-btn {
+    padding: 8px 16px;
+    background-color: #004D64;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.retry-btn:hover {
+    background-color: #00324C;
+}
+
+.user-controls {
+    margin-bottom: 20px;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}

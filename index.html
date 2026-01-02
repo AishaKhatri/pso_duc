@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Server - Dispensers</title>
+    <link rel="stylesheet" href="../styles.css">
+    <script src="assets/lib/mqtt.min.js"></script>
+    <!-- Set base href to the parent directory to resolve image paths correctly -->
+    <base href="../" />
+    <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
+</head>
+<body>
+    <!-- Check if user is signed in -->
+    <script>
+        if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
+        window.location.href = 'signin.html';
+        }
+    </script>
+    <div id="app"></div>
+    <div class="container">
+        <div id="sidebar"></div>
+        <div class="main">
+            <div id="topbar"></div>
+            <div id="content"></div>
+        </div>
+    </div>
+    <script src="common.js"></script>
+    <script src="topbar.js"></script>
+    <script src="sidebar.js"></script>
+    <script src="notif-functions.js"></script>
+    <script src="notif-handler.js"></script>
+    <script src="dispensers/transaction-log.js"></script>
+    <script src="dispensers/device-status.js"></script>
+    <script src="dispensers/mqtt-handler.js"></script>
+    <script src="dispensers/nozzle-layout.js"></script>
+    <script src="dispensers/nozzle-update-functions.js"></script>
+    <script src="dispensers/dispenser.js"></script>
+    <script src="dispensers/command-dispenser.js"></script>
+    <script src="dispensers/price-update.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            renderApp()
+            if (typeof window.renderDispenser === 'function') {
+                window.renderDispenser();
+            } else {
+                console.error('renderDispenser function is not defined');
+            }
+        });
+    </script>
+</body>
+</html>

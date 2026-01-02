@@ -1,0 +1,10 @@
+# Ignore Word documents
+*.doc
+*.docx
+
+# Ignore Visio files
+*.vsd
+*.vsdx
+
+# Ignore Temp files
+*.tmp

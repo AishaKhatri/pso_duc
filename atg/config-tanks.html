@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Server - ATG</title>
+    <link rel="stylesheet" href="../styles.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
+    <!-- Set base href to the parent directory to resolve image paths correctly -->
+    <base href="../" />
+    <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
+</head>
+<body>
+    <div id="app"></div>
+    <div class="container">
+        <div id="sidebar"></div>
+        <div class="main">
+            <div id="topbar"></div>
+            <div id="content"></div>
+        </div>
+    </div>
+    <script src="common.js"></script>
+    <script src="topbar.js"></script>
+    <script src="sidebar.js"></script>
+    <script src="atg/config-tanks.js"></script>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            renderApp()
+            if (typeof window.renderConfigTanks === 'function') {
+                window.renderConfigTanks();
+            } else {
+                console.error('renderConfigTanks function is not defined');
+            }
+        });
+    </script>
+</body>
+</html>
