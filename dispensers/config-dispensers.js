@@ -6,7 +6,13 @@ const PRODUCT_NAME_MAPPING = {
 
 async function saveDispenserToDB(dispenser, isUpdate = false) {
   try {
+    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
+    if (!currentStation || !currentStation.station_id) {
+      throw new Error('No station selected');
+    }
+
     const dbDispenser = {
+      station_id: currentStation.station_id,
       dispenser_id: dispenser.dispenser_id,
       address: dispenser.address,
       vendor: dispenser.vendor,
@@ -15,7 +21,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     };
 
     const dispenserEndpoint = isUpdate 
-      ? `${API_BASE_URL}/dispensers/${dispenser.dispenser_id}`
+      ? `${API_BASE_URL}/dispensers/${currentStation.station_id}/${dispenser.dispenser_id}`
       : `${API_BASE_URL}/dispensers`;
     
     const method = isUpdate ? 'PUT' : 'POST';
@@ -38,7 +44,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
       const existingNozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?station_id=${currentStation.station_id}&dispenser_id=${dbDispenser.dispenser_id}`
       );
       let existingNozzles = [];
       if (existingNozzlesResponse.ok) {
@@ -60,7 +66,6 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Identify nozzles to update, insert, or delete
       const nozzlesToUpdate = [];
       const nozzlesToInsert = [];
-      const existingNozzleIds = existingNozzles.map(n => n.nozzle_id);
       const newNozzleIds = newNozzles.map(n => n.nozzle_id);
 
       // Nozzles to update (exist in both sets)
@@ -79,6 +84,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Update existing nozzles
       for (const nozzle of nozzlesToUpdate) {
         const nozzleData = {
+          station_id: currentStation.station_id,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -91,7 +97,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
         };
 
         const nozzleResponse = await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${currentStation.station_id}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'PUT',
             headers: {
@@ -111,6 +117,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Insert new nozzles
       for (const nozzle of nozzlesToInsert) {
         const nozzleData = {
+          station_id: currentStation.station_id,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -140,7 +147,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
         await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${currentStation.station_id}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'DELETE',
             headers: {
@@ -160,10 +167,15 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
 async function loadDispensersFromDB() {
   try {
+    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
+    if (!currentStation || !currentStation.station_id) {
+      throw new Error('No station selected');
+    }
+
     const productOptions = ['PMG', 'HSD'];
 
     const dispenserResponse = await fetch(
-      `${API_BASE_URL}/dispensers`
+      `${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`
     );
     
     if (!dispenserResponse.ok) {
@@ -174,7 +186,7 @@ async function loadDispensersFromDB() {
     
     const dispensersWithNozzles = await Promise.all(dbDispensers.map(async dbDispenser => {
       const nozzleResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?station_id=${currentStation.station_id}&dispenser_id=${dbDispenser.dispenser_id}`
       );
       
       let nozzles = [];
@@ -213,6 +225,13 @@ async function loadDispensersFromDB() {
 }
 
 async function renderConfigDispensers() {
+    const currentStation = JSON.parse(localStorage.getItem('currentStation')) || {};
+    if (!currentStation.station_id) {
+        console.error('No station selected');
+        content.innerHTML = '<div class="error">Please select a station first</div>';
+        return;
+    }
+    
     const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', 'index.html', 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
 
@@ -548,7 +567,7 @@ async function renderConfigDispensers() {
             // Fetch next dispenser_id for new dispensers
             if (!dispenser_id) {
                 const response = await fetch(
-                    `${API_BASE_URL}/dispensers/next-id`
+                    `${API_BASE_URL}/dispensers/next-id?station_id=${currentStation.station_id}`
                 );
                 if (!response.ok) {
                     throw new Error('Failed to get next dispenser ID');

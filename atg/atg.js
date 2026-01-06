@@ -150,39 +150,6 @@ async function refreshATGData(gridContainer) {
     }
 }
 
-
-// Optional: Function to update connection status in database
-async function updateTankConnectionStatus(address, conn_status, connected_at) {
-    try {
-        // First, find the tank ID by address
-        const tankResponse = await fetch(`${API_BASE_URL}/tanks/address/${address}/atg-data`);
-        if (!tankResponse.ok) {
-            console.error('Tank not found for address:', address);
-            return;
-        }
-        
-        const tank = await tankResponse.json();
-        
-        // Update connection status via PUT to tanks endpoint
-        const updateResponse = await fetch(`${API_BASE_URL}/tanks/${tank.id}`, {
-            method: 'PUT',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                conn_status: conn_status,
-                connected_at: connected_at
-            })
-        });
-        
-        if (!updateResponse.ok) {
-            console.error('Failed to update tank connection status');
-        }
-    } catch (error) {
-        console.error('Error updating tank connection status:', error);
-    }
-}
-
 // Auto-refresh function for ATG data
 function startATGRefresh(interval = 30000) { // Refresh every 30 seconds
     if (atgRefreshInterval) {

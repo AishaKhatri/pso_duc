@@ -24,13 +24,6 @@ const OFFLINE_TIMEOUT = 3 * 60 * 1000; // 1 minute
 // Track last msg_type: 0 message timestamp for each nozzle
 const lastStatusMessage = new Map();
 
-// const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
-
-// Initialize MQTT client to connect to local EMQX via WebSocket
-// const mqttClient = mqtt.connect('ws://localhost:8083/mqtt', {
-// Initialize MQTT client to connect to HiveMQ public broker
-// const mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-
 // const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
 const mqttClient = mqtt.connect('tcp://localhost:1883', {
     clientId: `server`,
@@ -52,8 +45,6 @@ const gsmStatusCache = new Map(); // Cache for GSM status by dispenser address
 const wifiStatusCache = new Map(); // Cache for Wi-Fi status by dispenser address
 const mqttStatusCache = new Map();
 const powerOnCache = new Map();
-const errorLogCache = new Map();
-const atgConnectionCache = new Map();
 const atgLastUpdateCache = new Map();
 const deviceInfoCache = new Map();
 
@@ -404,7 +395,7 @@ function getWiFiStatus(dispenserAddr) {
 
 async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusData) {
     try {
-        let deviceType, deviceId, cleanAddr;
+        let stationId, deviceType, cleanAddr;
         
         // Check if this is an ATG (tank) device
         if (deviceAddr.startsWith('T')) {
@@ -420,7 +411,7 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
                 errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = tanks[0].tank_id;
+                stationId = tanks[0].station_id;
             }
         } 
         // Check if this is a dispenser device
@@ -438,7 +429,7 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
                 errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = dispensers[0].dispenser_id;
+                stationId = dispensers[0].station_id;
             }
         }
 
@@ -467,11 +458,11 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
         // Insert into database
         await pool.query(
             `INSERT INTO network_status 
-            (device_type, device_id, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
+            (station_id,device_type, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
             [
+                stationId,
                 deviceType,
-                deviceId,
                 cleanAddr,
                 connectionType,
                 apn_ssid,
@@ -584,18 +575,9 @@ async function handleErrorMessage(dispenserAddr, message) {
     }
 }
 
-function getErrorLog(dispenserAddr) {
-    return errorLogCache.get(dispenserAddr) || [];
-}
-
-function hasErrors(dispenserAddr) {
-    const errors = errorLogCache.get(dispenserAddr);
-    return errors && errors.length > 0;
-}
-
 async function storeErrorInDatabase(deviceAddr, errorMessage) {
     try {
-        let deviceType, deviceId, cleanAddr;
+        let stationId, deviceType, cleanAddr;
         
         // Check if this is an ATG (tank) device
         if (deviceAddr.startsWith('T')) {
@@ -611,7 +593,7 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
                 errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = tanks[0].tank_id;
+                stationId = tanks[0].station_id;
             }
         } 
         // Check if this is a dispenser device
@@ -629,17 +611,15 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
                 errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = dispensers[0].dispenser_id;
+                stationId = dispensers[0].station_id;
             }
         } 
         await pool.query(
             `INSERT INTO errors 
-            (device_type, device_id, address, error_message) 
+            (station_id, device_type, address, error_message) 
             VALUES (?, ?, ?, ?)`,
-            [deviceType, deviceId, cleanAddr, errorMessage]
-        );
-        
-        logWithTimestamp(null, `Error stored in database: ${deviceType} ${deviceId} - ${errorMessage}`);
+            [stationId, deviceType, cleanAddr, errorMessage]
+        );            
     } catch (error) {
         errorWithTimestamp('Error storing error in database:', error.message);
     }
@@ -688,7 +668,7 @@ async function handleDeviceInfoMessage(deviceAddr, deviceData) {
 
 async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
     try {
-        let deviceType, deviceId, cleanAddr;
+        let stationId, deviceType, cleanAddr;
         
         // Check if this is an ATG (tank) device
         if (deviceAddr.startsWith('T')) {
@@ -704,7 +684,7 @@ async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
                 errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = tanks[0].tank_id;
+                stationId = tanks[0].station_id;
             }
         } 
         // Check if this is a dispenser device
@@ -722,19 +702,19 @@ async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
                 errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = dispensers[0].dispenser_id;
+                stationId = dispensers[0].station_id;
             }
         } 
 
         // Always insert new record - no unique constraint to prevent this
         const [result] = await pool.query(
             `INSERT INTO device_info 
-            (device_type, device_id, address, temperature, firmware_version, hardware_version, 
+            (station_id, device_type, address, temperature, firmware_version, hardware_version, 
              mac_address, serial_number, last_die_time, wakeup_time) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
+                stationId,
                 deviceType,
-                deviceId,
                 cleanAddr,
                 deviceInfo.temperature,
                 deviceInfo.firmwareVersion,
@@ -745,8 +725,6 @@ async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
                 deviceInfo.wakeupTime
             ]
         );
-
-        logWithTimestamp(null, `Device info stored for ${deviceType} ${deviceId} (${cleanAddr}) - Record ID: ${result.insertId}`);
     } catch (error) {
         errorWithTimestamp('Error storing device info in database:', error.message);
     }
@@ -853,15 +831,6 @@ async function handleConnectionAlert(topic, alertData) {
             }
         }
     }
-}
-
-// Add this function to get ATG connection status
-function getATGConnectionStatus(atgAddress) {
-    return atgConnectionCache.get(atgAddress) || {
-        conn_status: 0,
-        connected_at: null,
-        last_updated: null
-    };
 }
 
 async function handleATGMessage(topic, parsedData) {
@@ -1540,15 +1509,12 @@ module.exports = {
     unsubscribeFromTopic,
     getGsmConnectionStatus,
     getWifiConnectionStatus,
-    getATGConnectionStatus,
     getATGLastUpdate,
     getGsmStatus,
     getWiFiStatus,
     getMqttStatus,
     getPowerOnStatus,
-    getErrorLog,
     getDeviceInfo,
-    hasErrors,
     handleDeviceStatusMessage,
     handleGsmStatusMessage,
     handleWiFiStatusMessage,

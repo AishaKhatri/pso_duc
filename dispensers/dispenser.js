@@ -12,8 +12,18 @@ async function renderDispenser() {
         clearInterval(updateInterval);
     }
 
+    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
+    if (!currentStation) {
+        content.innerHTML = '<div class="error">No station selected</div>';
+        return;
+    }
+
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        // const stationResponse = await fetch(`${API_BASE_URL}/stations/${currentStation.station_id}`);
+        // if (!stationResponse.ok) throw new Error('Failed to fetch station');
+        // const station = await stationResponse.json();
+
+        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
@@ -74,7 +84,7 @@ async function renderDispenser() {
             gridContainer.appendChild(message);
         } else {
             for (const dispenser of dispensers) {
-                await createDispenserCard(dispenser, gridContainer);
+                await createDispenserCard(dispenser, currentStation.station_id, gridContainer);
             }
         }
 
@@ -86,12 +96,12 @@ async function renderDispenser() {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
-                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 
                     for (const dispenser of updatedDispensers) {
-                        await updateDispenserCard(dispenser);
+                        await updateDispenserCard(dispenser, currentStation.station_id);
                     }
                 } catch (error) {
                     console.error('Error during periodic update:', error);
@@ -104,9 +114,9 @@ async function renderDispenser() {
     }
 }
 
-async function createDispenserCard(dispenser, gridContainer) {
+async function createDispenserCard(dispenser, stationId, gridContainer) {
     const nozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dispenser.dispenser_id}`
     );
     if (!nozzlesResponse.ok) return;
     const nozzles = await nozzlesResponse.json();
@@ -213,7 +223,7 @@ async function updateDispenserCard(dispenser) {
 
     try {
         const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+            `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dispenser.dispenser_id}`
         );
         if (!nozzlesResponse.ok) return;
         const nozzles = await nozzlesResponse.json();
@@ -257,9 +267,9 @@ function initializeMQTT(dispensers) {
                         case 2: // Total quantity
                             window.updateTotalQuantity?.(nozzleId, parseFloat(data.message));
                             break;
-                        case 3: // Total sales
-                            window.updateTotalSales?.(nozzleId, parseFloat(data.message));
-                            break;
+                        // case 3: // Total sales
+                        //     window.updateTotalSales?.(nozzleId, parseFloat(data.message));
+                        //     break;
                         case 4: // Nozzle lock
                             window.updateNozzleLockStatus?.(nozzleId, parseInt(data.message));
                             break;
