@@ -3,6 +3,12 @@ const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};
 
+const cityMap = {
+    'Karachi' : 'KHI',
+    'Lahore' : 'LHE',
+    'Islamabad' : 'ISB',
+}
+
 function renderApp() {
     const app = document.getElementById('app');
     app.innerHTML = `
@@ -27,7 +33,6 @@ function createCloseButton(overlay) {
 function createModalOverlay() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay';
-    // Close on overlay click
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
             document.body.removeChild(overlay);
@@ -127,7 +132,6 @@ function createHeader(){
     return header;
 }
 
-// Common title creation function
 function createTitle() {
     const title = document.createElement('h2');
     title.style.color = '#004D64';
@@ -184,8 +188,6 @@ function createMainButton() {
     return button;
 };
 
-
-// Function to create no data message
 function createNoDataMessage(message) {
     const noData = document.createElement('div');
     noData.textContent = message;
@@ -328,7 +330,6 @@ function createCard(title, address) {
     statusText.textContent = 'Connecting...';
     statusText.style.color = '#666';
     statusText.title = 'Click to view details';
-    // Add click handler
     statusText.addEventListener('click', () => {
         showDevStatusPopup(address);
     });

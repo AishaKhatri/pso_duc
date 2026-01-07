@@ -104,6 +104,16 @@ const upload = multer({
   }
 });
 
+app.get('/api/stations', async (req, res) => {
+    try {
+        const [rows] = await pool.query('SELECT * FROM stations');
+        res.json(rows);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ error: 'Failed to fetch stations' });
+    }
+});
+
 app.get('/api/stations/:station_id', async (req, res) => {
     try {
         const { station_id } = req.params;
