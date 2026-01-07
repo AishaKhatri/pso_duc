@@ -166,6 +166,12 @@ async function unsubscribeFromTopic(topic) {
 
 async function handleSalesMessage(dispenser_id, nozzleId, message) {
     const transactions = parseTransactionMessage(message);
+
+    if (!Array.isArray(transactions) || transactions.length === 0) {
+        errorWithTimestamp(`Invalid data received in msg_type=7 for dispenser ${dispenser_id}, nozzle ${nozzleId}.`)
+        return;
+    }
+
     // Calculate total amount using reduce
     const total_sales_today = transactions.reduce((sum, tx) => sum + tx.amount, 0);                
     console.log(`Received ${transactions.length} transactions, total amount: ${total_sales_today}`);
@@ -1274,10 +1280,11 @@ async function recordNozzleHistory() {
         for (const nozzle of nozzles) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    dispenser_id, nozzle_id, product, status, price_per_liter,
+                    station_id, dispenser_id, nozzle_id, product, status, price_per_liter,
                     total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
+                    nozzle.station_id,
                     nozzle.dispenser_id,
                     nozzle.nozzle_id,
                     nozzle.product,

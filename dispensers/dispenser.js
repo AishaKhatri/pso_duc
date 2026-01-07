@@ -203,7 +203,7 @@ async function createDispenserCard(dispenser, stationId, gridContainer) {
     });
 }
 
-async function updateDispenserCard(dispenser) {
+async function updateDispenserCard(dispenser, stationId) {
     const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
     if (!card) return;
 
