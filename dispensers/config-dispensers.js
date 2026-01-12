@@ -4,15 +4,18 @@ const PRODUCT_NAME_MAPPING = {
   'octane-plus': 'Octane Plus'
 };
 
-async function saveDispenserToDB(dispenser, isUpdate = false) {
+async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) {
   try {
-    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
-    if (!currentStation || !currentStation.station_id) {
-      throw new Error('No station selected');
+    if (!stationId) {
+      const currentStation = JSON.parse(localStorage.getItem('currentStation'));
+      if (!currentStation || !currentStation.station_id) {
+        throw new Error('No station selected');
+      }
+      stationId = currentStation.station_id;
     }
 
     const dbDispenser = {
-      station_id: currentStation.station_id,
+      station_id: stationId,
       dispenser_id: dispenser.dispenser_id,
       address: dispenser.address,
       vendor: dispenser.vendor,
@@ -21,7 +24,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     };
 
     const dispenserEndpoint = isUpdate 
-      ? `${API_BASE_URL}/dispensers/${currentStation.station_id}/${dispenser.dispenser_id}`
+      ? `${API_BASE_URL}/dispensers/${stationId}/${dispenser.dispenser_id}`
       : `${API_BASE_URL}/dispensers`;
     
     const method = isUpdate ? 'PUT' : 'POST';
@@ -44,7 +47,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
       const existingNozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?station_id=${currentStation.station_id}&dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dbDispenser.dispenser_id}`
       );
       let existingNozzles = [];
       if (existingNozzlesResponse.ok) {
@@ -53,14 +56,8 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
       // Map new nozzles by nozzle_id for comparison
       const newNozzles = dispenser.nozzles.map(nozzle => ({
-        nozzle_id: `D${dbDispenser.address}-${nozzle.nozzleId.split('-')[1]}`,
-        product: nozzle.product,
-        status: 0,
-        lock_unlock: 0,
-        keypad_lock_status: 1,
-        price_per_liter: '0.00',
-        total_quantity: '0.00',
-        total_amount: '0.00'
+        nozzle_id: nozzle.nozzleId,
+        product: nozzle.product
       }));
 
       // Identify nozzles to update, insert, or delete
@@ -84,7 +81,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Update existing nozzles
       for (const nozzle of nozzlesToUpdate) {
         const nozzleData = {
-          station_id: currentStation.station_id,
+          station_id: stationId,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -97,7 +94,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
         };
 
         const nozzleResponse = await fetch(
-          `${API_BASE_URL}/nozzles/${currentStation.station_id}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${stationId}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'PUT',
             headers: {
@@ -117,16 +114,10 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Insert new nozzles
       for (const nozzle of nozzlesToInsert) {
         const nozzleData = {
-          station_id: currentStation.station_id,
+          station_id: stationId,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
-          status: nozzle.status,
-          lock_unlock: nozzle.lock_unlock,
-          keypad_lock_status: nozzle.keypad_lock_status,
-          price_per_liter: nozzle.price_per_liter,
-          total_quantity: nozzle.total_quantity,
-          total_amount: nozzle.total_amount
         };
 
         const nozzleResponse = await fetch(`${API_BASE_URL}/nozzles`, {
@@ -147,7 +138,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
         await fetch(
-          `${API_BASE_URL}/nozzles/${currentStation.station_id}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${stationId}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'DELETE',
             headers: {

@@ -627,8 +627,8 @@ app.post('/api/nozzles', async (req, res) => {
             dispenser_id, 
             nozzle_id, 
             product, 
-            status = 1, 
-            lock_unlock = 1, 
+            status = 0, 
+            lock_unlock = 0, 
             keypad_lock_status = 1, 
             price_per_liter = '0.00', 
             total_quantity = '0.00', 
@@ -696,7 +696,7 @@ app.post('/api/nozzles', async (req, res) => {
 app.put('/api/dispensers/:station_id/:dispenser_id', async (req, res) => {
     try {
         const { station_id, dispenser_id } = req.params;
-        const { address, vendor, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+        const { address, vendor, number_of_nozzles, ir_lock_status } = req.body;
 
         // Check if at least one field is provided
         if (Object.keys(req.body).length === 0) {
@@ -730,11 +730,6 @@ app.put('/api/dispensers/:station_id/:dispenser_id', async (req, res) => {
             values.push(ir_lock_status);
         }
 
-        if (conn_status !== undefined) {
-            fields.push('conn_status = ?');
-            values.push(conn_status);
-        }
-
         // Add WHERE clause parameters
         values.push(station_id, dispenser_id);
 
@@ -752,7 +747,7 @@ app.put('/api/dispensers/:station_id/:dispenser_id', async (req, res) => {
         if (address !== undefined) {
             const [oldDispenser] = await pool.query(
                 'SELECT address FROM dispensers WHERE station_id = ? AND dispenser_id = ?',
-                [dispenser_id]
+                [station_id, dispenser_id]
             );
             if (oldDispenser.length > 0) {
                 unsubscribeFromTopic(`D${oldDispenser[0].address}`);
@@ -877,7 +872,7 @@ app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) =>
             return res.status(400).json({ error: 'No valid fields provided for update' });
         }
 
-        values.push(dispenser_id, decodeURIComponent(nozzle_id));
+        values.push(station_id, dispenser_id, decodeURIComponent(nozzle_id));
 
         // Update nozzles first
         const [result] = await pool.query(
@@ -900,7 +895,7 @@ app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) =>
                 `INSERT INTO nozzle_history (
                     station_id, dispenser_id, nozzle_id, product, status, price_per_liter,
                     total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     updatedNozzle[0].station_id,
                     updatedNozzle[0].dispenser_id,
@@ -954,6 +949,28 @@ app.delete('/api/tanks/:id', async (req, res) => {
     } catch (error) {
         console.error('Delete error:', error);
         res.status(500).json({ error: 'Failed to delete tank' });
+    }
+});
+
+app.delete('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) => {
+    try {
+        const { station_id, dispenser_id, nozzle_id } = req.params;
+        const [result] = await pool.query(
+            'DELETE FROM nozzles WHERE station_id = ? AND dispenser_id = ? AND nozzle_id = ?',
+            [station_id, dispenser_id, decodeURIComponent(nozzle_id)]
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Nozzle not found' });
+        }
+
+        res.json({ 
+            success: true,
+            message: 'Nozzle deleted successfully'
+        });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ error: 'Failed to delete nozzle' });
     }
 });
 
@@ -1031,93 +1048,3 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         connection.release();
     }
 });
-
-// Instead of keeping data in history table, make a new archives table for deleted dispensers
-// ------ NOT TESTED ------
-// app.delete('/api/dispensers/:id', async (req, res) => {
-//     const connection = await pool.getConnection();
-//     try {
-//         await connection.beginTransaction();
-        
-//         const { id } = req.params;
-//         const deleteHistory = req.query.delete_history === 'true';
-        
-//         // Get dispenser info
-//         const [dispenser] = await connection.query(
-//             'SELECT address, dispenser_id FROM dispensers WHERE id = ?', 
-//             [id]
-//         );
-        
-//         if (dispenser.length === 0) {
-//             await connection.rollback();
-//             return res.status(404).json({ error: 'Dispenser not found' });
-//         }
-        
-//         const { address, dispenser_id } = dispenser[0];
-        
-//         // Unsubscribe from topics
-//         unsubscribeFromTopic(`D${address}`);
-//         unsubscribeFromTopic(`duc/conn_status/D${address}`);
-        
-//         if (!deleteHistory) {
-//             // Archive historical data before deletion
-//             // 1. Archive nozzle_history
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_nozzle_history LIKE nozzle_history
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_nozzle_history 
-//                 SELECT * FROM nozzle_history WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-            
-//             // 2. Archive transactions
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_transactions LIKE transactions
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_transactions 
-//                 SELECT * FROM transactions WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-            
-//             // 3. Archive nozzles (optional)
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_nozzles LIKE nozzles
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_nozzles 
-//                 SELECT * FROM nozzles WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-//         }
-        
-//         // Delete from main tables (cascade will handle nozzle_history and transactions if deleteHistory=true)
-//         // If deleteHistory=false, we've already archived the data
-//         const [result] = await connection.query(
-//             'DELETE FROM dispensers WHERE id = ?',
-//             [id]
-//         );
-        
-//         await connection.commit();
-        
-//         if (result.affectedRows === 0) {
-//             await connection.rollback();
-//             return res.status(404).json({ error: 'Dispenser not found' });
-//         }
-        
-//         res.json({ 
-//             success: true,
-//             message: deleteHistory 
-//                 ? 'Dispenser and all historical records deleted successfully'
-//                 : 'Dispenser deleted (historical records archived)'
-//         });
-        
-//     } catch (error) {
-//         await connection.rollback();
-//         console.error('Database error:', error);
-//         res.status(500).json({ error: 'Failed to delete dispenser' });
-//     } finally {
-//         connection.release();
-//     }
-// });
