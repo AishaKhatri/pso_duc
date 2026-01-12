@@ -95,6 +95,8 @@ async function initializeMQTTSubscriptions() {
             const conn_stat_topic = `duc/conn_status/D${dispenser.address.padStart(5, '0')}`; 
             await subscribeToTopic(conn_stat_topic, statusTopics);
 
+            await subscribeToTopic('duc/registration', statusTopics);
+
             // Fetch all nozzles for this dispenser
             const [nozzles] = await pool.query(
                 'SELECT nozzle_id FROM nozzles WHERE dispenser_id = ?',
@@ -1305,6 +1307,64 @@ async function recordNozzleHistory() {
     }
 }
 
+async function registerNewDevice(message) {
+    try {
+        const nozzles = message.nozzles || {};
+
+        const nozzlesInfo = Object.keys(nozzles).map(nozzleId => ({
+            nozzleId: `D${message.address}-${nozzleId}`,
+            product: nozzles[nozzleId] || 'Unknown'
+        }));
+
+        const newDispenser = {
+            station_id: message.stationID,
+            address: message.address,
+            vendor: message.vendor,
+            dispenser_id: message.disp_number,
+            number_of_nozzles: nozzlesInfo.length,
+            ir_lock_status: message.ir_lock_status || 1,
+            nozzles: nozzlesInfo
+        }
+
+        const dispenserResponse = await fetch(`http://localhost:3001/api/dispensers`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(newDispenser)
+        });
+
+        if (!dispenserResponse.ok) {
+            const errorData = await dispenserResponse.json().catch(() => ({}));
+            throw new Error(errorData.error || 'Failed to save dispenser');
+        }
+
+        for (const nozzle of newDispenser.nozzles) {
+            const nozzleData = {
+                station_id: newDispenser.station_id,
+                dispenser_id: newDispenser.dispenser_id,
+                nozzle_id: nozzle.nozzleId,
+                product: nozzle.product,
+            };
+
+            const nozzleResponse = await fetch(`http://localhost:3001/api/nozzles`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(nozzleData)
+            });
+
+            if (!nozzleResponse.ok) {
+                const errorData = await nozzleResponse.json().catch(() => ({}));
+                console.error('Nozzle save error details:', errorData);
+                throw new Error(errorData.error || 'Failed to save nozzle');
+            }
+        }            
+    } catch (error) {
+        errorWithTimestamp('Error registering new device:', error.message);
+    }
+}
 
 // MQTT event handlers
 mqttClient.on('connect', () => {
@@ -1361,6 +1421,9 @@ mqttClient.on('message', async (receivedTopic, message) => {
         } else if (receivedTopic.includes('T')) {
             await handleATGMessage(receivedTopic, parsedData);
             // dbAddress = receivedTopic.replace(/^S/, ''); // Remove 'S' prefix
+            return;
+        } else if (receivedTopic === 'duc/registration') {
+            await registerNewDevice(parsedData);
             return;
         } else {
             // Convert Sxxxxx topic to xxxxx address for database query
