@@ -17,6 +17,15 @@ CREATE TABLE `stations` (
   UNIQUE KEY `station_id` (`station_id`)
 ) ENGINE=InnoDB;
 
+CREATE TABLE IF NOT EXISTS `sessions` (
+    `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    `user_id` int NOT NULL,
+    `session_token` varchar(255) UNIQUE NOT NULL,
+    `expires_at` timestamp NOT NULL,
+    `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (`user_id`) REFERENCES `stations`(`id`) ON DELETE CASCADE
+);
+
 CREATE TABLE `dispensers` (
   `id` int NOT NULL AUTO_INCREMENT,
   `station_id` varchar(50) NOT NULL,

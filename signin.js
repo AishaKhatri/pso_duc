@@ -1,9 +1,3 @@
-// Import user credentials
-const user = {
-  username: "admin",
-  password: "12345"
-};
-
 document.addEventListener('DOMContentLoaded', () => {
   // Style the body
   document.body.style.fontFamily = 'Arial, sans-serif';
@@ -146,50 +140,26 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Handle form submission - Validate against hardcoded user
-  submitButton.addEventListener('click', () => {
+  submitButton.addEventListener('click', async () => {
     const enteredUsername = usernameInput.value.trim();
     const enteredPassword = passwordInput.value.trim();
 
     // Clear previous error
     errorMessage.style.display = 'none';
     errorMessage.textContent = '';
-
-    // Basic validation
-    if (!enteredUsername || !enteredPassword) {
-      errorMessage.textContent = 'Please fill in all fields.';
+    
+    const result = await StationAuth.signIn(enteredUsername, enteredPassword);
+    
+    if (result.success) {
+      // Redirect to dashboard
+      localStorage.setItem('signedIn', 'true');
+      localStorage.setItem('currentUser', enteredUsername);
+      window.location.href = 'index.html';
+    } else {
+      // Show error
+      errorMessage.textContent = result.message;
       errorMessage.style.display = 'block';
-      return;
     }
-
-    // Show loading state
-    submitButton.disabled = true;
-    submitButton.textContent = 'Signing In...';
-
-    // Simulate network delay (optional)
-    setTimeout(() => {
-      // Validate against hardcoded user
-      if (enteredUsername === user.username && enteredPassword === user.password) {
-        // Successful sign-in
-        localStorage.setItem('signedIn', 'true');
-        localStorage.setItem('currentUser', enteredUsername);
-        
-        // Show success message (optional)
-        errorMessage.textContent = 'Login successful! Redirecting...';
-        errorMessage.style.display = 'block';
-        
-        // Redirect after short delay
-        setTimeout(() => {
-          window.location.href = 'index.html';
-        }, 1000);
-      } else {
-        // Failed sign-in
-        errorMessage.textContent = 'Invalid username or password.';
-        errorMessage.style.display = 'block';
-        
-        submitButton.disabled = false;
-        submitButton.textContent = 'Sign In';
-      }
-    }, 500);
   });
 
   container.appendChild(form);

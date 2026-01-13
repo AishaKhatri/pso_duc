@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
+const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
 const pool = require('./db'); // Use shared pool from db.js
@@ -34,6 +35,7 @@ const MAX_DECIMAL_VALUE = 9999999999999.99;
 // Cache to deduplicate updates (using message hash)
 const recentUpdates = new Map();
 const DEDUPE_WINDOW = 5000; // 5 seconds
+const JWT_SECRET = process.env.JWT_SECRET;
 
 // Start the midnight reset service when server starts
 async function initializeServer() {
@@ -101,6 +103,123 @@ const upload = multer({
     } else {
       cb(new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`));
     }
+  }
+});
+
+app.get('/api/auth/verify', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token provided' 
+      });
+    }
+
+    // Verify JWT
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Check if session exists in database and is not expired
+    const [sessions] = await pool.query(
+      `SELECT s.*, st.username, st.station_id, st.station_name, 
+              st.city, st.province, st.station_config
+       FROM sessions s
+       JOIN stations st ON s.user_id = st.id
+       WHERE s.session_token = ? AND s.expires_at > NOW()`,
+      [token]
+    );
+
+    if (sessions.length === 0) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Session expired or invalid' 
+      });
+    }
+
+    const session = sessions[0];
+    
+    // Remove sensitive data
+    const { password, ...stationData } = session;
+
+    res.json({
+      success: true,
+      user: {
+        id: stationData.user_id,
+        username: stationData.username,
+        stationId: stationData.station_id,
+        stationName: stationData.station_name,
+        city: stationData.city,
+        province: stationData.province,
+        stationConfig: JSON.parse(stationData.station_config || '{}')
+      }
+    });
+
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid token' 
+      });
+    }
+    
+    if (error.name === 'TokenExpiredError') {
+      // Clean up expired session
+      const token = req.headers.authorization?.split(' ')[1];
+      if (token) {
+        await pool.query(
+          'DELETE FROM sessions WHERE session_token = ?',
+          [token]
+        );
+      }
+      
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Token expired' 
+      });
+    }
+    
+    console.error('Token verification error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+app.get('/api/auth/station/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const [stations] = await pool.query(
+      `SELECT id, username, station_id, station_name, 
+              city, province, station_config, created_at 
+       FROM stations 
+       WHERE id = ? OR station_id = ?`,
+      [id, id]
+    );
+
+    if (stations.length === 0) {
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Station not found' 
+      });
+    }
+
+    const station = stations[0];
+    station.station_config = JSON.parse(station.station_config || '{}');
+    
+    res.json({
+      success: true,
+      station
+    });
+
+  } catch (error) {
+    console.error('Get station error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
   }
 });
 
@@ -459,6 +578,113 @@ app.get('/api/device-info/:address', async (req, res) => {
     }
 });
 
+app.post('/api/auth/signin', async (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    // Validate input
+    if (!username || !password) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please provide username and password' 
+      });
+    }
+
+    // Find station/user in database
+    const [stations] = await pool.query(
+      `SELECT id, username, password, station_id, station_name, 
+              city, province, station_config, created_at 
+       FROM stations 
+       WHERE username = ? OR station_id = ?`,
+      [username, username] // Allow login with either username or station_id
+    );
+
+    if (stations.length === 0) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid username or password' 
+      });
+    }
+
+    const station = stations[0];
+
+    // Verify password (plain text comparison as per your table structure)
+    // Note: In production, you should hash passwords!
+    if (password !== station.password) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'Invalid username or password' 
+      });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign(
+      { 
+        userId: station.id,
+        username: station.username,
+        stationId: station.station_id,
+        stationName: station.station_name
+      },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    // Create session in database
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    const sessionToken = require('crypto').randomBytes(64).toString('hex');
+    
+    await pool.query(
+      'INSERT INTO sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)',
+      [station.id, sessionToken, expiresAt]
+    );
+
+    // Remove password from response
+    const { password: _, ...stationData } = station;
+
+    // Return success response
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: stationData,
+      permissions: station.station_config || '{}'
+    });
+
+  } catch (error) {
+    console.error('Sign in error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
+app.post('/api/auth/signout', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (token) {
+      // Delete session from database
+      await pool.query(
+        'DELETE FROM sessions WHERE session_token = ?',
+        [token]
+      );
+    }
+    
+    res.json({ 
+      success: true, 
+      message: 'Signed out successfully' 
+    });
+    
+  } catch (error) {
+    console.error('Sign out error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
+});
+
 app.post('/api/tanks', async (req, res) => {
     try {
         const { tank_id, address, product, dip_chart_path, max_capacity_mm, max_capacity_ltr } = req.body;
@@ -766,6 +992,48 @@ app.put('/api/dispensers/:station_id/:dispenser_id', async (req, res) => {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to update dispenser' });
     }
+});
+
+app.put('/api/auth/session/config', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    const { config } = req.body;
+
+    if (!token) {
+      return res.status(401).json({ 
+        success: false, 
+        message: 'No token provided' 
+      });
+    }
+
+    if (!config || typeof config !== 'object') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Invalid configuration' 
+      });
+    }
+
+    // Verify token and get user
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    // Update station configuration
+    await pool.query(
+      'UPDATE stations SET station_config = ? WHERE id = ?',
+      [JSON.stringify(config), decoded.userId]
+    );
+
+    res.json({
+      success: true,
+      message: 'Configuration updated successfully'
+    });
+
+  } catch (error) {
+    console.error('Update config error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Server error' 
+    });
+  }
 });
 
 app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) => {

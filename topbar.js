@@ -86,7 +86,7 @@ function renderTopbar() {
     };
     
     signOutBtn.onclick = () => {
-        localStorage.removeItem('signedIn');
+        localStorage.setItem('signedIn', 'false');
         localStorage.removeItem('currentUser');
         window.location.href = 'signin.html';
     };
