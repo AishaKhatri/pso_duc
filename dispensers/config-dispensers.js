@@ -268,53 +268,19 @@ async function renderConfigDispensers() {
         form.style.display = 'grid';
         form.style.gap = '15px';
 
-        // Address field
-        const addressContainer = document.createElement('div');
-        addressContainer.style.display = 'grid';
-        addressContainer.style.gridTemplateColumns = '1fr 2fr';
-        addressContainer.style.alignItems = 'center';
-        
-        const addressLabel = document.createElement('label');
-        addressLabel.className = 'label-text';
-        addressLabel.textContent = 'Address:';
-        addressLabel.style.width = '100px';
-        
-        const addressInput = document.createElement('input');
-        addressInput.type = 'text';
-        addressInput.name = 'address';
-        addressInput.required = true;
-        addressInput.style.padding = '8px';
-        addressInput.style.border = '1px solid #ddd';
-        addressInput.style.borderRadius = '4px';
-        addressInput.style.width = '90%';
-        
-        addressContainer.appendChild(addressLabel);
-        addressContainer.appendChild(addressInput);
+        const addressContainer = createField('Address:', 'address');
         form.appendChild(addressContainer);
-
-        // Vendor field
-        const vendorContainer = document.createElement('div');
-        vendorContainer.style.display = 'grid';
-        vendorContainer.style.gridTemplateColumns = '1fr 2fr';
-        vendorContainer.style.alignItems = 'center';
         
-        const vendorLabel = document.createElement('label');
-        vendorLabel.className = 'label-text';
-        vendorLabel.textContent = 'Vendor:';
-        vendorLabel.style.width = '100px';
-        
-        const vendorSelect = document.createElement('select');
+        const vendorSelect = createDropdown('Select Vendor');
         vendorSelect.name = 'vendor';
-        vendorSelect.required = true;
-        vendorSelect.style.padding = '8px';
-        vendorSelect.style.border = '1px solid #ddd';
-        vendorSelect.style.borderRadius = '4px';
-        vendorSelect.style.width = '100%';
-        vendorSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Vendor</option>' + 
-            vendorOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
-        
-        vendorContainer.appendChild(vendorLabel);
-        vendorContainer.appendChild(vendorSelect);
+        vendorOptions.forEach(vendor => {
+            const option = document.createElement('option');
+            option.value = vendor;
+            option.textContent = vendor;
+            vendorSelect.appendChild(option);
+        });
+
+        const vendorContainer = createField('Vendor:', vendorSelect);
         form.appendChild(vendorContainer);
 
         // Nozzles configuration
@@ -382,20 +348,11 @@ async function renderConfigDispensers() {
             nozzleOptions.forEach(nozzle => {
                 const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
                 if (checkbox.checked) {
-                    const container = document.createElement('div');
-                    container.style.display = 'grid';
-                    container.style.gridTemplateColumns = '1fr 2fr';
-                    container.style.alignItems = 'center';
-                    
-                    const label = document.createElement('label');
-                    label.className = 'label-text';
-                    label.textContent = `Product for ${nozzle}:`;
-                    label.style.width = '130px';
-                    
                     const select = createDropdown('Select Product');
                     select.name = `product-${nozzle}`;
                     select.required = true;
-                    select.style.marginBottom = '0';
+
+                    const container = createField(`Nozzle ${nozzle}:`, select);
                     
                     productOptions.forEach(opt => {
                         const displayName = PRODUCT_NAME_MAPPING[opt.toLowerCase()] || opt;
@@ -405,7 +362,6 @@ async function renderConfigDispensers() {
                         select.appendChild(option);
                     });
                     
-                    container.appendChild(label);
                     container.appendChild(select);
                     productsContainer.appendChild(container);
                 }

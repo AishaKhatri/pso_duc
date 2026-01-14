@@ -4,8 +4,8 @@ const columns = ['ID', 'Username', 'Station ID', 'Station Name', 'City', 'Provin
 async function renderUserManagement() {
     const { content, addButton } = configPage(
         'User Management', 
-        'Back to Dashboard', 
-        'dashboard.html', 
+        'Back', 
+        'index.html', 
         'Add New User'
     );
 
@@ -161,144 +161,20 @@ function showUserFormPopup(user = null) {
     form.style.flexDirection = 'column';
     form.style.gap = '15px';
 
-    // Username field
-    const usernameGroup = document.createElement('div');
-    usernameGroup.style.display = 'flex';
-    usernameGroup.style.flexDirection = 'column';
-    usernameGroup.style.gap = '5px';
+    const username = createField('Username *', user ? user.username : '', true);
+    const password = createField('Password *', user ? user.password : '', true);
+    const stationId = createField('Station ID *', user ? user.station_id : '', true);
+    const stationName = createField('Station Name *', user ? user.station_name : '', true);
+    const city = createField('City *', user ? user.city : '', true);
+    const province = createField('Province', user ? user.province : '', false);
 
-    const usernameLabel = document.createElement('label');
-    usernameLabel.textContent = 'Username *';
-    usernameLabel.style.fontWeight = '600';
-    usernameGroup.appendChild(usernameLabel);
-
-    const usernameInput = document.createElement('input');
-    usernameInput.type = 'text';
-    usernameInput.required = true;
-    usernameInput.style.padding = '10px';
-    usernameInput.style.border = '1px solid #ccc';
-    usernameInput.style.borderRadius = '4px';
-    usernameInput.style.fontSize = '14px';
-    if (user) usernameInput.value = user.username;
-    usernameGroup.appendChild(usernameInput);
-
-    form.appendChild(usernameGroup);
-
-    // Password field (only show for new users)
-    if (!user) {
-        const passwordGroup = document.createElement('div');
-        passwordGroup.style.display = 'flex';
-        passwordGroup.style.flexDirection = 'column';
-        passwordGroup.style.gap = '5px';
-
-        const passwordLabel = document.createElement('label');
-        passwordLabel.textContent = 'Password *';
-        passwordLabel.style.fontWeight = '600';
-        passwordGroup.appendChild(passwordLabel);
-
-        const passwordInput = document.createElement('input');
-        passwordInput.type = 'password';
-        passwordInput.required = true;
-        passwordInput.style.padding = '10px';
-        passwordInput.style.border = '1px solid #ccc';
-        passwordInput.style.borderRadius = '4px';
-        passwordInput.style.fontSize = '14px';
-        passwordGroup.appendChild(passwordInput);
-
-        form.appendChild(passwordGroup);
-    }
-
-    // Station ID field
-    const stationIdGroup = document.createElement('div');
-    stationIdGroup.style.display = 'flex';
-    stationIdGroup.style.flexDirection = 'column';
-    stationIdGroup.style.gap = '5px';
-
-    const stationIdLabel = document.createElement('label');
-    stationIdLabel.textContent = 'Station ID *';
-    stationIdLabel.style.fontWeight = '600';
-    stationIdGroup.appendChild(stationIdLabel);
-
-    const stationIdInput = document.createElement('input');
-    stationIdInput.type = 'text';
-    stationIdInput.required = true;
-    stationIdInput.style.padding = '10px';
-    stationIdInput.style.border = '1px solid #ccc';
-    stationIdInput.style.borderRadius = '4px';
-    stationIdInput.style.fontSize = '14px';
-    if (user) stationIdInput.value = user.station_id;
-    stationIdGroup.appendChild(stationIdInput);
-
-    form.appendChild(stationIdGroup);
-
-    // Station Name field
-    const stationNameGroup = document.createElement('div');
-    stationNameGroup.style.display = 'flex';
-    stationNameGroup.style.flexDirection = 'column';
-    stationNameGroup.style.gap = '5px';
-
-    const stationNameLabel = document.createElement('label');
-    stationNameLabel.textContent = 'Station Name *';
-    stationNameLabel.style.fontWeight = '600';
-    stationNameGroup.appendChild(stationNameLabel);
-
-    const stationNameInput = document.createElement('input');
-    stationNameInput.type = 'text';
-    stationNameInput.required = true;
-    stationNameInput.style.padding = '10px';
-    stationNameInput.style.border = '1px solid #ccc';
-    stationNameInput.style.borderRadius = '4px';
-    stationNameInput.style.fontSize = '14px';
-    if (user) stationNameInput.value = user.station_name;
-    stationNameGroup.appendChild(stationNameInput);
-
-    form.appendChild(stationNameGroup);
-
-    // City field
-    const cityGroup = document.createElement('div');
-    cityGroup.style.display = 'flex';
-    cityGroup.style.flexDirection = 'column';
-    cityGroup.style.gap = '5px';
-
-    const cityLabel = document.createElement('label');
-    cityLabel.textContent = 'City *';
-    cityLabel.style.fontWeight = '600';
-    cityGroup.appendChild(cityLabel);
-
-    const cityInput = document.createElement('input');
-    cityInput.type = 'text';
-    cityInput.required = true;
-    cityInput.style.padding = '10px';
-    cityInput.style.border = '1px solid #ccc';
-    cityInput.style.borderRadius = '4px';
-    cityInput.style.fontSize = '14px';
-    if (user) cityInput.value = user.city;
-    cityGroup.appendChild(cityInput);
-
-    form.appendChild(cityGroup);
-
-    // Province field
-    const provinceGroup = document.createElement('div');
-    provinceGroup.style.display = 'flex';
-    provinceGroup.style.flexDirection = 'column';
-    provinceGroup.style.gap = '5px';
-
-    const provinceLabel = document.createElement('label');
-    provinceLabel.textContent = 'Province';
-    provinceLabel.style.fontWeight = '600';
-    provinceGroup.appendChild(provinceLabel);
-
-    const provinceInput = document.createElement('input');
-    provinceInput.type = 'text';
-    provinceInput.style.padding = '10px';
-    provinceInput.style.border = '1px solid #ccc';
-    provinceInput.style.borderRadius = '4px';
-    provinceInput.style.fontSize = '14px';
-    if (user) provinceInput.value = user.province || '';
-    provinceGroup.appendChild(provinceInput);
-
-    form.appendChild(provinceGroup);
-
+    form.appendChild(username);
+    form.appendChild(password);
+    form.appendChild(stationId);
+    form.appendChild(stationName);
+    form.appendChild(city);
+    form.appendChild(province);
+    
     // Station Config field
     const configGroup = document.createElement('div');
     configGroup.style.display = 'flex';
@@ -306,7 +182,7 @@ function showUserFormPopup(user = null) {
     configGroup.style.gap = '5px';
 
     const configLabel = document.createElement('label');
-    configLabel.textContent = 'Station Configuration (JSON)';
+    configLabel.textContent = 'Station Configuration';
     configLabel.style.fontWeight = '600';
     configGroup.appendChild(configLabel);
 

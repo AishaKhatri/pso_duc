@@ -1,8 +1,6 @@
 const host_PC_IP = 'localhost';
 const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
-const pages = {};
-
 const cityMap = {
     'Karachi' : 'KHI',
     'Lahore' : 'LHE',
@@ -245,7 +243,7 @@ function createDropdown(placeholderText) {
     dropdown.style.border = '1px solid #ccc';
     dropdown.style.borderRadius = '4px';
     dropdown.style.width = '100%';
-    dropdown.style.marginBottom = '20px';
+    // dropdown.style.marginBottom = '20px';
 
     if (placeholderText != null) {
         const placeholderOption = createPlaceholder(placeholderText);
@@ -548,4 +546,37 @@ function createIconFromImage(imagePath, titleText, height, width = null) {
     }
 
     return icon;
+}
+
+function createField(labelText, input, populate = false) {
+    const container = document.createElement('div');
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = '1fr 2fr';
+    container.style.alignItems = 'center';
+
+    const label = document.createElement('label');
+    label.className = 'label-text';
+    label.textContent = labelText;
+    label.style.width = '100%';
+    label.style.fontWeight = 'bold';
+    container.appendChild(label);
+
+    if (typeof input === 'string' || input === undefined) {
+        const inputSource = document.createElement('input');
+        inputSource.type = 'text';
+        inputSource.name = input;
+        inputSource.required = true;
+        inputSource.style.padding = '8px';
+        inputSource.style.border = '1px solid #ddd';
+        inputSource.style.borderRadius = '4px';
+        inputSource.style.width = '90%';
+        if (populate && input) {
+            inputSource.value = input;
+        }
+        container.appendChild(inputSource);
+    } else {
+        container.appendChild(input);
+    }
+
+    return container;
 }

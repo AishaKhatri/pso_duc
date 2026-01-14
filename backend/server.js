@@ -226,7 +226,13 @@ app.get('/api/auth/station/:id', async (req, res) => {
 app.get('/api/stations', async (req, res) => {
     try {
         const [rows] = await pool.query('SELECT * FROM stations');
-        res.json(rows);
+        // Remove password column from each row
+        const stationData = rows.map(row => {
+            const { password, ...rowWithoutPassword } = row;
+            return rowWithoutPassword;
+        });
+        
+        res.json(stationData);
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to fetch stations' });
@@ -245,7 +251,13 @@ app.get('/api/stations/:station_id', async (req, res) => {
             return res.status(404).json({ error: 'Station not found' });
         }
 
-        res.json(rows[0]);
+        // Remove password column from each row
+        const stationData = rows.map(row => {
+            const { password, ...rowWithoutPassword } = row;
+            return rowWithoutPassword;
+        });
+
+        res.json(stationData[0]);
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to fetch station' });

@@ -1,4 +1,9 @@
 async function showCommandDispenserPopup() {
+    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
+    if (!currentStation) {
+        showCommandStatusMessage('No station selected', 'error');
+        return;
+    }
     const overlay = createModalOverlay();
 
     const popup = document.createElement('div');
@@ -18,26 +23,19 @@ async function showCommandDispenserPopup() {
     header.appendChild(closeButton);
     popup.appendChild(header);
 
-    const dispenserLabel = document.createElement('label');
-    dispenserLabel.textContent = 'Select Dispenser:';
-    dispenserLabel.style.display = 'block';
-    dispenserLabel.style.marginBottom = '8px';
-    dispenserLabel.style.fontWeight = 'bold';
-    popup.appendChild(dispenserLabel);
-
     const dispenserSelect = createDropdown('Select dispenser');
     dispenserSelect.id = 'dispenserSelect';
 
     // Fetch dispensers from API
     let validDispensers = [];
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
         for (const dispenser of dispensers) {
             const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+                `${API_BASE_URL}/nozzles?station_id=${currentStation.station_id}&dispenser_id=${dispenser.dispenser_id}`
             );
             if (!nozzlesResponse.ok) continue;
             const nozzles = await nozzlesResponse.json();
@@ -56,7 +54,8 @@ async function showCommandDispenserPopup() {
         showCommandStatusMessage(`Error fetching dispensers: ${error.message}`, 'error');
     }
 
-    popup.appendChild(dispenserSelect);
+    const dispenserLabel = createField('Select Dispenser:', dispenserSelect);
+    popup.appendChild(dispenserLabel);
 
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'dispenserControls';
