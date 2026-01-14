@@ -477,12 +477,7 @@ function createEditButton(titleText) {
 
 async function deleteFromDB(url) {
     try {
-    const response = await fetch(
-      url, 
-      {
-        method: 'DELETE'
-      }
-    );
+    const response = await fetch(url, { method: 'DELETE' });
     
     if (!response.ok) {
       throw new Error('Failed to delete');
@@ -579,4 +574,47 @@ function createField(labelText, input, populate = false) {
     }
 
     return container;
+}
+
+function createCellInTableBody(row, text) {
+    const cell = document.createElement('td');
+    cell.style.padding = '12px';
+    cell.textContent = text;
+    row.appendChild(cell);
+    return;
+}
+
+function createActionCellInTableBody(row, options = {}) {
+    const actionCell = document.createElement('td');
+    actionCell.style.padding = '12px';
+    
+    const editButton = createEditButton(options.editText || 'Edit');
+    if (options.onEdit) {
+        editButton.addEventListener('click', options.onEdit);
+    }
+    actionCell.appendChild(editButton);
+
+    const deleteButton = createDeleteButton(options.deleteText || 'Delete');
+    if (options.onDelete) {
+        deleteButton.addEventListener('click', options.onDelete);
+    }
+    actionCell.appendChild(deleteButton);
+
+    row.appendChild(actionCell);
+    return;
+}
+
+function createRowInTableBody() {
+    const row = document.createElement('tr');
+    row.style.borderBottom = '1px solid #ddd';
+    row.style.transition = 'background-color 0.2s ease';
+    
+    row.addEventListener('mouseover', () => {
+        row.style.backgroundColor = '#f9f9f9';
+    });
+    row.addEventListener('mouseout', () => {
+        row.style.backgroundColor = '';
+    });
+
+    return row;
 }

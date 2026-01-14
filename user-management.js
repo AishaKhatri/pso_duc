@@ -2,12 +2,7 @@
 const columns = ['ID', 'Username', 'Station ID', 'Station Name', 'City', 'Province', 'Created At', 'Actions'];
 
 async function renderUserManagement() {
-    const { content, addButton } = configPage(
-        'User Management', 
-        'Back', 
-        'index.html', 
-        'Add New User'
-    );
+    const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Add New User');
 
     // Create table for users
     const { tableContainer, tbody } = createTable(columns);
@@ -42,81 +37,21 @@ async function loadUsers() {
         }
 
         users.forEach(user => {
-            const row = document.createElement('tr');
-            row.style.borderBottom = '1px solid #eee';
-            row.style.transition = 'background-color 0.2s ease';
+            const row = createRowInTableBody();
 
-            // ID
-            const idCell = document.createElement('td');
-            idCell.textContent = user.id;
-            idCell.style.padding = '12px';
-            row.appendChild(idCell);
+            createCellInTableBody(row, user.id);
+            createCellInTableBody(row, user.username);
+            createCellInTableBody(row, user.station_id);
+            createCellInTableBody(row, user.station_name); 
+            createCellInTableBody(row, user.city);
+            createCellInTableBody(row, user.province || 'N/A');
+            createCellInTableBody(row, (new Date(user.created_at).toLocaleString()));
 
-            // Username
-            const usernameCell = document.createElement('td');
-            usernameCell.textContent = user.username;
-            usernameCell.style.padding = '12px';
-            row.appendChild(usernameCell);
-
-            // Station ID
-            const stationIdCell = document.createElement('td');
-            stationIdCell.textContent = user.station_id;
-            stationIdCell.style.padding = '12px';
-            row.appendChild(stationIdCell);
-
-            // Station Name
-            const stationNameCell = document.createElement('td');
-            stationNameCell.textContent = user.station_name;
-            stationNameCell.style.padding = '12px';
-            row.appendChild(stationNameCell);
-
-            // City
-            const cityCell = document.createElement('td');
-            cityCell.textContent = user.city;
-            cityCell.style.padding = '12px';
-            row.appendChild(cityCell);
-
-            // Province
-            const provinceCell = document.createElement('td');
-            provinceCell.textContent = user.province || 'N/A';
-            provinceCell.style.padding = '12px';
-            row.appendChild(provinceCell);
-
-            // Created At
-            const createdAtCell = document.createElement('td');
-            const date = new Date(user.created_at);
-            createdAtCell.textContent = date.toLocaleString();
-            createdAtCell.style.padding = '12px';
-            row.appendChild(createdAtCell);
-
-            // Actions
-            const actionsCell = document.createElement('td');
-            actionsCell.style.padding = '12px';
-            actionsCell.style.display = 'flex';
-            actionsCell.style.gap = '10px';
-
-            // Edit button
-            const editButton = createEditButton('Edit User');
-            editButton.addEventListener('click', () => {
-                showUserFormPopup(user);
-            });
-            actionsCell.appendChild(editButton);
-
-            // Delete button
-            const deleteButton = createDeleteButton('Delete User');
-            deleteButton.addEventListener('click', () => {
-                showDeleteUserConfirmation(user);
-            });
-            actionsCell.appendChild(deleteButton);
-
-            row.appendChild(actionsCell);
-
-            // Add hover effect
-            row.addEventListener('mouseover', () => {
-                row.style.backgroundColor = '#f9f9f9';
-            });
-            row.addEventListener('mouseout', () => {
-                row.style.backgroundColor = '';
+            createActionCellInTableBody(row, {
+                editText: 'Edit User',
+                deleteText: 'Delete User',
+                onEdit: () => showUserFormPopup(user),
+                onDelete: () => showDeleteUserConfirmation(user),
             });
 
             tbody.appendChild(row);

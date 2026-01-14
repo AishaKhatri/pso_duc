@@ -182,93 +182,23 @@ async function renderConfigTanks() {
         form.style.display = 'grid';
         form.style.gap = '15px';
 
-        // Address field
-        const addressContainer = document.createElement('div');
-        addressContainer.style.display = 'grid';
-        addressContainer.style.gridTemplateColumns = '1fr 2fr';
-        addressContainer.style.alignItems = 'center';
-        
-        const addressLabel = document.createElement('label');
-        addressLabel.className = 'label-text';
-        addressLabel.textContent = 'Address:';
-        addressLabel.style.width = '100px';
-        
-        const addressInput = document.createElement('input');
-        addressInput.type = 'text';
-        addressInput.name = 'address';
-        addressInput.required = true;
-        addressInput.placeholder = 'Enter address (1-65535)';
-        addressInput.style.padding = '8px';
-        addressInput.style.border = '1px solid #ddd';
-        addressInput.style.borderRadius = '4px';
-        addressInput.style.width = '90%';
-        
-        addressContainer.appendChild(addressLabel);
-        addressContainer.appendChild(addressInput);
+        const addressContainer = createField('Address:', 'address');
         form.appendChild(addressContainer);
 
-        // ATG Number field (stored as tank_id in DB)
-        const atgContainer = document.createElement('div');
-        atgContainer.style.display = 'grid';
-        atgContainer.style.gridTemplateColumns = '1fr 2fr';
-        atgContainer.style.alignItems = 'center';
-        
-        const atgLabel = document.createElement('label');
-        atgLabel.className = 'label-text';
-        atgLabel.textContent = 'ATG Number:';
-        atgLabel.style.width = '100px';
-        
-        const atgInput = document.createElement('input');
-        atgInput.type = 'text';
-        atgInput.name = 'tank_id'; // This will be stored as tank_id in DB
-        atgInput.required = true;
-        atgInput.placeholder = 'Enter ATG number (e.g., 1, 2, 3)';
-        atgInput.style.padding = '8px';
-        atgInput.style.border = '1px solid #ddd';
-        atgInput.style.borderRadius = '4px';
-        atgInput.style.width = '90%';
-        
-        atgContainer.appendChild(atgLabel);
-        atgContainer.appendChild(atgInput);
+        const atgContainer = createField('ATG Number:', 'tank_id');
         form.appendChild(atgContainer);
 
-        // Product field
-        const productContainer = document.createElement('div');
-        productContainer.style.display = 'grid';
-        productContainer.style.gridTemplateColumns = '1fr 2fr';
-        productContainer.style.alignItems = 'center';
-        
-        const productLabel = document.createElement('label');
-        productLabel.className = 'label-text';
-        productLabel.textContent = 'Product:';
-        productLabel.style.width = '100px';
-        
-        const productSelect = document.createElement('select');
+        const productSelect = createDropdown('Select Product');
         productSelect.name = 'product';
-        productSelect.required = true;
-        productSelect.style.padding = '8px';
-        productSelect.style.border = '1px solid #ddd';
-        productSelect.style.borderRadius = '4px';
-        productSelect.style.width = '100%';
-        productSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Product</option>' + 
-            productOptions.map(opt => {
-                const displayName = PRODUCT_NAME_MAPPING[opt.toLowerCase()] || opt;
-                return `<option value="${opt}">${displayName}</option>`;
-            }).join('');
-        
-        productContainer.appendChild(productLabel);
-        productContainer.appendChild(productSelect);
-        form.appendChild(productContainer);
+        productOptions.forEach(product => {
+            const option = document.createElement('option');
+            option.value = product;
+            option.textContent = PRODUCT_NAME_MAPPING[product.toLowerCase()] || product;
+            productSelect.appendChild(option);
+        });
 
-        // Dip Chart File Upload
-        const dipChartContainer = document.createElement('div');
-        dipChartContainer.style.display = 'grid';
-        dipChartContainer.style.gap = '5px';
-        
-        const dipChartLabel = document.createElement('label');
-        dipChartLabel.className = 'label-text';
-        dipChartLabel.textContent = 'Dip Chart File:';
-        dipChartLabel.style.width = '100px';
+        const productContainer = createField('Product:', productSelect);
+        form.appendChild(productContainer);
         
         const fileInput = document.createElement('input');
         fileInput.type = 'file';
@@ -278,16 +208,9 @@ async function renderConfigTanks() {
         fileInput.style.padding = '8px';
         fileInput.style.border = '1px solid #ddd';
         fileInput.style.borderRadius = '4px';
-        fileInput.style.width = '100%';
-        
-        // const fileInfo = document.createElement('div');
-        // fileInfo.style.fontSize = '12px';
-        // fileInfo.style.color = '#666';
-        // fileInfo.textContent = 'Supported formats: CSV, Excel, TXT';
-        
-        dipChartContainer.appendChild(dipChartLabel);
-        dipChartContainer.appendChild(fileInput);
-        // dipChartContainer.appendChild(fileInfo);
+        fileInput.style.width = '90%';
+
+        const dipChartContainer = createField('Dip Chart:', fileInput);
         form.appendChild(dipChartContainer);
 
         // Current file display (for edits)
@@ -334,67 +257,21 @@ async function renderConfigTanks() {
         }
 
         displayTanks.forEach((tank, index) => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #ddd';
-            
-            // Address
-            const addressTd = document.createElement('td');
-            addressTd.style.padding = '12px';
-            addressTd.textContent = tank.address || '-';
-            tr.appendChild(addressTd);
+            const row = createRowInTableBody();
 
-            // ATG Number (tank_id in DB)
-            const atgNumberTd = document.createElement('td');
-            atgNumberTd.style.padding = '12px';
-            atgNumberTd.textContent = tank.tank_id || '-';
-            tr.appendChild(atgNumberTd);
-
-            // Product
-            const productTd = document.createElement('td');
-            productTd.style.padding = '12px';
-            const productValue = tank.product;
-            productTd.textContent = PRODUCT_NAME_MAPPING[productValue.toLowerCase()] || productValue;
-            tr.appendChild(productTd);
-                       
-            // Dip Chart
-            const dipChartTd = document.createElement('td');
-            dipChartTd.style.padding = '12px';
-            if (tank.dip_chart_path) {
-                const fileName = tank.dip_chart_path.split('/').pop();
-                dipChartTd.textContent = fileName;
-            } else {
-                dipChartTd.textContent = 'No file';
-                dipChartTd.style.color = '#999';
-            }
-            tr.appendChild(dipChartTd);
-
-            const maxCapacityTd = document.createElement('td');
-            maxCapacityTd.style.padding = '12px';
-            if (tank.max_capacity_ltr > 0) {
-                maxCapacityTd.textContent = `${tank.max_capacity_mm || 0} mm (${tank.max_capacity_ltr} L)`;
-                maxCapacityTd.title = `Maximum capacity: ${tank.max_capacity_ltr} liters`;
-            } else {
-                maxCapacityTd.textContent = 'N/A';
-                maxCapacityTd.style.color = '#999';
-            }
-            tr.appendChild(maxCapacityTd);
+            createCellInTableBody(row, tank.address || '-');
+            createCellInTableBody(row, tank.tank_id || '-');
+            createCellInTableBody(row, tank.product || PRODUCT_NAME_MAPPING[productValue.toLowerCase()] || '-');
+            createCellInTableBody(row, tank.dip_chart_path.split('/').pop() || 'No file');
+            createCellInTableBody(row, `${tank.max_capacity_mm || 0} mm (${tank.max_capacity_ltr} L)` || '-');
             
-            // Action
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '12px';
-            actionTd.style.display = 'flex';
-            actionTd.style.gap = '10px';
+            createActionCellInTableBody(row, {
+                editText: 'Edit Tank',
+                deleteText: 'Delete Tank',
+                onEdit: () => editTank(index),
+                onDelete: () => deleteTankPopup(index, row),
+            });
             
-            const editBtn = createEditButton('Edit this tank');
-            editBtn.addEventListener('click', () => editTank(index));
-                        
-            const deleteBtn = createDeleteButton('Delete this tank');
-            deleteBtn.addEventListener('click', () => deleteTankPopup(index, tr));
-
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(deleteBtn);
-            
-            tr.appendChild(actionTd);
             tbody.appendChild(tr);
         });
     }

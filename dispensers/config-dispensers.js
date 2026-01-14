@@ -394,53 +394,26 @@ async function renderConfigDispensers() {
         }
 
         displayDispensers.forEach((dispenser, index) => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #ddd';
-            
-            const addressTd = document.createElement('td');
-            addressTd.style.padding = '12px';
-            // addressTd.style.borderRight = '1px solid #ddd';
-            addressTd.textContent = dispenser.address || '-';
-            tr.appendChild(addressTd);
-            
-            const nozzlesTd = document.createElement('td');
-            nozzlesTd.style.padding = '12px';
-            // nozzlesTd.style.borderRight = '1px solid #ddd';
-            nozzlesTd.textContent = dispenser.nozzles?.length > 0 ? 
-                dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-';
-            tr.appendChild(nozzlesTd);
-            
-            const productsTd = document.createElement('td');
-            productsTd.style.padding = '12px';
-            // productsTd.style.borderRight = '1px solid #ddd';
-            productsTd.textContent = dispenser.nozzles?.length > 0 ? 
+            const row = createRowInTableBody();
+
+            createCellInTableBody(row, dispenser.address || '-');
+            createCellInTableBody(row, (dispenser.nozzles?.length > 0 ?
+                dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-'));
+            createCellInTableBody(row, (dispenser.nozzles?.length > 0 ?
                 dispenser.nozzles.map(n => {
                     const productValue = n.product;
                     return PRODUCT_NAME_MAPPING[productValue.toLowerCase()] || productValue;
-                }).join(', ') : '-';
-            tr.appendChild(productsTd);
-            
-            const vendorTd = document.createElement('td');
-            vendorTd.style.padding = '12px';
-            // vendorTd.style.borderRight = '1px solid #ddd';
-            vendorTd.textContent = dispenser.vendor || '-';
-            tr.appendChild(vendorTd);
-            
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '12px';
-            // actionTd.style.textAlign = 'center';
-            
-            const editBtn = createEditButton('Edit this dispenser');
-            editBtn.addEventListener('click', () => editDispenser(index));
-            
-            const deleteBtn =  createDeleteButton('Delete this dispenser');
-            deleteBtn.addEventListener('click', () => deleteDispenserPopup(index, tr));
+                }).join(', ') : '-'));
+            createCellInTableBody(row, dispenser.vendor || '-');
 
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(deleteBtn);
-            
-            tr.appendChild(actionTd);
-            tbody.appendChild(tr);
+            createActionCellInTableBody(row, {
+                editText: 'Edit Dispenser',
+                deleteText: 'Delete Dispenser',
+                onEdit: () => editDispenser(index),
+                onDelete: () => deleteDispenserPopup(index, row),
+            });
+
+            tbody.appendChild(row);
         });
     }
 
