@@ -126,6 +126,9 @@ function showDispenserControls(dispenserAddr, dispensers) {
 
     // Create Nozzles Section
     createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer);
+
+    // Create Message Intervals Section
+    createMsgIntervalsSection(dispenserTopic, controlsContainer);
 }
 
 // Helper function to create control row with dropdown and confirm button
@@ -170,15 +173,12 @@ function createControlRow(label, dropdownId, value, options, onConfirm) {
 }
 
 function createIRControlSection(dispenserTopic, container) {
-    const irSection = document.createElement('div');
-    irSection.style.marginBottom = '30px';
-
     const irTitle = document.createElement('h3');
     irTitle.textContent = 'IR Control';
-    irTitle.style.marginTop = '0';
+    irTitle.style.marginTop = '30px';
     irTitle.style.borderBottom = '1px solid #eee';
     irTitle.style.paddingBottom = '8px';
-    irSection.appendChild(irTitle);
+    container.appendChild(irTitle);
 
     const { controlRow, dropdown, confirmButton } = createControlRow(
         'IR Control:',
@@ -198,14 +198,13 @@ function createIRControlSection(dispenserTopic, container) {
         }, confirmButton, `IR ${dropdown.value === '0' ? 'Unlock' : 'Lock'}`)
     );
 
-    irSection.appendChild(controlRow);
-    container.appendChild(irSection);
+    container.appendChild(controlRow);
 }
 
 function createNozzlesSection(dispenserTopic, nozzles, container) {
     const nozzlesTitle = document.createElement('h3');
     nozzlesTitle.textContent = 'Nozzle Controls';
-    nozzlesTitle.style.marginTop = '0';
+    nozzlesTitle.style.marginTop = '30px';
     nozzlesTitle.style.borderBottom = '1px solid #eee';
     nozzlesTitle.style.paddingBottom = '8px';
     container.appendChild(nozzlesTitle);
@@ -224,6 +223,89 @@ function createNozzlesSection(dispenserTopic, nozzles, container) {
     });
 
     container.appendChild(nozzlesGrid);
+}
+
+function createMsgIntervalsSection(dispenserTopic, container) {
+    const msgIntervalTitle = document.createElement('h3');
+    msgIntervalTitle.textContent = 'Message Intervals';
+    msgIntervalTitle.style.marginTop = '30px';
+    msgIntervalTitle.style.borderBottom = '1px solid #eee';
+    msgIntervalTitle.style.paddingBottom = '8px';
+    container.appendChild(msgIntervalTitle);
+
+    const controlContainer = document.createElement('div');
+    controlContainer.style.display = 'flex';
+    controlContainer.style.flexDirection = 'column';
+    controlContainer.style.gap = '12px';
+
+    const { controlRow, dropdown, confirmButton } = createControlRow(
+        'Msg Type:',
+        'msg-type',
+        0, // Default to ping
+        [
+            { value: 0, text: 'Ping' },
+            { value: 1, text: 'Price' },
+            { value: 2, text: 'Totalizer (Volume)' },
+            { value: 3, text: 'Totalizer (Amount)' },
+            { value: 4, text: 'Nozzle Status' },
+            { value: 5, text: 'Keypad Status' },
+            { value: 6, text: 'IR Status' },
+            { value: 10, text: 'Conn Status' },
+            { value: 11, text: 'MQTT Conn' },
+            { value: 12, text: 'Reset Reason' },
+            { value: 16, text: 'Device Info' }
+        ],
+        () => {
+            const delay = document.getElementById('delay-input');
+
+            sendDispenserCommand(dispenserTopic, {
+                dis_addr: dispenserTopic,
+                req_type: 0,
+                msg_type: 14,
+                message: {
+                    type: parseInt(dropdown.value),
+                    delay: parseInt(delay.value)
+                }
+            }, confirmButton)
+        }
+    );
+
+    const delayRow = document.createElement('div');
+    delayRow.style.display = 'flex';
+    delayRow.style.alignItems = 'center';
+    delayRow.style.gap = '12px';
+
+    const delayLabel = document.createElement('label');
+    delayLabel.textContent = 'Delay:';
+    delayLabel.style.fontWeight = 'bold';
+    delayLabel.style.fontSize = '14px';
+
+    const delayInput = document.createElement('input');
+    delayInput.type = 'number';
+    delayInput.id = 'delay-input';
+    delayInput.min = '1';
+    delayInput.max = '255';
+    delayInput.style.width = '80px';
+    delayInput.style.padding = '6px';
+    delayInput.style.border = '1px solid #ccc';
+    delayInput.style.borderRadius = '4px';
+    delayInput.style.fontSize = '12px';
+    
+    delayInput.addEventListener('change', function() {
+        let value = parseInt(this.value);
+        if (isNaN(value) || value < 1) {
+            this.value = '1';
+        } else if (value > 255) {
+            this.value = '255';
+        }
+    });
+
+    delayRow.appendChild(delayLabel);
+    delayRow.appendChild(delayInput);
+    
+    controlContainer.appendChild(controlRow);
+    controlContainer.appendChild(delayRow);
+    container.appendChild(controlContainer);
 }
 
 function createNozzleCard(dispenserTopic, nozzle, config) {
