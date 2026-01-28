@@ -239,7 +239,7 @@ function createTable(columns) {
 
 function createDropdown(placeholderText) {
     const dropdown = document.createElement('select');
-    dropdown.style.padding = '8px';
+    dropdown.style.padding = '6px';
     dropdown.style.border = '1px solid #ccc';
     dropdown.style.borderRadius = '4px';
     dropdown.style.width = '100%';

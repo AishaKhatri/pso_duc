@@ -15,8 +15,9 @@ const StationAuth = {
       if (data.success) {
         // Store authentication data
         localStorage.setItem('stationToken', data.token);
-        localStorage.setItem('stationUser', JSON.stringify(data.user));
+        localStorage.setItem('currentStation', JSON.stringify(data.user));
         localStorage.setItem('stationPermissions', JSON.stringify(data.permissions || {}));
+        localStorage.setItem('currentStationId', data.user.station_id || '');
         
         return {
           success: true,
@@ -83,8 +84,9 @@ const StationAuth = {
   // Clear all authentication data
   clearAuth() {
     localStorage.removeItem('stationToken');
-    localStorage.removeItem('stationUser');
+    localStorage.removeItem('currentStation');
     localStorage.removeItem('stationPermissions');
+    localStorage.removeItem('currentStationId');
   },
 
 //   // Verify token with server
