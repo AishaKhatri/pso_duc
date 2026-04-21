@@ -209,7 +209,7 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
         const message = {
             dis_addr: `D${dispenserAddr}`,
             req_type: 0,
-            side: side === 'A' ? '0' : '1',
+            side: side,
             noz_number: parseInt(number),
             msg_type: 1,
             message: newPrice.toString()

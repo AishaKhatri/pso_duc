@@ -236,7 +236,7 @@ async function sendGetCommandsForDispenser(dispenser, station_id) {
         
         ['A1', 'A2', 'B1', 'B2'].forEach(nozzleId => {
             if (existingNozzles.has(nozzleId)) {
-                const side = nozzleId[0] === 'A' ? '0' : '1';
+                const side = nozzleId[0]; // Keep as 'A' or 'B' 
                 const noz_number = nozzleId[1];
                 
                 Object.keys(messageTypesToRequest).forEach(msg_type => {

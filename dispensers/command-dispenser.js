@@ -191,7 +191,7 @@ function createIRControlSection(dispenserTopic, container) {
         () => sendDispenserCommand(dispenserTopic, {
             dis_addr: dispenserTopic,
             req_type: 0,
-            side: '0',
+            side: 'A',
             noz_number: 1,
             msg_type: 6,
             message: dropdown.value
@@ -360,7 +360,6 @@ function createNozzleCard(dispenserTopic, nozzle, config) {
 
     // Parse nozzle ID for side and number
     const [_, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
-    const sideValue = side === 'A' ? '0' : '1';
     const nozzleNum = parseInt(number);
 
     // Nozzle Lock Control
@@ -375,7 +374,7 @@ function createNozzleCard(dispenserTopic, nozzle, config) {
         () => sendDispenserCommand(dispenserTopic, {
             dis_addr: dispenserTopic,
             req_type: 0,
-            side: sideValue,
+            side: side,
             noz_number: nozzleNum,
             msg_type: 4,
             message: nozzleLockDropdown.value
@@ -395,7 +394,7 @@ function createNozzleCard(dispenserTopic, nozzle, config) {
         () => sendDispenserCommand(dispenserTopic, {
             dis_addr: dispenserTopic,
             req_type: 0,
-            side: sideValue,
+            side: side,
             noz_number: nozzleNum,
             msg_type: 5,
             message: keypadLockDropdown.value
