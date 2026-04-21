@@ -33,7 +33,7 @@ CREATE TABLE `dispensers` (
   `connected_at` timestamp NULL DEFAULT NULL,
   `ir_lock_status` tinyint NOT NULL DEFAULT '0',
   `number_of_nozzles` int NOT NULL,
-  `vendor` varchar(255) NOT NULL,
+  `DispenserBrand` varchar(255) NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `customer_code` (`customer_code`,`dispenser_id`,`address`),
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS `ping_log` (
   `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `dispenser_id` varchar(50) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
+  `status` tinyint NOT NULL DEFAULT '0',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -64,7 +64,7 @@ CREATE TABLE `nozzles` (
   `dispenser_id` varchar(50) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
   `product` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
+  `status` tinyint NOT NULL DEFAULT '0',
   `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
   `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',

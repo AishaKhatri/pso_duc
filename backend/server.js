@@ -594,11 +594,11 @@ app.post('/api/auth/signout', async (req, res) => {
 
 app.post('/api/dispensers', async (req, res) => {
     try {
-        const { dispenser_id, address, vendor, number_of_nozzles, ir_lock_status } = req.body;
+        const { dispenser_id, address, DispenserBrand, number_of_nozzles, ir_lock_status } = req.body;
         const conn_status = 0;
         const connected_at = null;
 
-        if (!dispenser_id || !address || !vendor || !number_of_nozzles) {
+        if (!dispenser_id || !address || !DispenserBrand || !number_of_nozzles) {
             return res.status(400).json({ error: 'All fields are required' });
         }
 
@@ -616,9 +616,9 @@ app.post('/api/dispensers', async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO dispensers 
-            (dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status) 
+            (dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status || 0]
+            [dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
         );
 
         // Subscribe to the new dispenser's topic
@@ -730,7 +730,7 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
 app.put('/api/dispensers/:dispenser_id', async (req, res) => {
     try {
         const { dispenser_id } = req.params;
-        const { address, vendor, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+        const { address, DispenserBrand, number_of_nozzles, ir_lock_status, conn_status } = req.body;
 
         // Check if at least one field is provided
         if (Object.keys(req.body).length === 0) {
@@ -749,9 +749,9 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
             values.push(address);
         }
 
-        if (vendor !== undefined) {
-            fields.push('vendor = ?');
-            values.push(vendor);
+        if (DispenserBrand !== undefined) {
+            fields.push('DispenserBrand = ?');
+            values.push(DispenserBrand);
         }
 
         if (number_of_nozzles !== undefined) {

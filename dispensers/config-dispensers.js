@@ -9,7 +9,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     const dbDispenser = {
       dispenser_id: dispenser.dispenser_id,
       address: dispenser.address,
-      vendor: dispenser.vendor,
+      DispenserBrand: dispenser.DispenserBrand,
       number_of_nozzles: dispenser.number_of_nozzles,
       ir_lock_status: dispenser.ir_lock_status || 1
     };
@@ -185,7 +185,7 @@ async function loadDispensersFromDB() {
       return {
         id: dbDispenser.id,
         address: dbDispenser.address,
-        vendor: dbDispenser.vendor,
+        DispenserBrand: dbDispenser.DispenserBrand,
         number_of_nozzles: dbDispenser.number_of_nozzles,
         dispenser_id: dbDispenser.dispenser_id,
         ir_lock_status: dbDispenser.ir_lock_status,
@@ -227,10 +227,10 @@ async function renderConfigDispensers() {
         return;
     }
 
-    const vendorOptions = ['Tatsuno', 'Wayne'];
+    const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
     const nozzleOptions = ['A1', 'A2', 'B1', 'B2'];
 
-    const columns = ['Address', 'Nozzles', 'Products', 'Vendor', 'Action'];
+    const columns = ['Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
 
     const { tableContainer , tbody } = createTable(columns);
     content.appendChild(tableContainer);
@@ -282,30 +282,30 @@ async function renderConfigDispensers() {
         addressContainer.appendChild(addressInput);
         form.appendChild(addressContainer);
 
-        // Vendor field
-        const vendorContainer = document.createElement('div');
-        vendorContainer.style.display = 'grid';
-        vendorContainer.style.gridTemplateColumns = '1fr 2fr';
-        vendorContainer.style.alignItems = 'center';
+        // DispenserBrand field
+        const DispenserBrandContainer = document.createElement('div');
+        DispenserBrandContainer.style.display = 'grid';
+        DispenserBrandContainer.style.gridTemplateColumns = '1fr 2fr';
+        DispenserBrandContainer.style.alignItems = 'center';
         
-        const vendorLabel = document.createElement('label');
-        vendorLabel.className = 'label-text';
-        vendorLabel.textContent = 'Vendor:';
-        vendorLabel.style.width = '100px';
+        const DispenserBrandLabel = document.createElement('label');
+        DispenserBrandLabel.className = 'label-text';
+        DispenserBrandLabel.textContent = 'DispenserBrand:';
+        DispenserBrandLabel.style.width = '100px';
         
-        const vendorSelect = document.createElement('select');
-        vendorSelect.name = 'vendor';
-        vendorSelect.required = true;
-        vendorSelect.style.padding = '8px';
-        vendorSelect.style.border = '1px solid #ddd';
-        vendorSelect.style.borderRadius = '4px';
-        vendorSelect.style.width = '100%';
-        vendorSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Vendor</option>' + 
-            vendorOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+        const DispenserBrandSelect = document.createElement('select');
+        DispenserBrandSelect.name = 'DispenserBrand';
+        DispenserBrandSelect.required = true;
+        DispenserBrandSelect.style.padding = '8px';
+        DispenserBrandSelect.style.border = '1px solid #ddd';
+        DispenserBrandSelect.style.borderRadius = '4px';
+        DispenserBrandSelect.style.width = '100%';
+        DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select DispenserBrand</option>' + 
+            DispenserBrandOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
         
-        vendorContainer.appendChild(vendorLabel);
-        vendorContainer.appendChild(vendorSelect);
-        form.appendChild(vendorContainer);
+        DispenserBrandContainer.appendChild(DispenserBrandLabel);
+        DispenserBrandContainer.appendChild(DispenserBrandSelect);
+        form.appendChild(DispenserBrandContainer);
 
         // Nozzles configuration
         const nozzlesContainer = document.createElement('div');
@@ -454,11 +454,11 @@ async function renderConfigDispensers() {
                 }).join(', ') : '-';
             tr.appendChild(productsTd);
             
-            const vendorTd = document.createElement('td');
-            vendorTd.style.padding = '12px';
-            // vendorTd.style.borderRight = '1px solid #ddd';
-            vendorTd.textContent = dispenser.vendor || '-';
-            tr.appendChild(vendorTd);
+            const DispenserBrandTd = document.createElement('td');
+            DispenserBrandTd.style.padding = '12px';
+            // DispenserBrandTd.style.borderRight = '1px solid #ddd';
+            DispenserBrandTd.textContent = dispenser.DispenserBrand || '-';
+            tr.appendChild(DispenserBrandTd);
             
             const actionTd = document.createElement('td');
             actionTd.style.padding = '12px';
@@ -485,13 +485,13 @@ async function renderConfigDispensers() {
         const dispenser = window.dispensers[index] || { 
             address: '', 
             nozzles: [], 
-            vendor: '',
+            DispenserBrand: '',
             number_of_nozzles: 0,
             ir_lock_status: 1
         };
         
         form.address.value = dispenser.address || '';
-        form.vendor.value = dispenser.vendor || '';
+        form.DispenserBrand.value = dispenser.DispenserBrand || '';
 
         nozzleOptions.forEach(nozzle => {
             const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
@@ -561,7 +561,7 @@ async function renderConfigDispensers() {
             const newDispenser = {
                 id: dispenser.id,
                 address: address,
-                vendor: form.vendor.value,
+                DispenserBrand: form.DispenserBrand.value,
                 number_of_nozzles: selectedNozzles.length,
                 dispenser_id: dispenser_id,
                 ir_lock_status: dispenser.ir_lock_status || 1,

@@ -975,7 +975,7 @@ async function registerNewDevice(message) {
         const newDispenser = {
             // customer_code: message.CustomerCode,
             address: message.address,
-            vendor: message.vendor,
+            DispenserBrand: message.DispenserBrand,
             dispenser_id: message.disp_number,
             number_of_nozzles: nozzlesInfo.length,
             ir_lock_status: message.ir_lock_status || 1,
