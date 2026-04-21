@@ -18,7 +18,6 @@ function renderSidebar() {
     // Sidebar items array (keeping comments for reference)
     const items = [
         { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'index.html' },
-        { page: 'atg', label: 'ATG', icon: 'tank-icon.png', url: 'atg.html' },
     ];
 
     // Determine current page based on window location
@@ -26,8 +25,6 @@ function renderSidebar() {
     const pageMap = {
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
-        'atg': 'atg',
-        'config-tanks': 'atg'
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

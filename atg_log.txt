@@ -1,8 +1,0 @@
-topic:
-ATG83729
-
-actual:
-{"Address":"83729","req_type":0,"Status":"0","Temp":24.20,"Product":3439.89,"Water":2878.00}
-
-simulated:
-{"Address": "83729", "req_type": 0, "Status": "0", "Temp": 25.13, "Product": 1234.12, "Water": 12.98}

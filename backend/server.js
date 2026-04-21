@@ -14,9 +14,7 @@ const {
     getMqttStatus, 
     getPowerOnStatus, 
     getGsmConnectionStatus,
-    getWifiConnectionStatus,
-    getATGConnectionStatus,
-    getATGLastUpdate } = require('./mqtt-service');
+    getWifiConnectionStatus } = require('./mqtt-service');
 
 const { 
     startMidnightResetService,
@@ -226,124 +224,6 @@ app.get('/api/auth/station/:id', async (req, res) => {
   }
 });
 
-// GET /api/tanks/atg-data - Get all tanks with ATG data
-app.get('/api/tanks/atg-data', async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            `SELECT 
-                id, tank_id, address, product, 
-                conn_status, connected_at, dip_chart_path,
-                max_capacity_mm, max_capacity_ltr,
-                status, temperature, 
-                product_level_mm, product_level_ltr,
-                water_level_mm, water_level_ltr,
-                last_updated,
-                CASE 
-                    WHEN last_updated IS NULL THEN 0
-                    WHEN TIMESTAMPDIFF(MINUTE, last_updated, NOW()) > 5 THEN 0
-                    ELSE 1 
-                END as is_active
-            FROM tanks 
-            ORDER BY tank_id`
-        );
-        
-        res.json(rows);
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch ATG data' });
-    }
-});
-
-// GET /api/tanks/:address/atg-data - Get specific tank ATG data
-app.get('/api/tanks/address/:address/atg-data', async (req, res) => {
-    try {
-        const { address } = req.params;
-        
-        const [rows] = await pool.query(
-            `SELECT 
-                id, tank_id, address, product, 
-                conn_status, connected_at, dip_chart_path,
-                max_capacity_mm, max_capacity_ltr,
-                status, temperature, 
-                product_level_mm, product_level_ltr,
-                water_level_mm, water_level_ltr,
-                last_updated,
-                CASE 
-                    WHEN last_updated IS NULL THEN 0
-                    WHEN TIMESTAMPDIFF(MINUTE, last_updated, NOW()) > 5 THEN 0
-                    ELSE 1 
-                END as is_active
-            FROM tanks 
-            WHERE address = ?
-            ORDER BY tank_id`,
-            [address]
-        );
-        
-        if (rows.length === 0) {
-            return res.status(404).json({ error: 'Tank not found' });
-        }
-        
-        res.json(rows[0]);
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch ATG data' });
-    }
-});
-
-// ATG last update endpoint
-app.get('/api/atg-last-update/:atg_address', (req, res) => {
-    try {
-        const { atg_address } = req.params;
-        const lastUpdate = getATGLastUpdate(atg_address);
-        
-        res.json({ 
-            last_updated: lastUpdate,
-            is_active: lastUpdate ? isATGActive(lastUpdate) : false
-        });
-    } catch (error) {
-        console.error('Error fetching ATG last update:', error);
-        res.status(500).json({ error: 'Failed to fetch ATG last update' });
-    }
-});
-
-// Helper function to check if ATG is active (within 5 minutes)
-function isATGActive(lastUpdateTime) {
-    if (!lastUpdateTime) return false;
-    
-    const lastUpdate = new Date(lastUpdateTime);
-    const now = new Date();
-    const fiveMinutesAgo = new Date(now.getTime() - (5 * 60 * 1000));
-    
-    return lastUpdate > fiveMinutesAgo;
-}
-
-// Serve dip chart files
-app.get('/api/tanks/:id/dip-chart', async (req, res) => {
-  try {
-    const tankId = req.params.id;
-    
-    const [tanks] = await pool.query(
-      'SELECT dip_chart_path FROM tanks WHERE id = ?', 
-      [tankId]
-    );
-    
-    if (tanks.length === 0 || !tanks[0].dip_chart_path) {
-      return res.status(404).json({ error: 'Dip chart not found' });
-    }
-    
-    const filePath = path.join(__dirname, tanks[0].dip_chart_path);
-    
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'File not found on server' });
-    }
-    
-    res.sendFile(filePath);
-  } catch (error) {
-    console.error('File serve error:', error);
-    res.status(500).json({ error: 'Failed to serve file' });
-  }
-});
-
 app.get('/api/dispensers', async (req, res) => {
     try {
         const [rows] = await pool.query(
@@ -422,45 +302,6 @@ app.get('/api/transactions/by-nozzle', async (req, res) => {
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to fetch transactions' });
-    }
-});
-
-app.get('/api/tanks', async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            'SELECT * FROM tanks'
-        );
-        res.json(rows);
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch tanks' });
-    }
-});
-
-app.get('/api/tanks/next-id', async (req, res) => {
-    try {
-        const [rows] = await pool.query(
-            'SELECT MAX(CAST(tank_id AS UNSIGNED)) as max_id FROM tanks'
-        );
-
-        const next_id = (rows[0].max_id || 0) + 1;
-        res.json({ next_id: next_id.toString() });
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to get next tank ID' });
-    }
-});
-
-// ATG connection status
-app.get('/api/atg-connection-status/:atg_address', (req, res) => {
-    try {
-        const { atg_address } = req.params;
-        const status = getATGConnectionStatus(atg_address);
-        
-        res.json(status);
-    } catch (error) {
-        console.error('Error fetching ATG connection status:', error);
-        res.status(500).json({ error: 'Failed to fetch ATG connection status' });
     }
 });
 
@@ -562,10 +403,9 @@ app.get('/api/error-log/:address', async (req, res) => {
         let { address } = req.params;
         address = address.replace(/^D/, '');
         
-        // Fetch errors for both dispenser and tank at this address
+        // Fetch errors at this address
         const [errors] = await pool.query(
             `SELECT 
-                device_type,
                 device_id,
                 error_message, 
                 created_at 
@@ -581,7 +421,6 @@ app.get('/api/error-log/:address', async (req, res) => {
             try {
                 const parsedMessage = JSON.parse(error.error_message);
                 return {
-                    device_type: error.device_type,
                     device_id: error.device_id,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
@@ -597,7 +436,6 @@ app.get('/api/error-log/:address', async (req, res) => {
             } catch (e) {
                 // If parsing fails, return the raw data
                 return {
-                    device_type: error.device_type,
                     device_id: error.device_id,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
@@ -627,7 +465,6 @@ app.get('/api/device-info/:address', async (req, res) => {
         // Get the latest device info for this address
         const [deviceInfo] = await pool.query(
             `SELECT 
-                device_type,
                 device_id,
                 temperature,
                 firmware_version,
@@ -758,121 +595,6 @@ app.post('/api/auth/signout', async (req, res) => {
   }
 });
 
-app.post('/api/tanks', async (req, res) => {
-    try {
-        const { tank_id, address, product, dip_chart_path, max_capacity_mm, max_capacity_ltr } = req.body;
-        const conn_status = 0;
-        const connected_at = null;
-
-        if (!tank_id || !address || !product || !dip_chart_path) {
-            return res.status(400).json({ error: 'All fields are required' });
-        }
-
-        const [existing] = await pool.query(
-            'SELECT id FROM tanks WHERE tank_id = ? && address = ?', [tank_id, address]
-        );
-
-        if (existing.length > 0) {
-            return res.status(400).json({ error: 'This ATG number already exists for this address' });
-        }
-
-        // if (!/^\d{5}$/.test(address)) {
-        //     return res.status(400).json({ error: 'Address must be 5 digits' });
-        // }
-
-        const [result] = await pool.query(
-            `INSERT INTO tanks 
-            (tank_id, address, product, conn_status, connected_at, dip_chart_path, max_capacity_mm, max_capacity_ltr) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [tank_id, address, product, conn_status, connected_at, dip_chart_path, max_capacity_mm || 0, max_capacity_ltr || 0]
-        );
-
-        // Subscribe to the new dispenser's topic
-        const topic = `T${address.padStart(5, '0')}`;
-        subscribeToTopic(topic, null);
-
-        res.status(201).json({ 
-            success: true, 
-            id: result.insertId,
-            tank_id: tank_id,
-            message: 'Tank added successfully',
-            max_capacity_mm: max_capacity_mm || 0,
-            max_capacity_ltr: max_capacity_ltr || 0
-        });
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to add tank' });
-    }
-});
-
-// File upload endpoint
-app.post('/api/tanks/upload-dip-chart', upload.single('dipChart'), (req, res) => {
-    try {
-        if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded' });
-        }
-
-        // Return path relative to assets folder
-        const relativePath = `../assets/dip-charts/${req.file.filename}`;
-    
-        // Get file extension and validate
-        const fileExt = path.extname(req.file.originalname).toLowerCase();
-        const allowedExtensions = ['.csv', '.xlsx', '.xls', '.txt'];
-        
-        if (!allowedExtensions.includes(fileExt)) {
-            fs.unlinkSync(req.file.path);
-            return res.status(400).json({ error: 'Invalid file format. Supported formats: CSV, Excel, TXT' });
-        }
-
-        // Parse the CSV to get max values
-        let maxMm = 0;
-        let maxLtr = 0;
-        
-        if (fileExt === '.csv') {
-            const fileContent = fs.readFileSync(req.file.path, 'utf-8');
-            const lines = fileContent.trim().split('\n');
-            const headers = lines[0].split(',').map(h => h.trim().toLowerCase());
-            
-            // Find column indices
-            const mmIndex = headers.findIndex(h => h.includes('mm'));
-            const litersIndex = headers.findIndex(h => h.includes('liters') || h.includes('litres'));
-            
-            if (mmIndex !== -1 && litersIndex !== -1) {
-                // Parse all rows to find max values
-                for (let i = 1; i < lines.length; i++) {
-                    const row = lines[i].split(',').map(cell => cell.trim());
-                    if (row.length > Math.max(mmIndex, litersIndex)) {
-                        const mm = parseFloat(row[mmIndex]);
-                        const liters = parseFloat(row[litersIndex]);
-                        
-                        if (!isNaN(mm) && !isNaN(liters)) {
-                            if (mm > maxMm) maxMm = mm;
-                            if (liters > maxLtr) maxLtr = liters;
-                        }
-                    }
-                }
-            }
-        }
-
-        res.json({ 
-            success: true,
-            filePath: relativePath,  // This will be stored in DB
-            fileName: req.file.originalname,
-            fileSize: req.file.size,
-            uploadedAt: new Date().toISOString(),
-            max_capacity_mm: maxMm,
-            max_capacity_ltr: maxLtr
-        });
-        
-    } catch (error) {
-        console.error('Upload error:', error);
-        
-        res.status(500).json({ error: 'Failed to upload dip chart file' });
-    }
-});
-
-// Make the entire dip-charts directory publicly accessible
-app.use('/dip-charts', express.static(path.join(__dirname, 'assets', 'dip-charts')));
 
 app.post('/api/dispensers', async (req, res) => {
     try {
@@ -1286,31 +1008,6 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to update nozzle' });
-    }
-});
-
-app.delete('/api/tanks/:id', async (req, res) => {
-    try {
-        const tankId = req.params.id;
-        
-        // Get tank info first
-        const [tank] = await pool.query('SELECT address FROM tanks WHERE id = ?', [tankId]);
-        
-        if (tank.length > 0) {
-            unsubscribeFromTopic(`T${tank.address}`);
-            unsubscribeFromTopic(`duc/conn_status/T${tank.address}`);
-        }
-              
-        // Delete from database
-        await pool.query('DELETE FROM tanks WHERE id = ?', [tankId]);
-        
-        res.json({ 
-        success: true,
-        message: 'Tank deleted successfully'
-        });
-    } catch (error) {
-        console.error('Delete error:', error);
-        res.status(500).json({ error: 'Failed to delete tank' });
     }
 });
 

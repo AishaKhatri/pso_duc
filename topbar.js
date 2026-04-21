@@ -9,7 +9,7 @@ function renderTopbar() {
     titleDiv.style.gap = '10px';
     
     const title = document.createElement('h1');
-    title.textContent = 'Retail ATG / Dispenser Dashboard';
+    title.textContent = 'PSO DUC Dashboard';
     title.style.fontSize = '24px';
     title.style.color = 'white';
     title.style.margin = '0';

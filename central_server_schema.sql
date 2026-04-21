@@ -30,7 +30,7 @@ CREATE TABLE `dispensers` (
   `id` int NOT NULL AUTO_INCREMENT,
   `station_id` varchar(50) NOT NULL,
   `dispenser_id` varchar(50) NOT NULL,
-  `address` varchar(5) NOT NULL,
+  `address` varchar(8) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
   `ir_lock_status` tinyint NOT NULL DEFAULT '0',
@@ -46,7 +46,7 @@ CREATE TABLE `dispensers` (
 CREATE TABLE IF NOT EXISTS `connections_history` (
   `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `dispenser_id` varchar(50) NOT NULL,
-  `address` varchar(5) NOT NULL,
+  `address` varchar(8) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
@@ -117,8 +117,7 @@ CREATE TABLE `transactions` (
 CREATE TABLE `network_status` (
   `id` int NOT NULL AUTO_INCREMENT,
   `station_id` varchar(50) NOT NULL,
-  `device_type` enum('dispenser','tank') NOT NULL,
-  `address` varchar(5) NOT NULL,
+  `address` varchar(8) NOT NULL,
   `connection_type` enum('GSM','WIFI') NOT NULL,
   `apn_ssid` varchar(255) DEFAULT NULL,
   `ipv4` varchar(15) DEFAULT NULL,
@@ -126,40 +125,15 @@ CREATE TABLE `network_status` (
   `master_sim` tinyint DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_device_type_address` (`station_id`,`device_type`,`address`),
+  KEY `idx_station_id_address` (`station_id`,`address`),
   KEY `idx_connection_type` (`connection_type`),
   KEY `idx_address` (`address`)
-) ENGINE=InnoDB;
-
-CREATE TABLE `tanks` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `station_id` varchar(50) NOT NULL,
-  `tank_id` varchar(50) NOT NULL,
-  `address` varchar(5) NOT NULL,
-  `product` varchar(50) NOT NULL,
-  `conn_status` tinyint NOT NULL DEFAULT '0',
-  `connected_at` timestamp NULL DEFAULT NULL,
-  `dip_chart_path` varchar(500) NULL DEFAULT NULL,
-  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  `status` int DEFAULT '0',
-  `temperature` decimal(5,2) DEFAULT '0.00',
-  `product_level_mm` decimal(10,2) DEFAULT '0.00',
-  `product_level_ltr` decimal(10,2) DEFAULT '0.00',
-  `water_level_mm` decimal(10,2) DEFAULT '0.00',
-  `water_level_ltr` decimal(10,2) DEFAULT '0.00',
-  `last_updated` timestamp NULL DEFAULT NULL,
-  `max_capacity_mm` decimal(10,2) DEFAULT '0.00',
-  `max_capacity_ltr` decimal(10,2) DEFAULT '0.00',
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `tank_id` (`tank_id`,`address`),
-  CONSTRAINT `chk_tank_address` CHECK (regexp_like(`address`,_cp850'^[0-9]{5}$'))
 ) ENGINE=InnoDB;
 
 CREATE TABLE `device_info` (
   `id` int NOT NULL AUTO_INCREMENT,
   `station_id` varchar(50) NOT NULL,
-  `device_type` enum('dispenser','tank') NOT NULL,
-  `address` varchar(5) NOT NULL,
+  `address` varchar(8) NOT NULL,
   `temperature` decimal(10,2) DEFAULT NULL,
   `firmware_version` varchar(50) DEFAULT NULL,
   `hardware_version` varchar(50) DEFAULT NULL,
@@ -169,20 +143,18 @@ CREATE TABLE `device_info` (
   `wakeup_time` bigint DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_device_type_address` (`station_id`,`device_type`,`address`),
+  KEY `idx_station_id_address` (`station_id`,`address`),
   KEY `idx_address` (`address`),
   KEY `idx_mac_address` (`mac_address`),
-  KEY `idx_device_type` (`device_type`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `errors` (
   `id` int NOT NULL AUTO_INCREMENT,
   `station_id` varchar(50) NOT NULL,
-  `device_type` enum('dispenser','tank') NOT NULL,
-  `address` varchar(5) NOT NULL,
+  `address` varchar(8) NOT NULL,
   `error_message` json NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  KEY `idx_device_type_address` (`station_id`,`device_type`,`address`),
+  KEY `idx_station_id_address` (`station_id`,`address`),
   KEY `idx_address` (`address`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

@@ -10,11 +10,6 @@ const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 // Maximum allowed values for DECIMAL(15,2)
 const MAX_DECIMAL_VALUE = 9999999999999.99;
 
-const TANK_MIN_VALID_VALUES = {
-    PRODUCT: 103.26,  // mm - when product float touches bottom
-    WATER: 41.69      // mm - when water float touches bottom
-};
-
 // Cache to deduplicate updates (using message hash)
 const recentUpdates = new Map();
 const DEDUPE_WINDOW = 5000; // 5 seconds
@@ -54,8 +49,6 @@ const wifiStatusCache = new Map(); // Cache for Wi-Fi status by dispenser addres
 const mqttStatusCache = new Map();
 const powerOnCache = new Map();
 const errorLogCache = new Map();
-const atgConnectionCache = new Map();
-const atgLastUpdateCache = new Map();
 const deviceInfoCache = new Map();
 
 // Track subscribed topics
@@ -94,7 +87,6 @@ async function initializeMQTTSubscriptions() {
     try {
         // Fetch all dispensers from the database
         const [dispensers] = await pool.query('SELECT dispenser_id, address FROM dispensers');
-        const [tanks] = await pool.query('SELECT tank_id, address FROM tanks');
         
         // Subscribe to each dispenser's topic and initialize nozzles
         const serverStartTime = Date.now();
@@ -125,16 +117,8 @@ async function initializeMQTTSubscriptions() {
                 }
             }
         }
-
-        for (const tank of tanks) {
-            const topic = `T${tank.address.padStart(5, '0')}`;
-            await subscribeToTopic(topic, deviceTopics);
-            
-            const conn_stat_topic = `duc/conn_status/T${tank.address.padStart(5, '0')}`; 
-            await subscribeToTopic(conn_stat_topic, statusTopics);
-        }
     } catch (error) {
-        errorWithTimestamp('Error fetching dispensers and tanks for MQTT subscriptions:', error.message);
+        errorWithTimestamp('Error fetching dispensers for MQTT subscriptions:', error.message);
     }
 }
 
@@ -417,25 +401,8 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
     try {
         let deviceType, deviceId, cleanAddr;
         
-        // Check if this is an ATG (tank) device
-        if (deviceAddr.startsWith('T')) {
-            deviceType = 'tank';
-            cleanAddr = deviceAddr.replace('T', ''); // Remove 'T' prefix
-            // Get tank_id from address
-            const [tanks] = await pool.query(
-                'SELECT tank_id FROM tanks WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (tanks.length === 0) {
-                errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
-                return;
-            } else {
-                deviceId = tanks[0].tank_id;
-            }
-        } 
         // Check if this is a dispenser device
-        else if (deviceAddr.startsWith('D')) {
+        if (deviceAddr.startsWith('D')) {
             deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
@@ -478,10 +445,9 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
         // Insert into database
         await pool.query(
             `INSERT INTO network_status 
-            (device_type, device_id, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            (device_id, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-                deviceType,
                 deviceId,
                 cleanAddr,
                 connectionType,
@@ -608,25 +574,8 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
     try {
         let deviceType, deviceId, cleanAddr;
         
-        // Check if this is an ATG (tank) device
-        if (deviceAddr.startsWith('T')) {
-            deviceType = 'tank';
-            cleanAddr = deviceAddr.replace('T', ''); // Remove 'T' prefix
-            // Get tank_id from address
-            const [tanks] = await pool.query(
-                'SELECT tank_id FROM tanks WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (tanks.length === 0) {
-                errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
-                return;
-            } else {
-                deviceId = tanks[0].tank_id;
-            }
-        } 
         // Check if this is a dispenser device
-        else if (deviceAddr.startsWith('D')) {
+        if (deviceAddr.startsWith('D')) {
             deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
@@ -645,9 +594,9 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
         } 
         await pool.query(
             `INSERT INTO errors 
-            (device_type, device_id, address, error_message) 
-            VALUES (?, ?, ?, ?)`,
-            [deviceType, deviceId, cleanAddr, errorMessage]
+            (device_id, address, error_message) 
+            VALUES (?, ?, ?)`,
+            [deviceId, cleanAddr, errorMessage]
         );
         
         logWithTimestamp(null, `Error stored in database: ${deviceType} ${deviceId} - ${errorMessage}`);
@@ -700,26 +649,9 @@ async function handleDeviceInfoMessage(deviceAddr, deviceData) {
 async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
     try {
         let deviceType, deviceId, cleanAddr;
-        
-        // Check if this is an ATG (tank) device
-        if (deviceAddr.startsWith('T')) {
-            deviceType = 'tank';
-            cleanAddr = deviceAddr.replace('T', ''); // Remove 'T' prefix
-            // Get tank_id from address
-            const [tanks] = await pool.query(
-                'SELECT tank_id FROM tanks WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (tanks.length === 0) {
-                errorWithTimestamp(`No tank found for ATG address ${cleanAddr}`);
-                return;
-            } else {
-                deviceId = tanks[0].tank_id;
-            }
-        } 
+         
         // Check if this is a dispenser device
-        else if (deviceAddr.startsWith('D')) {
+        if (deviceAddr.startsWith('D')) {
             deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
@@ -740,11 +672,10 @@ async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
         // Always insert new record - no unique constraint to prevent this
         const [result] = await pool.query(
             `INSERT INTO device_info 
-            (device_type, device_id, address, temperature, firmware_version, hardware_version, 
+            (device_id, address, temperature, firmware_version, hardware_version, 
              mac_address, serial_number, last_die_time, wakeup_time) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                deviceType,
                 deviceId,
                 cleanAddr,
                 deviceInfo.temperature,
@@ -777,16 +708,11 @@ async function handleConnectionAlert(topic, alertData) {
     const color = isConnection ? chalk.green : chalk.red;
     const notifType = isConnection ? 'success' : 'error';
 
-    // Check if this is a dispenser client (starts with 'D') or ATG client (starts with 'T')
-    if (clientId && (clientId.startsWith('D') || clientId.startsWith('T'))) {
+    // Check if this is a dispenser client (starts with 'D')
+    if (clientId && (clientId.startsWith('D'))) {
         let deviceType = 'dispenser';
         let deviceAddr = clientId.substring(1); // Remove 'D' prefix
         let connectedAt;
-
-        if (clientId.startsWith('T')) {
-            deviceType = 'atg';
-            deviceAddr = clientId.replace('T', ''); // Remove 'ATG' prefix
-        }
 
         // await notificationService.sendConnectivityNotification(
         //     clientId,
@@ -800,38 +726,6 @@ async function handleConnectionAlert(topic, alertData) {
             connectedAt = new Date(alertData.connected_at);                  
         } else {
             connectedAt = new Date(alertData.disconnected_at);                  
-        }
-
-        // Store connection status in cache
-        if (deviceType === 'atg') {
-            // Search in tanks table for this address
-            const [tanks] = await pool.query(
-                'SELECT tank_id FROM tanks WHERE address = ?',
-                [deviceAddr]
-            );
-            
-            if (tanks.length > 0) {
-                const { tank_id } = tanks[0];
-                logWithTimestamp(color, `ATG ${clientId} ${action}.`);
-                
-                await pool.query(
-                    'UPDATE tanks SET status = 0 WHERE tank_id = ? AND address = ?',
-                    [tank_id, deviceAddr]
-                );
-
-                // Update conn_status in tanks table
-                await pool.query(
-                    'UPDATE tanks SET conn_status = ? WHERE tank_id = ? AND address = ?',
-                    [conn_status, tank_id, deviceAddr]
-                );
-
-                await pool.query(
-                    'UPDATE tanks SET connected_at = ? WHERE tank_id = ? AND address = ?',
-                    [connectedAt, tank_id, deviceAddr]
-                );
-            } else {
-                logWithTimestamp(chalk.yellow, `No tank found in database for ATG address: ${deviceAddr}`);
-            }
         }
 
         // For dispensers, update database as before
@@ -870,284 +764,6 @@ async function handleConnectionAlert(topic, alertData) {
                 logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${deviceAddr}`);
             }
         }
-    }
-}
-
-// Add this function to get ATG connection status
-function getATGConnectionStatus(atgAddress) {
-    return atgConnectionCache.get(atgAddress) || {
-        conn_status: 0,
-        connected_at: null,
-        last_updated: null
-    };
-}
-
-async function handleATGMessage(topic, parsedData) {
-    try {
-        const { dis_addr, msg_type, message, atg_number } = parsedData;
-
-        const address = dis_addr.replace(/^D/, '');
-
-        // Validate atg_number is provided and is a number
-        if (isNaN(parseInt(atg_number))) {
-            errorWithTimestamp(`Invalid or missing atg_number in ATG message: ${JSON.stringify(parsedData)}`);
-            return;
-        }
-        
-        const tankId = parseInt(atg_number).toString(); // Convert to string to match tank_id in DB
-
-        // First, get the tank details from database to get address
-        const [tanks] = await pool.query(
-            'SELECT * FROM tanks WHERE address = ?',
-            [address]
-        );
-        
-        if (tanks.length === 0) {
-            errorWithTimestamp(`No tank found with tank_id: ${address}`);
-            return;
-        }
-
-        if (parsedData.req_type == 0 && parsedData.message !== null) {
-            // Handle different message types using switch case
-            switch(parseInt(msg_type)) {
-                case 0: // Status (0=offline, 1=online, etc.)
-                    await handleTankStatusMessage(tankId, address, message);
-                    break;
-                    
-                case 1: // Product level in mm
-                    await handleTankProductLevel(tankId, address, message);
-                    break;
-                    
-                case 2: // Water level in mm
-                    await handleTankWaterLevel(tankId, address, message);
-                    break;
-
-                case 3: // error message
-                    await handleErrorMessage(topic, message);
-                    break;
-                    
-                case 5: // WiFi status
-                    // await handleATGWiFiStatus(tankId, address, message);
-                    try {
-                        if(message.includes('GSM')) {
-                            const gsmData = JSON.parse(message);
-                            handleGsmStatusMessage(topic, gsmData);
-                        } else if(message.includes('WIFI')) {
-                            const wifiData = JSON.parse(message);
-                            handleWiFiStatusMessage(topic, wifiData);
-                        }          
-                    } catch (parseError) {
-                        errorWithTimestamp('Failed to parse Wireless-Conn status message:', parseError.message);
-                    }
-                    break;
-                    
-                case 6: // MQTT status
-                    try {
-                        const mqttData = JSON.parse(message);
-                        handleMqttStatusMessage(dis_addr, mqttData);
-                    } catch (parseError) {
-                        errorWithTimestamp('Failed to parse MQTT status message:', parseError.message);
-                    }                
-                    break;
-                    
-                case 7: // Power-on reset information
-                    try {
-                        handlePowerOnMessage(dis_addr, message);
-                    } catch (parseError) {
-                        errorWithTimestamp('Failed to parse Power-on status message:', parseError.message);
-                    }
-                    break;       
-
-                case 8: // Device status (connection status)
-                    try {
-                        handleDeviceStatusMessage(dis_addr, message);
-                        let notifType;
-                        if (message === 'GPS_CONNECTED' || message === 'WIFI_CONNECTED' || message === 'GPRS_CONNECTED') {
-                            notifType = 'success';
-                        } else if (message === 'GPS_DISCONNECTED' || message === 'WIFI_DISCONNECTED' || message === 'GPRS_DISCONNECTED') {
-                            notifType = 'error';
-                        }                   
-                        await notificationService.sendConnectivityNotification(
-                            topic,
-                            'Connectivity Status',
-                            `Device ${topic}: ${message}`,
-                            notifType
-                        );
-                    } catch (parseError) {
-                        errorWithTimestamp('Failed to parse device status message:', parseError.message);
-                    }
-                    break;
-
-                case 11: // Device information
-                    // await handleATGDeviceInfo(tankId, address, message);
-                    // await handleDeviceInfoMessage(`ATG${address}`, message);                
-                    await handleDeviceInfoMessage(topic, message);                
-                    break;
-                    
-                default:
-                    logWithTimestamp(chalk.yellow, `Unknown ATG message type: ${msg_type} for tank_id: ${tankId}`);
-                    break;
-            }
-        } else {
-            logWithTimestamp(chalk.red, `Invalid message received on topic ${receivedTopic}`);
-        } 
-
-        // Update the last update timestamp in cache
-        const currentTime = new Date().toISOString();
-        atgLastUpdateCache.set(tankId, currentTime);
-        logWithTimestamp(null, `ATG tank_id:${tankId} last updated: ${currentTime}`);
-
-    } catch (error) {
-        errorWithTimestamp('ATG History update error:', error.message);
-    }
-}
-
-function getATGLastUpdate(tankAddress, tankId) {
-    const cacheKey = `${tankAddress}-${tankId}`;
-    return atgLastUpdateCache.get(cacheKey) || null;
-}
-
-async function handleTankStatusMessage(tankId, address, message) {
-    try {
-        const status = parseInt(message) || 0;
-        
-        // Update tanks table using tank_id
-        await pool.query(
-            'UPDATE tanks SET status = ?, last_updated = NOW() WHERE tank_id = ? AND address = ?',
-            [status, tankId, address]
-        );
-        
-        logWithTimestamp(null, `Tank ${address}-${tankId} status updated: ${status}`);
-    } catch (error) {
-        errorWithTimestamp('Error handling ATG status:', error.message);
-    }
-}
-
-async function handleTankProductLevel(tankId, address, message) {
-    try {
-        const productLevelMm = parseFloat(message) || 0.00;
-
-        if (productLevelMm < TANK_MIN_VALID_VALUES.PRODUCT) {
-            errorWithTimestamp(`INVALID product level for tank ${tankId}: ${productLevelMm}mm (min valid: ${TANK_MIN_VALID_VALUES.PRODUCT}mm)`);
-            return; // DON'T STORE, DON'T CONVERT, JUST RETURN
-        }
-        
-        // Get tank details including dip chart path
-        const [tanks] = await pool.query(
-            'SELECT * FROM tanks WHERE tank_id = ? AND address = ?',
-            [tankId, address]
-        );
-        
-        if (tanks.length === 0) {
-            errorWithTimestamp(`No tank found for tank_id: ${tankId}, address: ${address}`);
-            return;
-        }
-        
-        const tank = tanks[0];
-        let productLevelLtr = tank.product_level_ltr - tank.water_level_ltr;
-
-        if (productLevelMm > tank.max_capacity_mm) {
-            errorWithTimestamp(`INVALID product level for tank ${tankId}: ${productLevelMm}mm exceeds maximum dip chart value (${tank.max_capacity_mm}mm)`);
-            return; // DON'T STORE, DON'T CONVERT, JUST RETURN
-        }
-        
-        // Only convert if we have a dip chart and valid measurement
-        if (tank.dip_chart_path && productLevelMm > 0) {
-            try {
-                // Load dip chart data
-                const dipChartData = await dipChartService.getDipChartData(tankId, tank.dip_chart_path);
-                
-                // Convert mm to liters
-                productLevelLtr = dipChartService.convertMmToLiters(productLevelMm, dipChartData);
-                productLevelLtr = productLevelLtr - tank.water_level_ltr;
-                
-                logWithTimestamp(null, `Tank ${address}-${tankId} product level: ${productLevelMm} mm -> ${productLevelLtr.toFixed(2)} liters`);
-                
-            } catch (conversionError) {
-                errorWithTimestamp(`Error converting product level for tank ${tankId}:`, conversionError.message);
-            }
-        }
-        
-        // Update tanks table with both mm and liters
-        await pool.query(
-            'UPDATE tanks SET product_level_mm = ?, product_level_ltr = ?, last_updated = NOW() WHERE tank_id = ? AND address = ?',
-            [productLevelMm, productLevelLtr, tankId, address]
-        );
-        
-    } catch (error) {
-        errorWithTimestamp('Error handling ATG product level:', error.message);
-    }
-}
-
-async function handleTankWaterLevel(tankId, address, message) {
-    try {
-        const waterLevelMm = parseFloat(message) || 0.00;
-        
-        if (waterLevelMm < TANK_MIN_VALID_VALUES.WATER) {
-            errorWithTimestamp(`INVALID product level for tank ${tankId}: ${waterLevelMm}mm (min valid: ${TANK_MIN_VALID_VALUES.PRODUCT}mm)`);
-            return; // DON'T STORE, DON'T CONVERT, JUST RETURN
-        }
-
-        // Get tank details including dip chart path
-        const [tanks] = await pool.query(
-            'SELECT * FROM tanks WHERE tank_id = ? AND address = ?',
-            [tankId, address]
-        );
-
-        if (tanks.length === 0) {
-            errorWithTimestamp(`No tank found for tank_id: ${tankId}, address: ${address}`);
-            return;
-        }
-        
-        const tank = tanks[0];
-        let waterLevelLtr = tank.water_level_ltr;
-
-        if (waterLevelMm > tank.max_capacity_mm) {
-            errorWithTimestamp(`INVALID water level for tank ${tankId}: ${waterLevelMm}mm exceeds maximum dip chart value (${tank.max_capacity_mm}mm)`);
-            return; // DON'T STORE, DON'T CONVERT, JUST RETURN
-        }
-        
-        // Only convert if we have a dip chart and valid measurement
-        if (tank.dip_chart_path && waterLevelMm > 0) {
-            try {
-                // Load dip chart data
-                const dipChartData = await dipChartService.getDipChartData(tankId, tank.dip_chart_path);
-                
-                // Convert mm to liters
-                waterLevelLtr = dipChartService.convertMmToLiters(waterLevelMm, dipChartData);
-                
-                logWithTimestamp(null, `Tank ${address}-${tankId} water level: ${waterLevelMm} mm -> ${waterLevelLtr.toFixed(2)} liters`);
-                
-            } catch (conversionError) {
-                errorWithTimestamp(`Error converting water level for tank ${tankId}:`, conversionError.message);
-            }
-        }
-        
-        // Update tanks table with both mm and liters
-        await pool.query(
-            'UPDATE tanks SET water_level_mm = ?, water_level_ltr = ?, last_updated = NOW() WHERE tank_id = ? AND address = ?',
-            [waterLevelMm, waterLevelLtr, tankId, address]
-        );      
-    } catch (error) {
-        errorWithTimestamp('Error handling ATG water level:', error.message);
-    }
-}
-
-async function initializeDipChartCache() {
-    try {
-        // Fetch all tanks with dip chart paths
-        const [tanks] = await pool.query(
-            'SELECT tank_id, dip_chart_path FROM tanks WHERE dip_chart_path IS NOT NULL'
-        );
-        
-        if (tanks.length > 0) {
-            logWithTimestamp(null, `Preloading dip charts for ${tanks.length} tanks...`);
-            await dipChartService.preloadDipCharts(tanks);
-        } else {
-            logWithTimestamp(null, 'No tanks with dip charts found for preloading');
-        }
-    } catch (error) {
-        errorWithTimestamp('Error initializing dip chart cache:', error.message);
     }
 }
 
@@ -1465,10 +1081,6 @@ mqttClient.on('message', async (receivedTopic, message) => {
         if (receivedTopic === `duc/conn_status/${data.clientid}`) {
             await handleConnectionAlert(receivedTopic, parsedData);
             return; // Exit after handling alert
-        } else if (receivedTopic.includes('T')) {
-            await handleATGMessage(receivedTopic, parsedData);
-            // dbAddress = receivedTopic.replace(/^S/, ''); // Remove 'S' prefix
-            return;
         } else if (receivedTopic === 'duc/registration') {
             await registerNewDevice(parsedData);
             return;
@@ -1630,8 +1242,6 @@ module.exports = {
     unsubscribeFromTopic,
     getGsmConnectionStatus,
     getWifiConnectionStatus,
-    getATGConnectionStatus,
-    getATGLastUpdate,
     getGsmStatus,
     getWiFiStatus,
     getMqttStatus,

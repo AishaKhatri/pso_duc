@@ -269,8 +269,6 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
     
     if (deviceType === 'dispenser') {
         deviceCard = document.querySelector(`div[data-address="${deviceId}"]`);
-    } else if (deviceType === 'atg') {
-        deviceCard = document.querySelector(`div[data-tank-address="${deviceId}"]`);
     }
     
     if (deviceCard) {
