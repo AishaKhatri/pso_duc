@@ -1,5 +1,5 @@
 // user-management.js
-const columns = ['ID', 'Username', 'Station ID', 'Station Name', 'City', 'Province', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Station ID', 'Station Name', 'City', 'Created At', 'Actions'];
 
 async function renderUserManagement() {
     const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Add New User');
@@ -44,7 +44,6 @@ async function loadUsers() {
             createCellInTableBody(row, user.customer_code);
             createCellInTableBody(row, user.station_id); 
             createCellInTableBody(row, user.city);
-            createCellInTableBody(row, user.province || 'N/A');
             createCellInTableBody(row, (new Date(user.created_at).toLocaleString()));
 
             createActionCellInTableBody(row, {
@@ -101,48 +100,12 @@ function showUserFormPopup(user = null) {
     const customerCode = createField('Customer Code *', user ? user.customer_code : '', true);
     const stationId = createField('Station ID *', user ? user.station_id : '', true);
     const city = createField('City *', user ? user.city : '', true);
-    const province = createField('Province', user ? user.province : '', false);
 
     form.appendChild(username);
     form.appendChild(password);
     form.appendChild(customerCode);
     form.appendChild(stationId);
     form.appendChild(city);
-    form.appendChild(province);
-    
-    // Station Config field
-    const configGroup = document.createElement('div');
-    configGroup.style.display = 'flex';
-    configGroup.style.flexDirection = 'column';
-    configGroup.style.gap = '5px';
-
-    const configLabel = document.createElement('label');
-    configLabel.textContent = 'Station Configuration';
-    configLabel.style.fontWeight = '600';
-    configGroup.appendChild(configLabel);
-
-    const configTextarea = document.createElement('textarea');
-    configTextarea.rows = 6;
-    configTextarea.style.padding = '10px';
-    configTextarea.style.border = '1px solid #ccc';
-    configTextarea.style.borderRadius = '4px';
-    configTextarea.style.fontSize = '14px';
-    configTextarea.style.fontFamily = 'monospace';
-    configTextarea.placeholder = 'Enter JSON configuration';
-    
-    if (user && user.station_config) {
-        try {
-            configTextarea.value = JSON.stringify(user.station_config, null, 2);
-        } catch (e) {
-            configTextarea.value = JSON.stringify({});
-        }
-    } else {
-        configTextarea.value = JSON.stringify({}, null, 2);
-    }
-    
-    configGroup.appendChild(configTextarea);
-
-    form.appendChild(configGroup);
 
     popup.appendChild(form);
 
@@ -178,21 +141,12 @@ function showUserFormPopup(user = null) {
                 customerCode: customerCodeInput.value.trim(),
                 station_id: stationIdInput.value.trim(),
                 city: cityInput.value.trim(),
-                province: provinceInput.value.trim() || null
             };
 
             // Add password for new users
             if (!user) {
                 const passwordInput = form.querySelector('input[type="password"]');
                 userData.password = passwordInput.value;
-            }
-
-            // Parse station config
-            try {
-                userData.station_config = JSON.parse(configTextarea.value);
-            } catch (e) {
-                alert('Invalid JSON format in Station Configuration');
-                return;
             }
 
             const url = user ? `${API_BASE_URL}/users/${user.id}` : `${API_BASE_URL}/users`;

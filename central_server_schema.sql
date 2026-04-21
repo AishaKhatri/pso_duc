@@ -1,17 +1,14 @@
-CREATE DATABASE IF NOT EXISTS `pso_duc`;
+CREATE DATABASE IF NOT EXISTS `DUC`;
 
-USE `pso_duc`;
+USE `DUC`;
 
 CREATE TABLE `stations` (
   `id` int NOT NULL AUTO_INCREMENT,
   `username` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
-  -- `station_id` varchar(50) NOT NULL,
   `customer_code` varchar(8) NOT NULL,
   `station_id` varchar(255) NOT NULL,
   `city` varchar(255) NOT NULL,
-  `province` varchar(255),
-  `station_config` json NOT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),

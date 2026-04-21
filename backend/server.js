@@ -124,7 +124,7 @@ app.get('/api/auth/verify', async (req, res) => {
     // Check if session exists in database and is not expired
     const [sessions] = await pool.query(
       `SELECT s.*, st.username, st.customer_code, st.station_id, 
-              st.city, st.province, st.station_config
+              st.city
        FROM sessions s
        JOIN stations st ON s.user_id = st.id
        WHERE s.session_token = ? AND s.expires_at > NOW()`,
@@ -150,9 +150,7 @@ app.get('/api/auth/verify', async (req, res) => {
         username: stationData.username,
         customerCode: stationData.customer_code,
         stationId: stationData.station_id,
-        city: stationData.city,
-        province: stationData.province,
-        stationConfig: JSON.parse(stationData.station_config || '{}')
+        city: stationData.city
       }
     });
 
@@ -194,7 +192,7 @@ app.get('/api/auth/station/:id', async (req, res) => {
     
     const [stations] = await pool.query(
       `SELECT id, username, customer_code, station_id, 
-              city, province, station_config, created_at 
+              city, created_at 
        FROM stations 
        WHERE id = ? OR customer_code = ?`,
       [id, id]
@@ -208,7 +206,6 @@ app.get('/api/auth/station/:id', async (req, res) => {
     }
 
     const station = stations[0];
-    station.station_config = JSON.parse(station.station_config || '{}');
     
     res.json({
       success: true,
@@ -503,7 +500,7 @@ app.post('/api/auth/signin', async (req, res) => {
     // Find station/user in database
     const [stations] = await pool.query(
       `SELECT id, username, password, customer_code, station_id, 
-              city, province, station_config, created_at 
+              city, created_at 
        FROM stations 
        WHERE username = ? OR customer_code = ?`,
       [username, username] // Allow login with either username or customer_code
@@ -556,8 +553,7 @@ app.post('/api/auth/signin', async (req, res) => {
       success: true,
       message: 'Login successful',
       token,
-      user: stationData,
-      permissions: station.station_config || '{}'
+      user: stationData
     });
 
   } catch (error) {
@@ -729,48 +725,6 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to delete nozzles' });
     }
-});
-
-app.put('/api/auth/session/config', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1];
-    const { config } = req.body;
-
-    if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No token provided' 
-      });
-    }
-
-    if (!config || typeof config !== 'object') {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Invalid configuration' 
-      });
-    }
-
-    // Verify token and get user
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Update station configuration
-    await pool.query(
-      'UPDATE stations SET station_config = ? WHERE id = ?',
-      [JSON.stringify(config), decoded.userId]
-    );
-
-    res.json({
-      success: true,
-      message: 'Configuration updated successfully'
-    });
-
-  } catch (error) {
-    console.error('Update config error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
-    });
-  }
 });
 
 app.put('/api/dispensers/:dispenser_id', async (req, res) => {
