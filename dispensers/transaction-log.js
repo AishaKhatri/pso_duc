@@ -279,7 +279,7 @@ function createTransactionTable(transactions) {
         
         // Format date
         const transactionDate = new Date(transaction.time);
-        const formattedDate = transactionDate.toLocaleString();
+        const formattedDate = transactionDate.toUTCString();
         
         // Create cells - Serial number first, then the rest
         const cells = [
@@ -307,6 +307,7 @@ function createTransactionTable(transactions) {
 // Updated function to accept transaction count parameter
 async function sendGetTransactionsCommand(dispenserTopic, nozzleId, count = 100) {
     const dis_addr = dispenserTopic; // e.g., D55225
+    // const side = nozzleId[0] === 'A' ? '0' : '1'; // A -> 0, B -> 1
     const side = nozzleId[0];
     const noz_number = parseInt(nozzleId[1]); // 1 or 2
     
@@ -339,6 +340,7 @@ async function sendGetTransactionsCommand(dispenserTopic, nozzleId, count = 100)
 // New function to handle delete transactions command
 async function sendDeleteTransactionsCommand(dispenserTopic, nozzleId) {
     const dis_addr = dispenserTopic; // e.g., D55225
+    // const side = nozzleId[0] === 'A' ? '0' : '1'; // A -> 0, B -> 1
     const side = nozzleId[0];
     const noz_number = parseInt(nozzleId[1]); // 1 or 2
     
@@ -372,7 +374,7 @@ function exportToCSV(transactions, nozzleId) {
         ['Sr. No.', 'Date', 'Time', 'Amount (PKR)', 'Volume (Ltr)', 'Transaction ID'],
         ...transactions.map((transaction, index) => [
             (index + 1).toString(), // Serial number
-            new Date(transaction.time).toLocaleString(),
+            new Date(transaction.time).toUTCString(),
             parseFloat(transaction.amount).toFixed(2),
             parseFloat(transaction.volume).toFixed(2),
             transaction.id

@@ -1,11 +1,8 @@
-const host_PC_IP = 'localhost';
+// const host_PC_IP = '192.168.10.51';
+const host_PC_IP = '72.255.62.111';
 const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
-const cityMap = {
-    'Karachi' : 'KHI',
-    'Lahore' : 'LHE',
-    'Islamabad' : 'ISB',
-}
+const pages = {};
 
 function renderApp() {
     const app = document.getElementById('app');
@@ -31,6 +28,7 @@ function createCloseButton(overlay) {
 function createModalOverlay() {
     const overlay = document.createElement('div');
     overlay.className = 'overlay';
+    // Close on overlay click
     overlay.addEventListener('click', (e) => {
         if (e.target === overlay) {
             document.body.removeChild(overlay);
@@ -130,6 +128,7 @@ function createHeader(){
     return header;
 }
 
+// Common title creation function
 function createTitle() {
     const title = document.createElement('h2');
     title.style.color = '#004D64';
@@ -186,6 +185,8 @@ function createMainButton() {
     return button;
 };
 
+
+// Function to create no data message
 function createNoDataMessage(message) {
     const noData = document.createElement('div');
     noData.textContent = message;
@@ -239,11 +240,11 @@ function createTable(columns) {
 
 function createDropdown(placeholderText) {
     const dropdown = document.createElement('select');
-    dropdown.style.padding = '6px';
+    dropdown.style.padding = '8px';
     dropdown.style.border = '1px solid #ccc';
     dropdown.style.borderRadius = '4px';
     dropdown.style.width = '100%';
-    // dropdown.style.marginBottom = '20px';
+    dropdown.style.marginBottom = '20px';
 
     if (placeholderText != null) {
         const placeholderOption = createPlaceholder(placeholderText);
@@ -328,6 +329,7 @@ function createCard(title, address) {
     statusText.textContent = 'Connecting...';
     statusText.style.color = '#666';
     statusText.title = 'Click to view details';
+    // Add click handler
     statusText.addEventListener('click', () => {
         showDevStatusPopup(address);
     });
@@ -477,7 +479,12 @@ function createEditButton(titleText) {
 
 async function deleteFromDB(url) {
     try {
-    const response = await fetch(url, { method: 'DELETE' });
+    const response = await fetch(
+      url, 
+      {
+        method: 'DELETE'
+      }
+    );
     
     if (!response.ok) {
       throw new Error('Failed to delete');
@@ -541,80 +548,4 @@ function createIconFromImage(imagePath, titleText, height, width = null) {
     }
 
     return icon;
-}
-
-function createField(labelText, input, populate = false) {
-    const container = document.createElement('div');
-    container.style.display = 'grid';
-    container.style.gridTemplateColumns = '1fr 2fr';
-    container.style.alignItems = 'center';
-
-    const label = document.createElement('label');
-    label.className = 'label-text';
-    label.textContent = labelText;
-    label.style.width = '100%';
-    label.style.fontWeight = 'bold';
-    container.appendChild(label);
-
-    if (typeof input === 'string' || input === undefined) {
-        const inputSource = document.createElement('input');
-        inputSource.type = 'text';
-        inputSource.name = input;
-        inputSource.required = true;
-        inputSource.style.padding = '8px';
-        inputSource.style.border = '1px solid #ddd';
-        inputSource.style.borderRadius = '4px';
-        inputSource.style.width = '90%';
-        if (populate && input) {
-            inputSource.value = input;
-        }
-        container.appendChild(inputSource);
-    } else {
-        container.appendChild(input);
-    }
-
-    return container;
-}
-
-function createCellInTableBody(row, text) {
-    const cell = document.createElement('td');
-    cell.style.padding = '12px';
-    cell.textContent = text;
-    row.appendChild(cell);
-    return;
-}
-
-function createActionCellInTableBody(row, options = {}) {
-    const actionCell = document.createElement('td');
-    actionCell.style.padding = '12px';
-    
-    const editButton = createEditButton(options.editText || 'Edit');
-    if (options.onEdit) {
-        editButton.addEventListener('click', options.onEdit);
-    }
-    actionCell.appendChild(editButton);
-
-    const deleteButton = createDeleteButton(options.deleteText || 'Delete');
-    if (options.onDelete) {
-        deleteButton.addEventListener('click', options.onDelete);
-    }
-    actionCell.appendChild(deleteButton);
-
-    row.appendChild(actionCell);
-    return;
-}
-
-function createRowInTableBody() {
-    const row = document.createElement('tr');
-    row.style.borderBottom = '1px solid #ddd';
-    row.style.transition = 'background-color 0.2s ease';
-    
-    row.addEventListener('mouseover', () => {
-        row.style.backgroundColor = '#f9f9f9';
-    });
-    row.addEventListener('mouseout', () => {
-        row.style.backgroundColor = '';
-    });
-
-    return row;
 }

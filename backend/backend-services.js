@@ -1,17 +1,40 @@
 const pool = require('./db');
 const chalk = require('chalk');
 const WebSocket = require('ws');
+const fs = require('fs').promises;
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 
+const PING_LOG_FILE_PATH = path.join(__dirname, '../logs/ping.log');
+const LOG_FILE_PATH = path.join(__dirname, '../logs/all_messages.log');
+
+async function logPing(message) {
+    try {
+        await fs.appendFile(PING_LOG_FILE_PATH, message + '\n', 'utf8');
+    } catch (error) {
+        errorWithTimestamp('Failed to log ping:', error.message);
+    }
+}
+
+async function writeToLogFile(message) {
+    try {
+        await fs.appendFile(LOG_FILE_PATH, message + '\n', 'utf8');
+    } catch (error) {
+        errorWithTimestamp('Failed to write to log file:', error.message);
+    }
+}
+
 // Utility function to format timestamp
-function getFormattedTimestamp() {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, '0');
-    const month = String(now.getMonth() + 1).padStart(2, '0');
-    const year = String(now.getFullYear()).slice(2);
-    const hours = String(now.getHours()).padStart(2, '0');
-    const minutes = String(now.getMinutes()).padStart(2, '0');
-    const seconds = String(now.getSeconds()).padStart(2, '0');
+function getFormattedTimestamp(time) {
+    if (!time) {
+        time = new Date();
+    }
+    const day = String(time.getDate()).padStart(2, '0');
+    const month = String(time.getMonth() + 1).padStart(2, '0');
+    const year = String(time.getFullYear()).slice(2);
+    const hours = String(time.getHours()).padStart(2, '0');
+    const minutes = String(time.getMinutes()).padStart(2, '0');
+    const seconds = String(time.getSeconds()).padStart(2, '0');
     return `${day}/${month}/${year} ${hours}:${minutes}:${seconds} --`;
 }
 
@@ -258,6 +281,9 @@ class NotificationService {
 }
 
 module.exports = {
+    logPing,
+    writeToLogFile,
+    getFormattedTimestamp,
     logWithTimestamp,
     errorWithTimestamp,
     initializeDailyTotals,

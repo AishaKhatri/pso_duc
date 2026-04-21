@@ -1,6 +1,6 @@
-async function fetchNozzleData(station_id, dispenser_id, nozzle_id) {
+async function fetchNozzleData(dispenser_id, nozzle_id) {
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?station_id=${station_id}&dispenser_id=${dispenser_id}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
         return nozzles.find(n => n.nozzle_id === nozzle_id);
@@ -22,7 +22,17 @@ async function updateNozzleTransaction(nozzleId, transactionData) {
     nozzleData.quantity = parseFloat(lastTransaction.V) || 0.00;
     nozzleData.lastUpdated = new Date().toLocaleString();
 
+    // Update total sales for the day
+    // nozzleData.totalPrice = await updateTotalSales(nozzleId);
+
+    // console.log(`Nozzle ${nozzleId} sales computed: Price ${nozzleData.totalPrice}`);
+
     updateNozzleUI(nozzleId, nozzleData);
+
+    window.showNotification?.(
+        `Nozzle ${nozzleData.nozzleId} transaction updated: Price ${nozzleData.price.toFixed(2)}, Quantity ${nozzleData.quantity.toFixed(2)}`,
+        'success'
+    );
 }
 
 async function updateNozzleStatus(nozzleId, status) {
@@ -76,6 +86,50 @@ async function updateTotalQuantity(nozzleId, quantity) {
 
     updateNozzleUI(nozzleId, nozzleData);
 }
+
+async function updateTotalSales(nozzleId, totalSales) {
+    const nozzleData = await getNozzleDataFromTopic(nozzleId);
+    if (!nozzleData) return;
+
+    // nozzleData.totalPrice = typeof totalSales === 'string' ? parseFloat(totalSales) : totalSales;
+    nozzleData.totalSalesToday = 0.00;
+    nozzleData.lastUpdated = new Date().toLocaleString();
+
+    updateNozzleUI(nozzleId, nozzleData);
+}
+
+// async function updateTotalSales(nozzleId) {
+//     try {
+//         const response = await fetch(
+//             `${API_BASE_URL}/transactions/by-nozzle?nozzle_id=${encodeURIComponent(nozzleId)}`
+//         );
+        
+//         if (!response.ok) {
+//             throw new Error(`HTTP error! status: ${response.status}`);
+//         }
+
+//         const transactions = await response.json();
+
+//         // console.log(`computing total sales for nozzle ${nozzleId}`);
+
+//         // Calculate total sales for today
+//         const today = new Date().toDateString();
+//         const todaySales = transactions.reduce((total, transaction) => {
+//             const transactionDate = new Date(transaction.time).toDateString();
+//             if (transactionDate === today) {
+//                 return total + parseFloat(transaction.amount);
+//             }
+//             return total;
+//         }, 0);
+
+//         // console.log(`total sales for nozzle ${nozzleId}: `, todaySales);
+        
+//         return todaySales;
+
+//     } catch (error) {
+//         console.error('Error updating total sales: ', error);
+//     }
+// }
 
 async function updateNozzleLockStatus(nozzleId, lockStatus) {
     const nozzleData = await getNozzleDataFromTopic(nozzleId);
@@ -200,7 +254,7 @@ function NozzleData(nozzle) {
     };
 }
 
-async function sendGetCommandsForDispenser(dispenser, station_id) {
+async function sendGetCommandsForDispenser(dispenser) {
     const topic = `D${dispenser.address.padStart(5, '0')}`;
     const dis_addr = `D${dispenser.address.padStart(5, '0')}`;
     
@@ -210,9 +264,9 @@ async function sendGetCommandsForDispenser(dispenser, station_id) {
         1: true,  // PRICE
         2: true,  // TOTAL_VOLUME
         3: true,  // TOTAL_AMOUNT
-        // 4: true,  // LOCK_UNLOCK
-        // 5: true,  // KEYPAD_STATUS
-        // 6: true   // IR_STATUS
+        4: true,  // LOCK_UNLOCK
+        5: true,  // KEYPAD_STATUS
+        6: true   // IR_STATUS
     };
 
     // Delay between messages in milliseconds
@@ -220,7 +274,7 @@ async function sendGetCommandsForDispenser(dispenser, station_id) {
 
     try {
         // Fetch the actual nozzles for this dispenser
-        const response = await fetch(`${API_BASE_URL}/nozzles?station_id=${station_id}&dispenser_id=${dispenser.dispenser_id}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
 
@@ -236,7 +290,8 @@ async function sendGetCommandsForDispenser(dispenser, station_id) {
         
         ['A1', 'A2', 'B1', 'B2'].forEach(nozzleId => {
             if (existingNozzles.has(nozzleId)) {
-                const side = nozzleId[0]; // Keep as 'A' or 'B' 
+                const side = nozzleId[0];
+                // const side = nozzleId[0] === 'A' ? '0' : '1';
                 const noz_number = nozzleId[1];
                 
                 Object.keys(messageTypesToRequest).forEach(msg_type => {
@@ -290,6 +345,7 @@ window.updateNozzleStatus = updateNozzleStatus;
 window.updateKeypadLockStatus = updateKeypadLockStatus;
 window.updatePricePerLiter = updatePricePerLiter;
 window.updateTotalQuantity = updateTotalQuantity;
+window.updateTotalSales = updateTotalSales;
 window.updateNozzleLockStatus = updateNozzleLockStatus;
 window.updateIRStatus = updateIRStatus;
 window.getNozzleDataFromTopic = getNozzleDataFromTopic;

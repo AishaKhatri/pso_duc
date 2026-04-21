@@ -18,12 +18,12 @@ CREATE TABLE `stations` (
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `sessions` (
-    `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-    `user_id` int NOT NULL,
-    `session_token` varchar(255) UNIQUE NOT NULL,
-    `expires_at` timestamp NOT NULL,
-    `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (`user_id`) REFERENCES `stations`(`id`) ON DELETE CASCADE
+  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `user_id` int NOT NULL,
+  `session_token` varchar(255) UNIQUE NOT NULL,
+  `expires_at` timestamp NOT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (`user_id`) REFERENCES `stations`(`id`) ON DELETE CASCADE
 );
 
 CREATE TABLE `dispensers` (
@@ -42,6 +42,23 @@ CREATE TABLE `dispensers` (
   CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`station_id`) REFERENCES `stations` (`station_id`) ON DELETE CASCADE,
   CONSTRAINT `chk_address` CHECK (`address` REGEXP '^[0-9]{5}$')
 ) ENGINE=InnoDB;
+
+CREATE TABLE IF NOT EXISTS `connections_history` (
+  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `dispenser_id` varchar(50) NOT NULL,
+  `address` varchar(5) NOT NULL,
+  `conn_status` tinyint NOT NULL DEFAULT '0',
+  `connected_at` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS `ping_log` (
+  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `dispenser_id` varchar(50) NOT NULL,
+  `nozzle_id` varchar(50) NOT NULL,
+  `status` tinyint NOT NULL DEFAULT '1',
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
+);
 
 CREATE TABLE `nozzles` (
   `id` int NOT NULL AUTO_INCREMENT,

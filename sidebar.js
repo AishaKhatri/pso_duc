@@ -19,7 +19,6 @@ function renderSidebar() {
     const items = [
         { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'index.html' },
         { page: 'atg', label: 'ATG', icon: 'tank-icon.png', url: 'atg.html' },
-        { page: 'user-management', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' },
     ];
 
     // Determine current page based on window location
@@ -28,8 +27,7 @@ function renderSidebar() {
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
         'atg': 'atg',
-        'config-tanks': 'atg',
-        'user-management': 'user-management'
+        'config-tanks': 'atg'
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

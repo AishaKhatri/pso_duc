@@ -12,18 +12,8 @@ async function renderDispenser() {
         clearInterval(updateInterval);
     }
 
-    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
-    if (!currentStation) {
-        content.innerHTML = '<div class="error">No station selected</div>';
-        return;
-    }
-
     try {
-        // const stationResponse = await fetch(`${API_BASE_URL}/stations/${currentStation.station_id}`);
-        // if (!stationResponse.ok) throw new Error('Failed to fetch station');
-        // const station = await stationResponse.json();
-
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`);
+        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
@@ -84,7 +74,7 @@ async function renderDispenser() {
             gridContainer.appendChild(message);
         } else {
             for (const dispenser of dispensers) {
-                await createDispenserCard(dispenser, currentStation.station_id, gridContainer);
+                await createDispenserCard(dispenser, gridContainer);
             }
         }
 
@@ -96,12 +86,12 @@ async function renderDispenser() {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
-                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`);
+                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 
                     for (const dispenser of updatedDispensers) {
-                        await updateDispenserCard(dispenser, currentStation.station_id);
+                        await updateDispenserCard(dispenser);
                     }
                 } catch (error) {
                     console.error('Error during periodic update:', error);
@@ -114,9 +104,9 @@ async function renderDispenser() {
     }
 }
 
-async function createDispenserCard(dispenser, stationId, gridContainer) {
+async function createDispenserCard(dispenser, gridContainer) {
     const nozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
     );
     if (!nozzlesResponse.ok) return;
     const nozzles = await nozzlesResponse.json();
@@ -203,7 +193,7 @@ async function createDispenserCard(dispenser, stationId, gridContainer) {
     });
 }
 
-async function updateDispenserCard(dispenser, stationId) {
+async function updateDispenserCard(dispenser) {
     const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
     if (!card) return;
 
@@ -223,7 +213,7 @@ async function updateDispenserCard(dispenser, stationId) {
 
     try {
         const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dispenser.dispenser_id}`
+            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
         );
         if (!nozzlesResponse.ok) return;
         const nozzles = await nozzlesResponse.json();
@@ -242,7 +232,9 @@ async function updateDispenserCard(dispenser, stationId) {
 function initializeMQTT(dispensers) {
     initializeMQTTClient(() => {
         dispensers.forEach(dispenser => {
-            const topic = `S${dispenser.address.padStart(5, '0')}`;
+            // const topic = `S${dispenser.address.padStart(5, '0')}`;
+            const topic = `pso/deraismailkhan/115610/duc/s${dispenser.address.padStart(5, '0')}`;
+            
             subscribeToTopic(topic, async (receivedTopic, message) => {
                 const messageStr = message.toString();
                 console.log(`Received message on ${receivedTopic}: ${messageStr}`);
@@ -267,9 +259,9 @@ function initializeMQTT(dispensers) {
                         case 2: // Total quantity
                             window.updateTotalQuantity?.(nozzleId, parseFloat(data.message));
                             break;
-                        // case 3: // Total sales
-                        //     window.updateTotalSales?.(nozzleId, parseFloat(data.message));
-                        //     break;
+                        case 3: // Total sales
+                            window.updateTotalSales?.(nozzleId, parseFloat(data.message));
+                            break;
                         case 4: // Nozzle lock
                             window.updateNozzleLockStatus?.(nozzleId, parseInt(data.message));
                             break;

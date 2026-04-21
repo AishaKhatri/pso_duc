@@ -14,7 +14,9 @@ const {
     getMqttStatus, 
     getPowerOnStatus, 
     getGsmConnectionStatus,
-    getWifiConnectionStatus } = require('./mqtt-service');
+    getWifiConnectionStatus,
+    getATGConnectionStatus,
+    getATGLastUpdate } = require('./mqtt-service');
 
 const { 
     startMidnightResetService,
@@ -47,8 +49,6 @@ async function initializeServer() {
         process.exit(1);
     }
 }
-
-// app.use(express.static(path.join(__dirname, '../')));
 
 // Initialize server before starting
 initializeServer().then(() => {
@@ -107,6 +107,7 @@ const upload = multer({
     }
   }
 });
+
 
 app.get('/api/auth/verify', async (req, res) => {
   try {
@@ -225,47 +226,7 @@ app.get('/api/auth/station/:id', async (req, res) => {
   }
 });
 
-app.get('/api/stations', async (req, res) => {
-    try {
-        const [rows] = await pool.query('SELECT * FROM stations');
-        // Remove password column from each row
-        const stationData = rows.map(row => {
-            const { password, ...rowWithoutPassword } = row;
-            return rowWithoutPassword;
-        });
-        
-        res.json(stationData);
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch stations' });
-    }
-});
-
-app.get('/api/stations/:station_id', async (req, res) => {
-    try {
-        const { station_id } = req.params;
-        const [rows] = await pool.query(
-            'SELECT * FROM stations WHERE station_id = ?',
-            [station_id]
-        );
-
-        if (rows.length === 0) {
-            return res.status(404).json({ error: 'Station not found' });
-        }
-
-        // Remove password column from each row
-        const stationData = rows.map(row => {
-            const { password, ...rowWithoutPassword } = row;
-            return rowWithoutPassword;
-        });
-
-        res.json(stationData[0]);
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to fetch station' });
-    }
-});
-
+// GET /api/tanks/atg-data - Get all tanks with ATG data
 app.get('/api/tanks/atg-data', async (req, res) => {
     try {
         const [rows] = await pool.query(
@@ -293,14 +254,100 @@ app.get('/api/tanks/atg-data', async (req, res) => {
     }
 });
 
-app.get('/api/dispensers', async (req, res) => {
+// GET /api/tanks/:address/atg-data - Get specific tank ATG data
+app.get('/api/tanks/address/:address/atg-data', async (req, res) => {
     try {
-        const stationId = req.query.station_id;
-        if (!stationId) return res.status(400).json({ error: 'station_id is required' });
+        const { address } = req.params;
         
         const [rows] = await pool.query(
-            'SELECT * FROM dispensers WHERE station_id = ?',
-            [stationId]
+            `SELECT 
+                id, tank_id, address, product, 
+                conn_status, connected_at, dip_chart_path,
+                max_capacity_mm, max_capacity_ltr,
+                status, temperature, 
+                product_level_mm, product_level_ltr,
+                water_level_mm, water_level_ltr,
+                last_updated,
+                CASE 
+                    WHEN last_updated IS NULL THEN 0
+                    WHEN TIMESTAMPDIFF(MINUTE, last_updated, NOW()) > 5 THEN 0
+                    ELSE 1 
+                END as is_active
+            FROM tanks 
+            WHERE address = ?
+            ORDER BY tank_id`,
+            [address]
+        );
+        
+        if (rows.length === 0) {
+            return res.status(404).json({ error: 'Tank not found' });
+        }
+        
+        res.json(rows[0]);
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ error: 'Failed to fetch ATG data' });
+    }
+});
+
+// ATG last update endpoint
+app.get('/api/atg-last-update/:atg_address', (req, res) => {
+    try {
+        const { atg_address } = req.params;
+        const lastUpdate = getATGLastUpdate(atg_address);
+        
+        res.json({ 
+            last_updated: lastUpdate,
+            is_active: lastUpdate ? isATGActive(lastUpdate) : false
+        });
+    } catch (error) {
+        console.error('Error fetching ATG last update:', error);
+        res.status(500).json({ error: 'Failed to fetch ATG last update' });
+    }
+});
+
+// Helper function to check if ATG is active (within 5 minutes)
+function isATGActive(lastUpdateTime) {
+    if (!lastUpdateTime) return false;
+    
+    const lastUpdate = new Date(lastUpdateTime);
+    const now = new Date();
+    const fiveMinutesAgo = new Date(now.getTime() - (5 * 60 * 1000));
+    
+    return lastUpdate > fiveMinutesAgo;
+}
+
+// Serve dip chart files
+app.get('/api/tanks/:id/dip-chart', async (req, res) => {
+  try {
+    const tankId = req.params.id;
+    
+    const [tanks] = await pool.query(
+      'SELECT dip_chart_path FROM tanks WHERE id = ?', 
+      [tankId]
+    );
+    
+    if (tanks.length === 0 || !tanks[0].dip_chart_path) {
+      return res.status(404).json({ error: 'Dip chart not found' });
+    }
+    
+    const filePath = path.join(__dirname, tanks[0].dip_chart_path);
+    
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'File not found on server' });
+    }
+    
+    res.sendFile(filePath);
+  } catch (error) {
+    console.error('File serve error:', error);
+    res.status(500).json({ error: 'Failed to serve file' });
+  }
+});
+
+app.get('/api/dispensers', async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            'SELECT * FROM dispensers'
         );
         res.json(rows);
     } catch (error) {
@@ -311,14 +358,8 @@ app.get('/api/dispensers', async (req, res) => {
 
 app.get('/api/dispensers/next-id', async (req, res) => {
     try {
-        const { station_id } = req.query;
-        if (!station_id) {
-            return res.status(400).json({ error: 'station_id is required' });
-        }
-
         const [rows] = await pool.query(
-            'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) as max_id FROM dispensers WHERE station_id = ?',
-            [station_id]
+            'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) as max_id FROM dispensers'
         );
 
         const next_id = (rows[0].max_id || 0) + 1;
@@ -331,14 +372,14 @@ app.get('/api/dispensers/next-id', async (req, res) => {
 
 app.get('/api/nozzles', async (req, res) => {
     try {
-        const { station_id, dispenser_id } = req.query;
-        if (!station_id || !dispenser_id) {
-            return res.status(400).json({ error: 'Both station_id and dispenser_id are required' });
+        const { dispenser_id } = req.query;
+        if (!dispenser_id) {
+            return res.status(400).json({ error: 'dispenser_id is required' });
         }
 
         const [rows] = await pool.query(
-            'SELECT * FROM nozzles WHERE station_id = ? AND dispenser_id = ?',
-            [station_id, dispenser_id]
+            'SELECT * FROM nozzles WHERE dispenser_id = ?',
+            [dispenser_id]
         );
         
         const nozzles = rows.map(nozzle => ({
@@ -410,6 +451,20 @@ app.get('/api/tanks/next-id', async (req, res) => {
     }
 });
 
+// ATG connection status
+app.get('/api/atg-connection-status/:atg_address', (req, res) => {
+    try {
+        const { atg_address } = req.params;
+        const status = getATGConnectionStatus(atg_address);
+        
+        res.json(status);
+    } catch (error) {
+        console.error('Error fetching ATG connection status:', error);
+        res.status(500).json({ error: 'Failed to fetch ATG connection status' });
+    }
+});
+
+// GSM connection status endpoint
 app.get('/api/gsm-connection-status/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
@@ -422,6 +477,7 @@ app.get('/api/gsm-connection-status/:dispenser_addr', (req, res) => {
     }
 });
 
+// WiFi connection status endpoint
 app.get('/api/wifi-connection-status/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
@@ -434,6 +490,7 @@ app.get('/api/wifi-connection-status/:dispenser_addr', (req, res) => {
     }
 });
 
+// GSM status endpoints
 app.get('/api/gsm-status/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
@@ -450,6 +507,7 @@ app.get('/api/gsm-status/:dispenser_addr', (req, res) => {
     }
 });
 
+// WiFi status endpoint (placeholder)
 app.get('/api/wifi-status/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
@@ -466,6 +524,7 @@ app.get('/api/wifi-status/:dispenser_addr', (req, res) => {
     }
 });
 
+// MQTT status endpoint
 app.get('/api/mqtt-status/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
@@ -506,8 +565,8 @@ app.get('/api/error-log/:address', async (req, res) => {
         // Fetch errors for both dispenser and tank at this address
         const [errors] = await pool.query(
             `SELECT 
-                station_id,
                 device_type,
+                device_id,
                 error_message, 
                 created_at 
             FROM errors 
@@ -522,8 +581,8 @@ app.get('/api/error-log/:address', async (req, res) => {
             try {
                 const parsedMessage = JSON.parse(error.error_message);
                 return {
-                    station_id: error.station_id,
                     device_type: error.device_type,
+                    device_id: error.device_id,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
                     unix_time: parsedMessage.Time || null,
@@ -538,8 +597,8 @@ app.get('/api/error-log/:address', async (req, res) => {
             } catch (e) {
                 // If parsing fails, return the raw data
                 return {
-                    station_id: error.station_id,
                     device_type: error.device_type,
+                    device_id: error.device_id,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
                     raw_message: error.error_message
@@ -568,8 +627,8 @@ app.get('/api/device-info/:address', async (req, res) => {
         // Get the latest device info for this address
         const [deviceInfo] = await pool.query(
             `SELECT 
-                station_id,
                 device_type,
+                device_id,
                 temperature,
                 firmware_version,
                 hardware_version,
@@ -717,9 +776,9 @@ app.post('/api/tanks', async (req, res) => {
             return res.status(400).json({ error: 'This ATG number already exists for this address' });
         }
 
-        if (!/^\d{5}$/.test(address)) {
-            return res.status(400).json({ error: 'Address must be 5 digits' });
-        }
+        // if (!/^\d{5}$/.test(address)) {
+        //     return res.status(400).json({ error: 'Address must be 5 digits' });
+        // }
 
         const [result] = await pool.query(
             `INSERT INTO tanks 
@@ -817,11 +876,11 @@ app.use('/dip-charts', express.static(path.join(__dirname, 'assets', 'dip-charts
 
 app.post('/api/dispensers', async (req, res) => {
     try {
-        const { station_id, dispenser_id, address, vendor, number_of_nozzles, ir_lock_status } = req.body;
+        const { dispenser_id, address, vendor, number_of_nozzles, ir_lock_status } = req.body;
         const conn_status = 0;
         const connected_at = null;
 
-        if (!station_id || !dispenser_id || !address || !vendor || !number_of_nozzles) {
+        if (!dispenser_id || !address || !vendor || !number_of_nozzles) {
             return res.status(400).json({ error: 'All fields are required' });
         }
 
@@ -833,15 +892,15 @@ app.post('/api/dispensers', async (req, res) => {
             return res.status(400).json({ error: 'This dispenser ID already exists' });
         }
 
-        if (!/^\d{5}$/.test(address)) {
-            return res.status(400).json({ error: 'Address must be 5 digits' });
-        }
+        // if (!/^\d{5}$/.test(address)) {
+        //     return res.status(400).json({ error: 'Address must be 5 digits' });
+        // }
 
         const [result] = await pool.query(
             `INSERT INTO dispensers 
-            (station_id,dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [station_id, dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status || 0]
+            (dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [dispenser_id, address, conn_status, connected_at, vendor, number_of_nozzles, ir_lock_status || 0]
         );
 
         // Subscribe to the new dispenser's topic
@@ -863,12 +922,11 @@ app.post('/api/dispensers', async (req, res) => {
 app.post('/api/nozzles', async (req, res) => {
     try {
         const { 
-            station_id,
             dispenser_id, 
             nozzle_id, 
             product, 
-            status = 0, 
-            lock_unlock = 0, 
+            status = 1, 
+            lock_unlock = 1, 
             keypad_lock_status = 1, 
             price_per_liter = '0.00', 
             total_quantity = '0.00', 
@@ -878,7 +936,7 @@ app.post('/api/nozzles', async (req, res) => {
             quantity = '0.00'
         } = req.body;
 
-        if (!station_id || !dispenser_id || !nozzle_id || !product) {
+        if (!dispenser_id || !nozzle_id || !product) {
             return res.status(400).json({ error: 'Missing required fields' });
         }
 
@@ -892,8 +950,8 @@ app.post('/api/nozzles', async (req, res) => {
         };
 
         const [existing] = await pool.query(
-            'SELECT id FROM nozzles WHERE station_id = ? AND dispenser_id = ? AND nozzle_id = ?',
-            [station_id, dispenser_id, nozzle_id]
+            'SELECT id FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
+            [dispenser_id, nozzle_id]
         );
 
         if (existing.length > 0) {
@@ -902,11 +960,10 @@ app.post('/api/nozzles', async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO nozzles 
-            (station_id, dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status, 
+            (dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status, 
              price_per_liter, total_quantity, total_amount, total_sales_today, price, quantity) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
-                station_id,
                 dispenser_id, 
                 nozzle_id, 
                 product, 
@@ -933,78 +990,22 @@ app.post('/api/nozzles', async (req, res) => {
     }
 });
 
-app.put('/api/dispensers/:station_id/:dispenser_id', async (req, res) => {
+app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
     try {
-        const { station_id, dispenser_id } = req.params;
-        const { address, vendor, number_of_nozzles, ir_lock_status } = req.body;
-
-        // Check if at least one field is provided
-        if (Object.keys(req.body).length === 0) {
-            return res.status(400).json({ error: 'At least one field must be provided for update' });
+        const { dispenser_id } = req.body;
+        if (!dispenser_id) {
+            return res.status(400).json({ error: 'dispenser_id is required' });
         }
 
-        const fields = [];
-        const values = [];
-
-        // Validate and add each field if provided
-        if (address !== undefined) {
-            if (!/^\d{5}$/.test(address)) {
-                return res.status(400).json({ error: 'Address must be 5 digits' });
-            }
-            fields.push('address = ?');
-            values.push(address);
-        }
-
-        if (vendor !== undefined) {
-            fields.push('vendor = ?');
-            values.push(vendor);
-        }
-
-        if (number_of_nozzles !== undefined) {
-            fields.push('number_of_nozzles = ?');
-            values.push(number_of_nozzles);
-        }
-
-        if (ir_lock_status !== undefined) {
-            fields.push('ir_lock_status = ?');
-            values.push(ir_lock_status);
-        }
-
-        // Add WHERE clause parameters
-        values.push(station_id, dispenser_id);
-
-        const [result] = await pool.query(
-            `UPDATE dispensers SET ${fields.join(', ')}
-            WHERE station_id = ? AND dispenser_id = ?`,
-            values
+        await pool.query(
+            'DELETE FROM nozzles WHERE dispenser_id = ?',
+            [dispenser_id]
         );
 
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Dispenser not found' });
-        }
-
-        // Update MQTT subscription if address changed
-        if (address !== undefined) {
-            const [oldDispenser] = await pool.query(
-                'SELECT address FROM dispensers WHERE station_id = ? AND dispenser_id = ?',
-                [station_id, dispenser_id]
-            );
-            if (oldDispenser.length > 0) {
-                unsubscribeFromTopic(`D${oldDispenser[0].address}`);
-                unsubscribeFromTopic(`duc/conn_status/D${oldDispenser[0].address}`);
-            }
-            const topic = `S${address.padStart(5, '0')}`;
-            subscribeToTopic(topic, null);
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Dispenser updated successfully',
-            dispenser_id
-        });
+        res.json({ success: true, message: 'Nozzles deleted successfully' });
     } catch (error) {
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to update dispenser' });
+        res.status(500).json({ error: 'Failed to delete nozzles' });
     }
 });
 
@@ -1050,20 +1051,100 @@ app.put('/api/auth/session/config', async (req, res) => {
   }
 });
 
-app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) => {
+app.put('/api/dispensers/:dispenser_id', async (req, res) => {
     try {
-        const { station_id, dispenser_id, nozzle_id } = req.params;
+        const { dispenser_id } = req.params;
+        const { address, vendor, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+
+        // Check if at least one field is provided
+        if (Object.keys(req.body).length === 0) {
+            return res.status(400).json({ error: 'At least one field must be provided for update' });
+        }
+
+        const fields = [];
+        const values = [];
+
+        // Validate and add each field if provided
+        if (address !== undefined) {
+            // if (!/^\d{5}$/.test(address)) {
+            //     return res.status(400).json({ error: 'Address must be 5 digits' });
+            // }
+            fields.push('address = ?');
+            values.push(address);
+        }
+
+        if (vendor !== undefined) {
+            fields.push('vendor = ?');
+            values.push(vendor);
+        }
+
+        if (number_of_nozzles !== undefined) {
+            fields.push('number_of_nozzles = ?');
+            values.push(number_of_nozzles);
+        }
+
+        if (ir_lock_status !== undefined) {
+            fields.push('ir_lock_status = ?');
+            values.push(ir_lock_status);
+        }
+
+        if (conn_status !== undefined) {
+            fields.push('conn_status = ?');
+            values.push(conn_status);
+        }
+
+        // Add WHERE clause parameters
+        values.push(dispenser_id);
+
+        const [result] = await pool.query(
+            `UPDATE dispensers SET ${fields.join(', ')}
+            WHERE dispenser_id = ?`,
+            values
+        );
+
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Dispenser not found' });
+        }
+
+        // Update MQTT subscription if address changed
+        if (address !== undefined) {
+            const [oldDispenser] = await pool.query(
+                'SELECT address FROM dispensers WHERE dispenser_id = ?',
+                [dispenser_id]
+            );
+            if (oldDispenser.length > 0) {
+                unsubscribeFromTopic(`D${oldDispenser[0].address}`);
+                unsubscribeFromTopic(`duc/conn_status/D${oldDispenser[0].address}`);
+            }
+            const topic = `S${address.padStart(5, '0')}`;
+            subscribeToTopic(topic, null);
+        }
+
+        res.json({ 
+            success: true,
+            message: 'Dispenser updated successfully',
+            dispenser_id
+        });
+    } catch (error) {
+        console.error('Database error:', error);
+        res.status(500).json({ error: 'Failed to update dispenser' });
+    }
+});
+
+app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
+    try {
+        const { dispenser_id, nozzle_id } = req.params;
         const { product, status, price_per_liter, total_quantity, total_amount, 
                 total_sales_today, lock_unlock, keypad_lock_status, price, quantity } = req.body;
 
         // Generate a unique hash for deduplication
-        const messageHash = JSON.stringify({ station_id, dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount, 
+        const messageHash = JSON.stringify({ dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount, 
                                              total_sales_today, lock_unlock, keypad_lock_status, price, quantity });
         const now = Date.now();
         if (recentUpdates.has(messageHash)) {
             const [lastUpdateTime] = recentUpdates.get(messageHash);
             if (now - lastUpdateTime < DEDUPE_WINDOW) {
-                console.log(`Skipping duplicate update for ${station_id}/${dispenser_id}/${nozzle_id}`);
+                console.log(`Skipping duplicate update for ${dispenser_id}/${nozzle_id}`);
                 return res.json({ resInboundError: true, message: 'Duplicate update skipped' });
             }
         }
@@ -1154,12 +1235,12 @@ app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) =>
             return res.status(400).json({ error: 'No valid fields provided for update' });
         }
 
-        values.push(station_id, dispenser_id, decodeURIComponent(nozzle_id));
+        values.push(dispenser_id, decodeURIComponent(nozzle_id));
 
         // Update nozzles first
         const [result] = await pool.query(
             `UPDATE nozzles SET ${fields.join(', ')}
-            WHERE station_id = ? AND dispenser_id = ? AND nozzle_id = ?`,
+            WHERE dispenser_id = ? AND nozzle_id = ?`,
             values
         );
 
@@ -1169,17 +1250,16 @@ app.put('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) =>
 
         // Insert into nozzle_history after update to capture new state
         const [updatedNozzle] = await pool.query(
-            'SELECT * FROM nozzles WHERE station_id = ? AND dispenser_id = ? AND nozzle_id = ?',
-            [station_id, dispenser_id, decodeURIComponent(nozzle_id)]
+            'SELECT * FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
+            [dispenser_id, decodeURIComponent(nozzle_id)]
         );
         if (updatedNozzle.length > 0) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    station_id, dispenser_id, nozzle_id, product, status, price_per_liter,
+                    dispenser_id, nozzle_id, product, status, price_per_liter,
                     total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
-                    updatedNozzle[0].station_id,
                     updatedNozzle[0].dispenser_id,
                     updatedNozzle[0].nozzle_id,
                     updatedNozzle[0].product,
@@ -1231,28 +1311,6 @@ app.delete('/api/tanks/:id', async (req, res) => {
     } catch (error) {
         console.error('Delete error:', error);
         res.status(500).json({ error: 'Failed to delete tank' });
-    }
-});
-
-app.delete('/api/nozzles/:station_id/:dispenser_id/:nozzle_id', async (req, res) => {
-    try {
-        const { station_id, dispenser_id, nozzle_id } = req.params;
-        const [result] = await pool.query(
-            'DELETE FROM nozzles WHERE station_id = ? AND dispenser_id = ? AND nozzle_id = ?',
-            [station_id, dispenser_id, decodeURIComponent(nozzle_id)]
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Nozzle not found' });
-        }
-
-        res.json({ 
-            success: true,
-            message: 'Nozzle deleted successfully'
-        });
-    } catch (error) {
-        console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to delete nozzle' });
     }
 });
 
@@ -1330,3 +1388,93 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         connection.release();
     }
 });
+
+// Instead of keeping data in history table, make a new archives table for deleted dispensers
+// ------ NOT TESTED ------
+// app.delete('/api/dispensers/:id', async (req, res) => {
+//     const connection = await pool.getConnection();
+//     try {
+//         await connection.beginTransaction();
+        
+//         const { id } = req.params;
+//         const deleteHistory = req.query.delete_history === 'true';
+        
+//         // Get dispenser info
+//         const [dispenser] = await connection.query(
+//             'SELECT address, dispenser_id FROM dispensers WHERE id = ?', 
+//             [id]
+//         );
+        
+//         if (dispenser.length === 0) {
+//             await connection.rollback();
+//             return res.status(404).json({ error: 'Dispenser not found' });
+//         }
+        
+//         const { address, dispenser_id } = dispenser[0];
+        
+//         // Unsubscribe from topics
+//         unsubscribeFromTopic(`D${address}`);
+//         unsubscribeFromTopic(`duc/conn_status/D${address}`);
+        
+//         if (!deleteHistory) {
+//             // Archive historical data before deletion
+//             // 1. Archive nozzle_history
+//             await connection.query(`
+//                 CREATE TABLE IF NOT EXISTS archived_nozzle_history LIKE nozzle_history
+//             `);
+            
+//             await connection.query(`
+//                 INSERT INTO archived_nozzle_history 
+//                 SELECT * FROM nozzle_history WHERE dispenser_id = ?
+//             `, [dispenser_id]);
+            
+//             // 2. Archive transactions
+//             await connection.query(`
+//                 CREATE TABLE IF NOT EXISTS archived_transactions LIKE transactions
+//             `);
+            
+//             await connection.query(`
+//                 INSERT INTO archived_transactions 
+//                 SELECT * FROM transactions WHERE dispenser_id = ?
+//             `, [dispenser_id]);
+            
+//             // 3. Archive nozzles (optional)
+//             await connection.query(`
+//                 CREATE TABLE IF NOT EXISTS archived_nozzles LIKE nozzles
+//             `);
+            
+//             await connection.query(`
+//                 INSERT INTO archived_nozzles 
+//                 SELECT * FROM nozzles WHERE dispenser_id = ?
+//             `, [dispenser_id]);
+//         }
+        
+//         // Delete from main tables (cascade will handle nozzle_history and transactions if deleteHistory=true)
+//         // If deleteHistory=false, we've already archived the data
+//         const [result] = await connection.query(
+//             'DELETE FROM dispensers WHERE id = ?',
+//             [id]
+//         );
+        
+//         await connection.commit();
+        
+//         if (result.affectedRows === 0) {
+//             await connection.rollback();
+//             return res.status(404).json({ error: 'Dispenser not found' });
+//         }
+        
+//         res.json({ 
+//             success: true,
+//             message: deleteHistory 
+//                 ? 'Dispenser and all historical records deleted successfully'
+//                 : 'Dispenser deleted (historical records archived)'
+//         });
+        
+//     } catch (error) {
+//         await connection.rollback();
+//         console.error('Database error:', error);
+//         res.status(500).json({ error: 'Failed to delete dispenser' });
+//     } finally {
+//         connection.release();
+//     }
+// });

@@ -4,18 +4,9 @@ const PRODUCT_NAME_MAPPING = {
   'octane-plus': 'Octane Plus'
 };
 
-async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) {
+async function saveDispenserToDB(dispenser, isUpdate = false) {
   try {
-    if (!stationId) {
-      const currentStation = JSON.parse(localStorage.getItem('currentStation'));
-      if (!currentStation || !currentStation.station_id) {
-        throw new Error('No station selected');
-      }
-      stationId = currentStation.station_id;
-    }
-
     const dbDispenser = {
-      station_id: stationId,
       dispenser_id: dispenser.dispenser_id,
       address: dispenser.address,
       vendor: dispenser.vendor,
@@ -24,7 +15,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
     };
 
     const dispenserEndpoint = isUpdate 
-      ? `${API_BASE_URL}/dispensers/${stationId}/${dispenser.dispenser_id}`
+      ? `${API_BASE_URL}/dispensers/${dispenser.dispenser_id}`
       : `${API_BASE_URL}/dispensers`;
     
     const method = isUpdate ? 'PUT' : 'POST';
@@ -47,7 +38,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
       const existingNozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?station_id=${stationId}&dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
       );
       let existingNozzles = [];
       if (existingNozzlesResponse.ok) {
@@ -56,13 +47,20 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
 
       // Map new nozzles by nozzle_id for comparison
       const newNozzles = dispenser.nozzles.map(nozzle => ({
-        nozzle_id: nozzle.nozzleId,
-        product: nozzle.product
+        nozzle_id: `D${dbDispenser.address}-${nozzle.nozzleId.split('-')[1]}`,
+        product: nozzle.product,
+        status: 0,
+        lock_unlock: 0,
+        keypad_lock_status: 1,
+        price_per_liter: '0.00',
+        total_quantity: '0.00',
+        total_amount: '0.00'
       }));
 
       // Identify nozzles to update, insert, or delete
       const nozzlesToUpdate = [];
       const nozzlesToInsert = [];
+      const existingNozzleIds = existingNozzles.map(n => n.nozzle_id);
       const newNozzleIds = newNozzles.map(n => n.nozzle_id);
 
       // Nozzles to update (exist in both sets)
@@ -81,7 +79,6 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
       // Update existing nozzles
       for (const nozzle of nozzlesToUpdate) {
         const nozzleData = {
-          station_id: stationId,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -94,7 +91,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
         };
 
         const nozzleResponse = await fetch(
-          `${API_BASE_URL}/nozzles/${stationId}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'PUT',
             headers: {
@@ -114,10 +111,15 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
       // Insert new nozzles
       for (const nozzle of nozzlesToInsert) {
         const nozzleData = {
-          station_id: stationId,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
+          status: nozzle.status,
+          lock_unlock: nozzle.lock_unlock,
+          keypad_lock_status: nozzle.keypad_lock_status,
+          price_per_liter: nozzle.price_per_liter,
+          total_quantity: nozzle.total_quantity,
+          total_amount: nozzle.total_amount
         };
 
         const nozzleResponse = await fetch(`${API_BASE_URL}/nozzles`, {
@@ -138,7 +140,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
         await fetch(
-          `${API_BASE_URL}/nozzles/${stationId}/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
           {
             method: 'DELETE',
             headers: {
@@ -158,15 +160,10 @@ async function saveDispenserToDB(dispenser, isUpdate = false, stationId = null) 
 
 async function loadDispensersFromDB() {
   try {
-    const currentStation = JSON.parse(localStorage.getItem('currentStation'));
-    if (!currentStation || !currentStation.station_id) {
-      throw new Error('No station selected');
-    }
-
     const productOptions = ['PMG', 'HSD'];
 
     const dispenserResponse = await fetch(
-      `${API_BASE_URL}/dispensers?station_id=${currentStation.station_id}`
+      `${API_BASE_URL}/dispensers`
     );
     
     if (!dispenserResponse.ok) {
@@ -177,7 +174,7 @@ async function loadDispensersFromDB() {
     
     const dispensersWithNozzles = await Promise.all(dbDispensers.map(async dbDispenser => {
       const nozzleResponse = await fetch(
-        `${API_BASE_URL}/nozzles?station_id=${currentStation.station_id}&dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
       );
       
       let nozzles = [];
@@ -216,13 +213,6 @@ async function loadDispensersFromDB() {
 }
 
 async function renderConfigDispensers() {
-    const currentStation = JSON.parse(localStorage.getItem('currentStation')) || {};
-    if (!currentStation.station_id) {
-        console.error('No station selected');
-        content.innerHTML = '<div class="error">Please select a station first</div>';
-        return;
-    }
-    
     const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', 'index.html', 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
 
@@ -268,19 +258,53 @@ async function renderConfigDispensers() {
         form.style.display = 'grid';
         form.style.gap = '15px';
 
-        const addressContainer = createField('Address:', 'address');
-        form.appendChild(addressContainer);
+        // Address field
+        const addressContainer = document.createElement('div');
+        addressContainer.style.display = 'grid';
+        addressContainer.style.gridTemplateColumns = '1fr 2fr';
+        addressContainer.style.alignItems = 'center';
         
-        const vendorSelect = createDropdown('Select Vendor');
-        vendorSelect.name = 'vendor';
-        vendorOptions.forEach(vendor => {
-            const option = document.createElement('option');
-            option.value = vendor;
-            option.textContent = vendor;
-            vendorSelect.appendChild(option);
-        });
+        const addressLabel = document.createElement('label');
+        addressLabel.className = 'label-text';
+        addressLabel.textContent = 'Address:';
+        addressLabel.style.width = '100px';
+        
+        const addressInput = document.createElement('input');
+        addressInput.type = 'text';
+        addressInput.name = 'address';
+        addressInput.required = true;
+        addressInput.style.padding = '8px';
+        addressInput.style.border = '1px solid #ddd';
+        addressInput.style.borderRadius = '4px';
+        addressInput.style.width = '90%';
+        
+        addressContainer.appendChild(addressLabel);
+        addressContainer.appendChild(addressInput);
+        form.appendChild(addressContainer);
 
-        const vendorContainer = createField('Vendor:', vendorSelect);
+        // Vendor field
+        const vendorContainer = document.createElement('div');
+        vendorContainer.style.display = 'grid';
+        vendorContainer.style.gridTemplateColumns = '1fr 2fr';
+        vendorContainer.style.alignItems = 'center';
+        
+        const vendorLabel = document.createElement('label');
+        vendorLabel.className = 'label-text';
+        vendorLabel.textContent = 'Vendor:';
+        vendorLabel.style.width = '100px';
+        
+        const vendorSelect = document.createElement('select');
+        vendorSelect.name = 'vendor';
+        vendorSelect.required = true;
+        vendorSelect.style.padding = '8px';
+        vendorSelect.style.border = '1px solid #ddd';
+        vendorSelect.style.borderRadius = '4px';
+        vendorSelect.style.width = '100%';
+        vendorSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Vendor</option>' + 
+            vendorOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
+        
+        vendorContainer.appendChild(vendorLabel);
+        vendorContainer.appendChild(vendorSelect);
         form.appendChild(vendorContainer);
 
         // Nozzles configuration
@@ -348,11 +372,20 @@ async function renderConfigDispensers() {
             nozzleOptions.forEach(nozzle => {
                 const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
                 if (checkbox.checked) {
+                    const container = document.createElement('div');
+                    container.style.display = 'grid';
+                    container.style.gridTemplateColumns = '1fr 2fr';
+                    container.style.alignItems = 'center';
+                    
+                    const label = document.createElement('label');
+                    label.className = 'label-text';
+                    label.textContent = `Product for ${nozzle}:`;
+                    label.style.width = '130px';
+                    
                     const select = createDropdown('Select Product');
                     select.name = `product-${nozzle}`;
                     select.required = true;
-
-                    const container = createField(`Nozzle ${nozzle}:`, select);
+                    select.style.marginBottom = '0';
                     
                     productOptions.forEach(opt => {
                         const displayName = PRODUCT_NAME_MAPPING[opt.toLowerCase()] || opt;
@@ -362,6 +395,7 @@ async function renderConfigDispensers() {
                         select.appendChild(option);
                     });
                     
+                    container.appendChild(label);
                     container.appendChild(select);
                     productsContainer.appendChild(container);
                 }
@@ -394,26 +428,53 @@ async function renderConfigDispensers() {
         }
 
         displayDispensers.forEach((dispenser, index) => {
-            const row = createRowInTableBody();
-
-            createCellInTableBody(row, dispenser.address || '-');
-            createCellInTableBody(row, (dispenser.nozzles?.length > 0 ?
-                dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-'));
-            createCellInTableBody(row, (dispenser.nozzles?.length > 0 ?
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #ddd';
+            
+            const addressTd = document.createElement('td');
+            addressTd.style.padding = '12px';
+            // addressTd.style.borderRight = '1px solid #ddd';
+            addressTd.textContent = dispenser.address || '-';
+            tr.appendChild(addressTd);
+            
+            const nozzlesTd = document.createElement('td');
+            nozzlesTd.style.padding = '12px';
+            // nozzlesTd.style.borderRight = '1px solid #ddd';
+            nozzlesTd.textContent = dispenser.nozzles?.length > 0 ? 
+                dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-';
+            tr.appendChild(nozzlesTd);
+            
+            const productsTd = document.createElement('td');
+            productsTd.style.padding = '12px';
+            // productsTd.style.borderRight = '1px solid #ddd';
+            productsTd.textContent = dispenser.nozzles?.length > 0 ? 
                 dispenser.nozzles.map(n => {
                     const productValue = n.product;
                     return PRODUCT_NAME_MAPPING[productValue.toLowerCase()] || productValue;
-                }).join(', ') : '-'));
-            createCellInTableBody(row, dispenser.vendor || '-');
+                }).join(', ') : '-';
+            tr.appendChild(productsTd);
+            
+            const vendorTd = document.createElement('td');
+            vendorTd.style.padding = '12px';
+            // vendorTd.style.borderRight = '1px solid #ddd';
+            vendorTd.textContent = dispenser.vendor || '-';
+            tr.appendChild(vendorTd);
+            
+            const actionTd = document.createElement('td');
+            actionTd.style.padding = '12px';
+            // actionTd.style.textAlign = 'center';
+            
+            const editBtn = createEditButton('Edit this dispenser');
+            editBtn.addEventListener('click', () => editDispenser(index));
+            
+            const deleteBtn =  createDeleteButton('Delete this dispenser');
+            deleteBtn.addEventListener('click', () => deleteDispenserPopup(index, tr));
 
-            createActionCellInTableBody(row, {
-                editText: 'Edit Dispenser',
-                deleteText: 'Delete Dispenser',
-                onEdit: () => editDispenser(index),
-                onDelete: () => deleteDispenserPopup(index, row),
-            });
-
-            tbody.appendChild(row);
+            actionTd.appendChild(editBtn);
+            actionTd.appendChild(deleteBtn);
+            
+            tr.appendChild(actionTd);
+            tbody.appendChild(tr);
         });
     }
 
@@ -460,7 +521,8 @@ async function renderConfigDispensers() {
             
             const addressInput = form.address.value;
             if (!addressInput || isNaN(addressInput) || 
-                parseInt(addressInput) < 1 || parseInt(addressInput) > 65535) {
+                // parseInt(addressInput) < 1 || parseInt(addressInput) > 65535) {
+                parseInt(addressInput) < 1) {
                 alert('Please enter a valid dispenser address between 1 and 65535');
                 return;
             }
@@ -487,7 +549,7 @@ async function renderConfigDispensers() {
             // Fetch next dispenser_id for new dispensers
             if (!dispenser_id) {
                 const response = await fetch(
-                    `${API_BASE_URL}/dispensers/next-id?station_id=${currentStation.station_id}`
+                    `${API_BASE_URL}/dispensers/next-id`
                 );
                 if (!response.ok) {
                     throw new Error('Failed to get next dispenser ID');

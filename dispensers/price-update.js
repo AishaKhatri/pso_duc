@@ -209,6 +209,7 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
         const message = {
             dis_addr: `D${dispenserAddr}`,
             req_type: 0,
+            // side: side === 'A' ? '0' : '1',
             side: side,
             noz_number: parseInt(number),
             msg_type: 1,
@@ -227,7 +228,8 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
 
         try {
             const result = await new Promise((resolve) => {
-                publishPriceUpdate(`D${dispenserAddr}`, JSON.stringify(message), (err) => {
+                // publishPriceUpdate(`D${dispenserAddr}`, JSON.stringify(message), (err) => {
+                publishMessage(`D${dispenserAddr}`, JSON.stringify(message), (err) => {
                     if (err) {
                         console.error('Publish error:', err);
                         if (statusIcon) {
