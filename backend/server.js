@@ -123,7 +123,7 @@ app.get('/api/auth/verify', async (req, res) => {
     
     // Check if session exists in database and is not expired
     const [sessions] = await pool.query(
-      `SELECT s.*, st.username, st.station_id, st.station_name, 
+      `SELECT s.*, st.username, st.customer_code, st.station_id, 
               st.city, st.province, st.station_config
        FROM sessions s
        JOIN stations st ON s.user_id = st.id
@@ -148,8 +148,8 @@ app.get('/api/auth/verify', async (req, res) => {
       user: {
         id: stationData.user_id,
         username: stationData.username,
+        customerCode: stationData.customer_code,
         stationId: stationData.station_id,
-        stationName: stationData.station_name,
         city: stationData.city,
         province: stationData.province,
         stationConfig: JSON.parse(stationData.station_config || '{}')
@@ -193,10 +193,10 @@ app.get('/api/auth/station/:id', async (req, res) => {
     const { id } = req.params;
     
     const [stations] = await pool.query(
-      `SELECT id, username, station_id, station_name, 
+      `SELECT id, username, customer_code, station_id, 
               city, province, station_config, created_at 
        FROM stations 
-       WHERE id = ? OR station_id = ?`,
+       WHERE id = ? OR customer_code = ?`,
       [id, id]
     );
 
@@ -502,11 +502,11 @@ app.post('/api/auth/signin', async (req, res) => {
 
     // Find station/user in database
     const [stations] = await pool.query(
-      `SELECT id, username, password, station_id, station_name, 
+      `SELECT id, username, password, customer_code, station_id, 
               city, province, station_config, created_at 
        FROM stations 
-       WHERE username = ? OR station_id = ?`,
-      [username, username] // Allow login with either username or station_id
+       WHERE username = ? OR customer_code = ?`,
+      [username, username] // Allow login with either username or customer_code
     );
 
     if (stations.length === 0) {
@@ -532,8 +532,8 @@ app.post('/api/auth/signin', async (req, res) => {
       { 
         userId: station.id,
         username: station.username,
+        customerCode: station.customer_code,
         stationId: station.station_id,
-        stationName: station.station_name
       },
       JWT_SECRET,
       { expiresIn: '24h' }

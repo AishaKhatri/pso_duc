@@ -41,8 +41,8 @@ async function loadUsers() {
 
             createCellInTableBody(row, user.id);
             createCellInTableBody(row, user.username);
-            createCellInTableBody(row, user.station_id);
-            createCellInTableBody(row, user.station_name); 
+            createCellInTableBody(row, user.customer_code);
+            createCellInTableBody(row, user.station_id); 
             createCellInTableBody(row, user.city);
             createCellInTableBody(row, user.province || 'N/A');
             createCellInTableBody(row, (new Date(user.created_at).toLocaleString()));
@@ -98,15 +98,15 @@ function showUserFormPopup(user = null) {
 
     const username = createField('Username *', user ? user.username : '', true);
     const password = createField('Password *', user ? user.password : '', true);
+    const customerCode = createField('Customer Code *', user ? user.customer_code : '', true);
     const stationId = createField('Station ID *', user ? user.station_id : '', true);
-    const stationName = createField('Station Name *', user ? user.station_name : '', true);
     const city = createField('City *', user ? user.city : '', true);
     const province = createField('Province', user ? user.province : '', false);
 
     form.appendChild(username);
     form.appendChild(password);
+    form.appendChild(customerCode);
     form.appendChild(stationId);
-    form.appendChild(stationName);
     form.appendChild(city);
     form.appendChild(province);
     
@@ -175,8 +175,8 @@ function showUserFormPopup(user = null) {
         try {
             const userData = {
                 username: usernameInput.value.trim(),
+                customerCode: customerCodeInput.value.trim(),
                 station_id: stationIdInput.value.trim(),
-                station_name: stationNameInput.value.trim(),
                 city: cityInput.value.trim(),
                 province: provinceInput.value.trim() || null
             };
@@ -225,7 +225,7 @@ function showUserFormPopup(user = null) {
 
 function showDeleteUserConfirmation(user) {
     const { overlay, confirmButton } = createDeletePopup(
-        `Are you sure you want to delete user "${user.username}" (${user.station_name})? This action cannot be undone.`
+        `Are you sure you want to delete user "${user.username}" (${user.customer_code})? This action cannot be undone.`
     );
 
     confirmButton.addEventListener('click', async () => {

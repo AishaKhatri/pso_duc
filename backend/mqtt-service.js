@@ -973,7 +973,7 @@ async function registerNewDevice(message) {
         }));
 
         const newDispenser = {
-            // station_id: message.stationID,
+            // customer_code: message.CustomerCode,
             address: message.address,
             vendor: message.vendor,
             dispenser_id: message.disp_number,
@@ -997,7 +997,7 @@ async function registerNewDevice(message) {
 
         for (const nozzle of newDispenser.nozzles) {
             const nozzleData = {
-                // station_id: newDispenser.station_id,
+                // customer_code: newDispenser.customer_code,
                 dispenser_id: newDispenser.dispenser_id,
                 nozzle_id: nozzle.nozzleId,
                 product: nozzle.product,
