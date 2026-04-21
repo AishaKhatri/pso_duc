@@ -25,8 +25,8 @@ const OFFLINE_TIMEOUT = 3 * 60 * 1000; // 1 minute
 const lastStatusMessage = new Map();
 
 // const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
-const mqttClient = mqtt.connect('tcp://localhost:1883', {
-    clientId: `server`,
+const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
+    clientId: `server_local`,
     keepalive: 0.5 * 60,  // 30 seconds
     clean: true,
     reconnectPeriod: 5000,

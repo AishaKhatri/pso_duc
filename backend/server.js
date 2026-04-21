@@ -48,6 +48,8 @@ async function initializeServer() {
     }
 }
 
+// app.use(express.static(path.join(__dirname, '../')));
+
 // Initialize server before starting
 initializeServer().then(() => {
     const PORT = 3001;
