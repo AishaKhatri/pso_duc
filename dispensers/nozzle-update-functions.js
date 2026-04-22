@@ -207,6 +207,7 @@ function normalizeFuelType(product) {
     const lowerProduct = product.toLowerCase().trim();
     if (lowerProduct.includes('pmg')) return 'PMG';
     if (lowerProduct.includes('hsd')) return 'HSD';
+    if (lowerProduct.includes('hobc')) return 'HOBC';
     return 'Premier';
 }
 

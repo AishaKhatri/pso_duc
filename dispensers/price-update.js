@@ -42,7 +42,7 @@ async function showPriceUpdatePopup() {
     productSelect.disabled = false;
     productSelect.innerHTML = '';
 
-    const products = ['PMG', 'HSD'];
+    const products = ['PMG', 'HSD', 'HOBC'];
     products.forEach(product => {
         const option = document.createElement('option');
         option.value = product;

@@ -160,7 +160,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
 async function loadDispensersFromDB() {
   try {
-    const productOptions = ['PMG', 'HSD'];
+    const productOptions = ['PMG', 'HSD', 'HOBC'];
 
     const dispenserResponse = await fetch(
       `${API_BASE_URL}/dispensers`

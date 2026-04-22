@@ -32,8 +32,8 @@ window.createNozzleLayout = function (containerId, data) {
 
     const fuelConfig = {
       'PMG': { header: '#FF7043', accent: '#FFCCBC' }, // Coral, Peach
-      // 'HSD': { header: '#FFB300', accent: '#FFE0B2' }, // Amber, Golden
-      'HSD': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
+      'HSD': { header: '#FFB300', accent: '#FFE0B2' }, // Amber, Golden
+      'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
     };
 
     const fuelType = data.fuelType;
