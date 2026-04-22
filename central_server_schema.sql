@@ -37,8 +37,7 @@ CREATE TABLE `dispensers` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `customer_code` (`customer_code`,`dispenser_id`,`address`),
-  CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE CASCADE,
-  CONSTRAINT `chk_address` CHECK (`address` REGEXP '^[0-9]{5}$')
+  CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `connections_history` (
@@ -132,18 +131,15 @@ CREATE TABLE `device_info` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
   `address` varchar(8) NOT NULL,
-  `temperature` decimal(10,2) DEFAULT NULL,
   `firmware_version` varchar(50) DEFAULT NULL,
   `hardware_version` varchar(50) DEFAULT NULL,
-  `mac_address` varchar(17) DEFAULT NULL,
-  `serial_number` varchar(50) DEFAULT NULL,
+  `wifi_enable` tinyint DEFAULT NULL,
   `last_die_time` bigint DEFAULT NULL,
   `wakeup_time` bigint DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_customer_code_address` (`customer_code`,`address`),
-  KEY `idx_address` (`address`),
-  KEY `idx_mac_address` (`mac_address`),
+  KEY `idx_address` (`address`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `errors` (

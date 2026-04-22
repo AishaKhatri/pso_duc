@@ -1,5 +1,6 @@
 // const host_PC_IP = '192.168.10.51';
-const host_PC_IP = '72.255.62.111';
+// const host_PC_IP = '72.255.62.111';
+const host_PC_IP = 'localhost';
 const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};

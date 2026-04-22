@@ -16,7 +16,7 @@ function initializeMQTTClient(onConnectCallback, onErrorCallback) {
     // const host = 'broker.hivemq.com';
     const host = 'localhost';
     const port = 8083;
-    const clientId = `server_frontend`;
+    const clientId = `server_frontend_local`;
 
     mqttClient = mqtt.connect(`ws://${host_PC_IP}:8083/mqtt`, {
     // mqttClient = mqtt.connect(`tcp://${host}:${port}`, {
