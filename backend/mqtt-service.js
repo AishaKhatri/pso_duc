@@ -165,39 +165,11 @@ async function unsubscribeFromTopic(topic) {
     }
 }
 
-async function callApi(endpoint, method, body = null) {
-    const url = `http://localhost:3001/api/${endpoint}`;
-    const options = {
-        method: method,
-        headers: {
-            'Content-Type': 'application/json',
-        }
-    };
-    
-    if (body) {
-        options.body = JSON.stringify(body);
-    }
-    
-    try {
-        const response = await fetch(url, options);
-        const data = await response.json();
-        
-        if (!response.ok) {
-            throw new Error(data.error || `API call failed: ${response.statusText}`);
-        }
-        
-        return data;
-    } catch (error) {
-        errorWithTimestamp(`API call failed (${endpoint}):`, error.message);
-        throw error;
-    }
-}
-
-async function handleSalesMessage(dispenser_id, nozzleId, message) {
+async function handleSalesMessage(customer_code, dispenser_id, nozzleId, message) {
     const transactions = parseTransactionMessage(message);
 
     if (!Array.isArray(transactions) || transactions.length === 0) {
-        errorWithTimestamp(`Invalid data received in msg_type=7 for dispenser ${dispenser_id}, nozzle ${nozzleId}.`)
+        errorWithTimestamp(`Invalid data received in msg_type=7 for customer ${customer_code}, dispenser ${dispenser_id}, nozzle ${nozzleId}.`)
         return;
     }
 
@@ -208,6 +180,7 @@ async function handleSalesMessage(dispenser_id, nozzleId, message) {
     // Process each transaction in the message for the transactions table
     for (const tx of transactions) {
         await storeTransaction(
+            customer_code,
             dispenser_id,
             nozzleId,
             tx.time,
@@ -948,25 +921,26 @@ async function updateDispenserInDatabase(dispenser_id, updateData) {
     }
 }
 
-async function storeTransaction(dispenser_id, nozzle_id, time, amount, volume) {
+async function storeTransaction(customer_code, dispenser_id, nozzle_id, time, amount, volume) {
     try {
-        // First verify the nozzle exists
+        // First verify the nozzle exists with customer_code
         const [nozzles] = await pool.query(
-            'SELECT id FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
-            [dispenser_id, nozzle_id]
+            'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
+            [customer_code, dispenser_id, nozzle_id]
         );
         
         if (nozzles.length === 0) {
-            errorWithTimestamp(`Nozzle not found: ${dispenser_id}/${nozzle_id}`);
+            errorWithTimestamp(`Nozzle not found: ${customer_code}/${dispenser_id}/${nozzle_id}`);
             return;
         }
 
-        // Insert the transaction
+        // Insert the transaction with customer_code
         await pool.query(
             `INSERT INTO transactions 
-            (dispenser_id, nozzle_id, time, amount, volume) 
-            VALUES (?, ?, ?, ?, ?)`,
+            (customer_code, dispenser_id, nozzle_id, time, amount, volume) 
+            VALUES (?, ?, ?, ?, ?, ?)`,
             [
+                customer_code,
                 dispenser_id,
                 nozzle_id,
                 time,
@@ -1092,31 +1066,38 @@ async function registerNewDevice(message) {
             await pool.query(
                 `INSERT INTO stations (username, password, customer_code, station_id, city) 
                  VALUES (?, ?, ?, ?, ?)`,
-                [`station_${customerCode}`, 'default123', customerCode, stationId, city || 'Unknown']
+                [`station_${customerCode}`, 'default123', customerCode, stationId || customerCode, city || 'Unknown']
             );
             logWithTimestamp(chalk.green, `✓ New station registered: ${customerCode}`);
         } else {
             logWithTimestamp(chalk.blue, `✓ Station already exists: ${customerCode}`);
         }
         
-        // ===== 2. Get next dispenser ID for this customer =====
-        const [maxIdResult] = await pool.query(
-            'SELECT MAX(dispenser_id) as max_id FROM dispensers WHERE customer_code = ?',
-            [customerCode]
-        );
-        const nextDispenserId = (maxIdResult[0].max_id || 0) + 1;
-        
-        // ===== 3. Check if dispenser with this address already exists =====
+        // ===== 2. Check if dispenser with this address already exists =====
         const [existingDispensers] = await pool.query(
             'SELECT customer_code, dispenser_id FROM dispensers WHERE address = ? AND customer_code = ?',
             [deviceAddress, customerCode]
         );
         
         let finalDispenserId;
+        let isNewDispenser = false;
         
         if (existingDispensers.length === 0) {
-            // Create new dispenser with auto-incremented ID
-            finalDispenserId = nextDispenserId;
+            // Use the API to get next dispenser ID
+            try {
+                const response = await fetch(`http://localhost:3001/api/dispensers/next-id?customer_code=${customerCode}`);
+                if (!response.ok) {
+                    throw new Error('Failed to get next dispenser ID');
+                }
+                const data = await response.json();
+                finalDispenserId = parseInt(data.next_id);
+                isNewDispenser = true;
+            } catch (error) {
+                errorWithTimestamp('Error getting next dispenser ID:', error.message);
+                return;
+            }
+            
+            // Create new dispenser
             await pool.query(
                 `INSERT INTO dispensers 
                  (customer_code, dispenser_id, address, conn_status, connected_at, 
@@ -1145,8 +1126,9 @@ async function registerNewDevice(message) {
             logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ID ${finalDispenserId}`);
         }
         
-        // ===== 4. Register nozzles =====
-        const dispenserIdForNozzles = `D${finalDispenserId}`; // Format for nozzle_id: D{id}
+        // ===== 3. Register nozzles =====
+        // Nozzle ID format: D{address}-{side}{number}
+        const dispenserAddressForNozzle = deviceAddress;
         
         // Determine side-product mapping
         let sideProductMap = [];
@@ -1168,7 +1150,7 @@ async function registerNewDevice(message) {
             const product = sideConfig.product;
             
             for (let nozzleNum = 1; nozzleNum <= nozzlesPerSide; nozzleNum++) {
-                const nozzleId = `${dispenserIdForNozzles}-${side}${nozzleNum}`;
+                const nozzleId = `D${dispenserAddressForNozzle}-${side}${nozzleNum}`;
                 
                 const [existingNozzles] = await pool.query(
                     'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
@@ -1200,7 +1182,7 @@ async function registerNewDevice(message) {
             logWithTimestamp(chalk.green, `✓ Added ${newNozzleCount} new nozzles`);
         }
         
-        // ===== 5. Store device info =====
+        // ===== 4. Store device info =====
         if (deviceData.FirmwareVersion || deviceData.HardwareVersion || deviceData.WifiEnable !== undefined) {
             const deviceInfoMessage = {
                 FirmwareVersion: deviceData.FirmwareVersion,
@@ -1209,11 +1191,10 @@ async function registerNewDevice(message) {
                 LastDieTime: deviceData.LastDieTime,
                 WakeUpTime: deviceData.WakeUpTime
             };
-            // Pass the numeric dispenser ID
-            await handleDeviceInfoMessage(`D${finalDispenserId}`, deviceInfoMessage, customerCode);
+            await handleDeviceInfoMessage(`D${deviceAddress}`, deviceInfoMessage, customerCode);
         }
         
-        logWithTimestamp(chalk.green.bold, `✅ Registration completed! Dispenser ID: ${finalDispenserId} for customer ${customerCode}`);
+        logWithTimestamp(chalk.green.bold, `✅ Registration completed! Dispenser ID: ${finalDispenserId} (Address: ${deviceAddress}) for customer ${customerCode}`);
         
     } catch (error) {
         errorWithTimestamp('Error registering new device:', error.message);
@@ -1345,7 +1326,16 @@ mqttClient.on('message', async (receivedTopic, message) => {
                     });
                     break;
                 case 7: // Transaction data (T, A, V)
-                    handleSalesMessage(dispenser_id, nozzleId, data.message);
+                    const [dispenserInfo] = await pool.query(
+                        'SELECT customer_code FROM dispensers WHERE dispenser_id = ?',
+                        [dispenser_id]
+                    );
+                    if (dispenserInfo.length > 0) {
+                        const customer_code = dispenserInfo[0].customer_code;
+                        handleSalesMessage(customer_code, dispenser_id, nozzleId, data.message);
+                    } else {
+                        errorWithTimestamp(`Dispenser not found for ID: ${dispenser_id}`);
+                    }
                     break;
                 case 8: // Error message
                     await handleErrorMessage(dispenserAddr, data.message);
