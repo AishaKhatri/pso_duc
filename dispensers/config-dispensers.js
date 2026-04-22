@@ -4,9 +4,29 @@ const PRODUCT_NAME_MAPPING = {
   'octane-plus': 'Octane Plus'
 };
 
+// Global variable to store stations list
+let stationsList = [];
+
+// Function to load stations from database
+async function loadStationsFromDB() {
+  try {
+    const response = await fetch(`${API_BASE_URL}/stations`);
+    if (!response.ok) {
+      throw new Error('Failed to load stations');
+    }
+    const stations = await response.json();
+    stationsList = stations;
+    return stations;
+  } catch (error) {
+    console.error('Load stations error:', error);
+    return [];
+  }
+}
+
 async function saveDispenserToDB(dispenser, isUpdate = false) {
   try {
     const dbDispenser = {
+      customer_code: dispenser.customer_code,
       dispenser_id: dispenser.dispenser_id,
       address: dispenser.address,
       DispenserBrand: dispenser.DispenserBrand,
@@ -15,7 +35,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     };
 
     const dispenserEndpoint = isUpdate 
-      ? `${API_BASE_URL}/dispensers/${dispenser.dispenser_id}`
+      ? `${API_BASE_URL}/dispensers/${dispenser.dispenser_id}?customer_code=${dispenser.customer_code}`
       : `${API_BASE_URL}/dispensers`;
     
     const method = isUpdate ? 'PUT' : 'POST';
@@ -38,7 +58,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
       const existingNozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
       );
       let existingNozzles = [];
       if (existingNozzlesResponse.ok) {
@@ -47,6 +67,8 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
       // Map new nozzles by nozzle_id for comparison
       const newNozzles = dispenser.nozzles.map(nozzle => ({
+        customer_code: dispenser.customer_code,
+        dispenser_id: dbDispenser.dispenser_id,
         nozzle_id: `D${dbDispenser.address}-${nozzle.nozzleId.split('-')[1]}`,
         product: nozzle.product,
         status: 0,
@@ -79,6 +101,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Update existing nozzles
       for (const nozzle of nozzlesToUpdate) {
         const nozzleData = {
+          customer_code: dispenser.customer_code,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -91,7 +114,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
         };
 
         const nozzleResponse = await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
           {
             method: 'PUT',
             headers: {
@@ -111,6 +134,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Insert new nozzles
       for (const nozzle of nozzlesToInsert) {
         const nozzleData = {
+          customer_code: dispenser.customer_code,
           dispenser_id: dbDispenser.dispenser_id,
           nozzle_id: nozzle.nozzle_id,
           product: nozzle.product,
@@ -140,7 +164,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
         await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}`,
+          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
           {
             method: 'DELETE',
             headers: {
@@ -174,7 +198,7 @@ async function loadDispensersFromDB() {
     
     const dispensersWithNozzles = await Promise.all(dbDispensers.map(async dbDispenser => {
       const nozzleResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dbDispenser.customer_code}`
       );
       
       let nozzles = [];
@@ -184,6 +208,7 @@ async function loadDispensersFromDB() {
 
       return {
         id: dbDispenser.id,
+        customer_code: dbDispenser.customer_code,
         address: dbDispenser.address,
         DispenserBrand: dbDispenser.DispenserBrand,
         number_of_nozzles: dbDispenser.number_of_nozzles,
@@ -218,6 +243,8 @@ async function renderConfigDispensers() {
 
     let productOptions = [];
     try {
+        // Load stations first
+        await loadStationsFromDB();
         const data = await loadDispensersFromDB();
         window.dispensers = data.dispensers;
         productOptions = data.products;
@@ -230,7 +257,7 @@ async function renderConfigDispensers() {
     const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
     const nozzleOptions = ['A1', 'A2', 'B1', 'B2'];
 
-    const columns = ['Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
+    const columns = ['Customer Code', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
 
     const { tableContainer , tbody } = createTable(columns);
     content.appendChild(tableContainer);
@@ -239,7 +266,7 @@ async function renderConfigDispensers() {
         const overlay = createModalOverlay();
         const popup = document.createElement('div');
         popup.className = 'popup-modal';
-        popup.style.width = '300px';
+        popup.style.width = '350px';
         popup.style.maxWidth = '90vw';
 
         const header = createHeader();
@@ -257,6 +284,53 @@ async function renderConfigDispensers() {
         form.id = 'dispenser-form';
         form.style.display = 'grid';
         form.style.gap = '15px';
+
+        // Customer Code field (dropdown from stations)
+        const customerCodeContainer = document.createElement('div');
+        customerCodeContainer.style.display = 'grid';
+        customerCodeContainer.style.gridTemplateColumns = '1fr 2fr';
+        customerCodeContainer.style.alignItems = 'center';
+        
+        const customerCodeLabel = document.createElement('label');
+        customerCodeLabel.className = 'label-text';
+        customerCodeLabel.textContent = 'Customer Code:';
+        customerCodeLabel.style.width = '100px';
+        
+        const customerCodeSelect = document.createElement('select');
+        customerCodeSelect.name = 'customer_code';
+        customerCodeSelect.required = true;
+        customerCodeSelect.style.padding = '8px';
+        customerCodeSelect.style.border = '1px solid #ddd';
+        customerCodeSelect.style.borderRadius = '4px';
+        customerCodeSelect.style.width = '100%';
+        
+        // Populate customer codes from stationsList
+        if (stationsList.length === 0) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'No stations available';
+            option.disabled = true;
+            option.selected = true;
+            customerCodeSelect.appendChild(option);
+        } else {
+            const defaultOption = document.createElement('option');
+            defaultOption.value = '';
+            defaultOption.textContent = 'Select Customer Code';
+            defaultOption.disabled = true;
+            defaultOption.selected = true;
+            customerCodeSelect.appendChild(defaultOption);
+            
+            stationsList.forEach(station => {
+                const option = document.createElement('option');
+                option.value = station.customer_code;
+                option.textContent = `${station.customer_code} - ${station.station_id || station.city || 'Unknown'}`;
+                customerCodeSelect.appendChild(option);
+            });
+        }
+        
+        customerCodeContainer.appendChild(customerCodeLabel);
+        customerCodeContainer.appendChild(customerCodeSelect);
+        form.appendChild(customerCodeContainer);
 
         // Address field
         const addressContainer = document.createElement('div');
@@ -290,7 +364,7 @@ async function renderConfigDispensers() {
         
         const DispenserBrandLabel = document.createElement('label');
         DispenserBrandLabel.className = 'label-text';
-        DispenserBrandLabel.textContent = 'DispenserBrand:';
+        DispenserBrandLabel.textContent = 'Dispenser Brand:';
         DispenserBrandLabel.style.width = '100px';
         
         const DispenserBrandSelect = document.createElement('select');
@@ -300,7 +374,7 @@ async function renderConfigDispensers() {
         DispenserBrandSelect.style.border = '1px solid #ddd';
         DispenserBrandSelect.style.borderRadius = '4px';
         DispenserBrandSelect.style.width = '100%';
-        DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select DispenserBrand</option>' + 
+        DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Dispenser Brand</option>' + 
             DispenserBrandOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
         
         DispenserBrandContainer.appendChild(DispenserBrandLabel);
@@ -371,7 +445,7 @@ async function renderConfigDispensers() {
             
             nozzleOptions.forEach(nozzle => {
                 const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
-                if (checkbox.checked) {
+                if (checkbox && checkbox.checked) {
                     const container = document.createElement('div');
                     container.style.display = 'grid';
                     container.style.gridTemplateColumns = '1fr 2fr';
@@ -417,7 +491,7 @@ async function renderConfigDispensers() {
         if (displayDispensers.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 5;
+            td.colSpan = 6;
             td.style.textAlign = 'center';
             td.style.borderBottom = '1px solid #ddd';
             td.style.padding = '10px';
@@ -431,22 +505,24 @@ async function renderConfigDispensers() {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid #ddd';
             
+            const customerCodeTd = document.createElement('td');
+            customerCodeTd.style.padding = '12px';
+            customerCodeTd.textContent = dispenser.customer_code || '-';
+            tr.appendChild(customerCodeTd);
+            
             const addressTd = document.createElement('td');
             addressTd.style.padding = '12px';
-            // addressTd.style.borderRight = '1px solid #ddd';
             addressTd.textContent = dispenser.address || '-';
             tr.appendChild(addressTd);
             
             const nozzlesTd = document.createElement('td');
             nozzlesTd.style.padding = '12px';
-            // nozzlesTd.style.borderRight = '1px solid #ddd';
             nozzlesTd.textContent = dispenser.nozzles?.length > 0 ? 
                 dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-';
             tr.appendChild(nozzlesTd);
             
             const productsTd = document.createElement('td');
             productsTd.style.padding = '12px';
-            // productsTd.style.borderRight = '1px solid #ddd';
             productsTd.textContent = dispenser.nozzles?.length > 0 ? 
                 dispenser.nozzles.map(n => {
                     const productValue = n.product;
@@ -456,13 +532,11 @@ async function renderConfigDispensers() {
             
             const DispenserBrandTd = document.createElement('td');
             DispenserBrandTd.style.padding = '12px';
-            // DispenserBrandTd.style.borderRight = '1px solid #ddd';
             DispenserBrandTd.textContent = dispenser.DispenserBrand || '-';
             tr.appendChild(DispenserBrandTd);
             
             const actionTd = document.createElement('td');
             actionTd.style.padding = '12px';
-            // actionTd.style.textAlign = 'center';
             
             const editBtn = createEditButton('Edit this dispenser');
             editBtn.addEventListener('click', () => editDispenser(index));
@@ -483,6 +557,7 @@ async function renderConfigDispensers() {
         dragPopup(overlay, popup);
         
         const dispenser = window.dispensers[index] || { 
+            customer_code: '',
             address: '', 
             nozzles: [], 
             DispenserBrand: '',
@@ -490,52 +565,66 @@ async function renderConfigDispensers() {
             ir_lock_status: 1
         };
         
+        // Set form values
+        if (dispenser.customer_code) {
+            form.customer_code.value = dispenser.customer_code;
+        }
         form.address.value = dispenser.address || '';
         form.DispenserBrand.value = dispenser.DispenserBrand || '';
 
         nozzleOptions.forEach(nozzle => {
             const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
-            checkbox.checked = false;
+            if (checkbox) checkbox.checked = false;
         });
 
-        dispenser.nozzles.forEach(nozzle => {
-            const nozzleId = nozzle.nozzleId.split('-')[1];
-            const checkbox = form.querySelector(`input[name="nozzle-${nozzleId}"]`);
-            if (checkbox) {
-                checkbox.checked = true;
-            }
-        });
+        if (dispenser.nozzles) {
+            dispenser.nozzles.forEach(nozzle => {
+                const nozzleId = nozzle.nozzleId.split('-')[1];
+                const checkbox = form.querySelector(`input[name="nozzle-${nozzleId}"]`);
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            });
+        }
 
         updateProductSelectors();
 
-        dispenser.nozzles.forEach(nozzle => {
-            const nozzleId = nozzle.nozzleId.split('-')[1];
-            const productSelect = form.querySelector(`select[name="product-${nozzleId}"]`);
-            if (productSelect) {
-                productSelect.value = nozzle.product;
-            }
-        });     
+        if (dispenser.nozzles) {
+            dispenser.nozzles.forEach(nozzle => {
+                const nozzleId = nozzle.nozzleId.split('-')[1];
+                const productSelect = form.querySelector(`select[name="product-${nozzleId}"]`);
+                if (productSelect) {
+                    productSelect.value = nozzle.product;
+                }
+            });
+        }     
 
         form.onsubmit = async (e) => {
             e.preventDefault();
             
+            const customerCode = form.customer_code.value;
+            if (!customerCode) {
+                alert('Please select a customer code');
+                return;
+            }
+            
             const addressInput = form.address.value;
-            if (!addressInput || isNaN(addressInput) || 
-                // parseInt(addressInput) < 1 || parseInt(addressInput) > 65535) {
-                parseInt(addressInput) < 1) {
-                alert('Please enter a valid dispenser address between 1 and 65535');
+            if (!addressInput || isNaN(addressInput) || parseInt(addressInput) < 1) {
+                alert('Please enter a valid dispenser address (positive number)');
                 return;
             }
 
+            // Check for duplicate address within same customer
             const isDuplicate = window.dispensers.some((d, i) => 
-                i !== index && d.address === addressInput.padStart(5, '0'));
+                i !== index && d.customer_code === customerCode && d.address === addressInput.padStart(5, '0'));
             if (isDuplicate) {
-                alert('Dispenser address must be unique');
+                alert('Dispenser address must be unique for this customer');
                 return;
             }
 
             const selectedNozzles = nozzleOptions.filter(nozzle => {
-                return form.querySelector(`input[name="nozzle-${nozzle}"]`).checked;
+                const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
+                return checkbox && checkbox.checked;
             });
 
             if (selectedNozzles.length === 0) {
@@ -546,20 +635,21 @@ async function renderConfigDispensers() {
             const address = addressInput.padStart(5, '0');
             let dispenser_id = dispenser.dispenser_id;
 
-            // Fetch next dispenser_id for new dispensers
+            // Fetch next dispenser_id for new dispensers (per customer)
             if (!dispenser_id) {
                 const response = await fetch(
-                    `${API_BASE_URL}/dispensers/next-id`
+                    `${API_BASE_URL}/dispensers/next-id?customer_code=${customerCode}`
                 );
                 if (!response.ok) {
                     throw new Error('Failed to get next dispenser ID');
                 }
                 const data = await response.json();
-                dispenser_id = data.next_id;
+                dispenser_id = parseInt(data.next_id);
             }
 
             const newDispenser = {
                 id: dispenser.id,
+                customer_code: customerCode,
                 address: address,
                 DispenserBrand: form.DispenserBrand.value,
                 number_of_nozzles: selectedNozzles.length,
@@ -582,10 +672,10 @@ async function renderConfigDispensers() {
                     id: savedDispenser.id,
                     dispenser_id: savedDispenser.dispenser_id || newDispenser.dispenser_id,
                     nozzles: selectedNozzles.map(nozzle => ({
-                        nozzleId: `D${address}-${nozzle}`,
+                        nozzleId: `D${dispenser_id}-${nozzle}`,
                         product: form[`product-${nozzle}`].value,
                         status: 0,
-                        lockStatus: 1,
+                        lockStatus: 0,
                         keypadLockStatus: 1,
                         pricePerLiter: 0.00,
                         totalQuantity: 0.00,
@@ -610,10 +700,8 @@ async function renderConfigDispensers() {
     }
 
     function deleteDispenserPopup(index, row) {
-        // First popup with checkbox
         const { overlay, popup, confirmButton, cancelButton, buttonContainer } = createDeletePopup('Are you sure you want to delete this dispenser?');
         
-        // Add checkbox for deleting historical records
         const checkboxContainer = document.createElement('div');
         checkboxContainer.style.margin = '15px 0';
         checkboxContainer.style.display = 'flex';
@@ -635,7 +723,6 @@ async function renderConfigDispensers() {
 
         popup.insertBefore(checkboxContainer, buttonContainer);
 
-        // Warning message container (initially hidden)
         const warningContainer = document.createElement('div');
         warningContainer.id = 'warningContainer';
         warningContainer.style.display = 'none';
@@ -654,7 +741,6 @@ async function renderConfigDispensers() {
         warningContainer.appendChild(warningText);
         popup.insertBefore(warningContainer, buttonContainer);
 
-        // Show/hide warning when checkbox is toggled
         checkbox.addEventListener('change', function() {
             warningContainer.style.display = this.checked ? 'block' : 'none';
         });
@@ -665,8 +751,7 @@ async function renderConfigDispensers() {
             
             try {
                 if (dispenser.id) {
-                    // Delete with or without history based on checkbox
-                    await deleteFromDB(`${API_BASE_URL}/dispensers/${dispenser.id}?delete_history=${deleteHistory}`);
+                    await deleteFromDB(`${API_BASE_URL}/dispensers/${dispenser.id}?customer_code=${dispenser.customer_code}&delete_history=${deleteHistory}`);
                 }
                 
                 window.dispensers.splice(index, 1);

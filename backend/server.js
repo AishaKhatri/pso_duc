@@ -184,7 +184,19 @@ app.get('/api/auth/station/:id', async (req, res) => {
   }
 });
 
-// Add this endpoint to server.js if it doesn't exist
+// Get all stations
+app.get('/api/stations', async (req, res) => {
+    try {
+        const [stations] = await pool.query(
+            'SELECT id, customer_code, station_id, city, username, created_at FROM stations ORDER BY customer_code'
+        );
+        res.json(stations);
+    } catch (error) {
+        console.error('Get stations error:', error);
+        res.status(500).json({ error: 'Failed to fetch stations' });
+    }
+});
+
 app.get('/api/stations/:customerCode', async (req, res) => {
     try {
         const { customerCode } = req.params;
@@ -216,9 +228,19 @@ app.get('/api/stations/:customerCode', async (req, res) => {
 
 app.get('/api/dispensers', async (req, res) => {
     try {
-        const [rows] = await pool.query(
-            'SELECT * FROM dispensers'
-        );
+        const { customer_code } = req.query;
+        
+        let query = 'SELECT * FROM dispensers';
+        let params = [];
+        
+        if (customer_code) {
+            query += ' WHERE customer_code = ?';
+            params.push(customer_code);
+        }
+        
+        query += ' ORDER BY customer_code, dispenser_id';
+        
+        const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
         console.error('Database error:', error);
@@ -228,8 +250,15 @@ app.get('/api/dispensers', async (req, res) => {
 
 app.get('/api/dispensers/next-id', async (req, res) => {
     try {
+        const { customer_code } = req.query;
+        
+        if (!customer_code) {
+            return res.status(400).json({ error: 'customer_code is required' });
+        }
+        
         const [rows] = await pool.query(
-            'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) as max_id FROM dispensers'
+            'SELECT MAX(dispenser_id) as max_id FROM dispensers WHERE customer_code = ?',
+            [customer_code]
         );
 
         const next_id = (rows[0].max_id || 0) + 1;
@@ -242,14 +271,19 @@ app.get('/api/dispensers/next-id', async (req, res) => {
 
 app.get('/api/nozzles', async (req, res) => {
     try {
-        const { dispenser_id } = req.query;
+        const { dispenser_id, customer_code } = req.query;
+        
         if (!dispenser_id) {
             return res.status(400).json({ error: 'dispenser_id is required' });
         }
+        
+        if (!customer_code) {
+            return res.status(400).json({ error: 'customer_code is required' });
+        }
 
         const [rows] = await pool.query(
-            'SELECT * FROM nozzles WHERE dispenser_id = ?',
-            [dispenser_id]
+            'SELECT * FROM nozzles WHERE customer_code = ? AND dispenser_id = ?',
+            [customer_code, dispenser_id]
         );
         
         const nozzles = rows.map(nozzle => ({
@@ -623,57 +657,83 @@ app.post('/api/stations', async (req, res) => {
 
 app.post('/api/dispensers', async (req, res) => {
     try {
-        const { dispenser_id, address, DispenserBrand, number_of_nozzles, ir_lock_status } = req.body;
+        const { customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles, ir_lock_status } = req.body;
         const conn_status = 0;
         const connected_at = null;
 
-        if (!dispenser_id || !address || !DispenserBrand || !number_of_nozzles) {
-            return res.status(400).json({ error: 'All fields are required' });
+        // Validate required fields
+        if (!customer_code || !dispenser_id || !address || !DispenserBrand || !number_of_nozzles) {
+            return res.status(400).json({ error: 'All fields are required: customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles' });
         }
 
+        // Check if dispenser already exists for this customer
         const [existing] = await pool.query(
-            'SELECT id FROM dispensers WHERE dispenser_id = ?', dispenser_id
+            'SELECT id FROM dispensers WHERE customer_code = ? AND dispenser_id = ?',
+            [customer_code, dispenser_id]
         );
 
         if (existing.length > 0) {
-            return res.status(400).json({ error: 'This dispenser ID already exists' });
+            return res.status(400).json({ error: 'This dispenser ID already exists for this customer' });
         }
 
-        // if (!/^\d{5}$/.test(address)) {
-        //     return res.status(400).json({ error: 'Address must be 5 digits' });
-        // }
-
-        const [result] = await pool.query(
-            `INSERT INTO dispensers 
-            (dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)`,
-            [dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
+        // Check if address is unique for this customer
+        const [existingAddress] = await pool.query(
+            'SELECT id FROM dispensers WHERE customer_code = ? AND address = ?',
+            [customer_code, address]
         );
 
-        // Subscribe to the new dispenser's topic
-        const topic = `S${address.padStart(5, '0')}`;
-        subscribeToTopic(topic, null);
+        if (existingAddress.length > 0) {
+            return res.status(400).json({ error: 'This address already exists for this customer' });
+        }
+
+        // Get customer's city for topic construction
+        const [stations] = await pool.query(
+            'SELECT city FROM stations WHERE customer_code = ?',
+            [customer_code]
+        );
+        
+        if (stations.length === 0) {
+            return res.status(400).json({ error: 'Customer not found' });
+        }
+        
+        const city = stations[0].city;
+
+        // Insert the dispenser
+        const [result] = await pool.query(
+            `INSERT INTO dispensers 
+            (customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
+        );
+
+        // Subscribe to the new dispenser's topic using new format
+        const topic = `pso/${city}/${customer_code}/duc/s${address.padStart(5, '0')}`;
+        if (typeof subscribeToTopic === 'function') {
+            await subscribeToTopic(topic, null);
+        }
 
         res.status(201).json({ 
             success: true, 
             id: result.insertId,
+            customer_code: customer_code,
             dispenser_id: dispenser_id,
             message: 'Dispenser added successfully'
         });
     } catch (error) {
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to add dispenser' });
+        res.status(500).json({ error: 'Failed to add dispenser: ' + error.message });
     }
 });
 
 app.post('/api/nozzles', async (req, res) => {
     try {
         const { 
+            customer_code,
             dispenser_id, 
             nozzle_id, 
             product, 
-            status = 0, 
-            lock_unlock = 0, 
+            status = 1, 
+            lock_unlock = 1, 
             keypad_lock_status = 1, 
             price_per_liter = '0.00', 
             total_quantity = '0.00', 
@@ -683,8 +743,8 @@ app.post('/api/nozzles', async (req, res) => {
             quantity = '0.00'
         } = req.body;
 
-        if (!dispenser_id || !nozzle_id || !product) {
-            return res.status(400).json({ error: 'Missing required fields' });
+        if (!customer_code || !dispenser_id || !nozzle_id || !product) {
+            return res.status(400).json({ error: 'Missing required fields: customer_code, dispenser_id, nozzle_id, product' });
         }
 
         const numericFields = {
@@ -696,9 +756,10 @@ app.post('/api/nozzles', async (req, res) => {
             quantity: parseFloat(quantity)
         };
 
+        // Check if nozzle already exists
         const [existing] = await pool.query(
-            'SELECT id FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
-            [dispenser_id, nozzle_id]
+            'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
+            [customer_code, dispenser_id, nozzle_id]
         );
 
         if (existing.length > 0) {
@@ -707,10 +768,11 @@ app.post('/api/nozzles', async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO nozzles 
-            (dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status, 
+            (customer_code, dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status, 
              price_per_liter, total_quantity, total_amount, total_sales_today, price, quantity) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
+                customer_code,
                 dispenser_id, 
                 nozzle_id, 
                 product, 
@@ -733,7 +795,7 @@ app.post('/api/nozzles', async (req, res) => {
         });
     } catch (error) {
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to add nozzle' });
+        res.status(500).json({ error: 'Failed to add nozzle: ' + error.message });
     }
 });
 
@@ -759,7 +821,11 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
 app.put('/api/dispensers/:dispenser_id', async (req, res) => {
     try {
         const { dispenser_id } = req.params;
-        const { address, DispenserBrand, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+        const { customer_code, address, DispenserBrand, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+
+        if (!customer_code) {
+            return res.status(400).json({ error: 'customer_code is required' });
+        }
 
         // Check if at least one field is provided
         if (Object.keys(req.body).length === 0) {
@@ -771,9 +837,6 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
 
         // Validate and add each field if provided
         if (address !== undefined) {
-            // if (!/^\d{5}$/.test(address)) {
-            //     return res.status(400).json({ error: 'Address must be 5 digits' });
-            // }
             fields.push('address = ?');
             values.push(address);
         }
@@ -799,11 +862,11 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
         }
 
         // Add WHERE clause parameters
-        values.push(dispenser_id);
+        values.push(customer_code, dispenser_id);
 
         const [result] = await pool.query(
             `UPDATE dispensers SET ${fields.join(', ')}
-            WHERE dispenser_id = ?`,
+            WHERE customer_code = ? AND dispenser_id = ?`,
             values
         );
 
@@ -811,23 +874,10 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
             return res.status(404).json({ error: 'Dispenser not found' });
         }
 
-        // Update MQTT subscription if address changed
-        if (address !== undefined) {
-            const [oldDispenser] = await pool.query(
-                'SELECT address FROM dispensers WHERE dispenser_id = ?',
-                [dispenser_id]
-            );
-            if (oldDispenser.length > 0) {
-                unsubscribeFromTopic(`D${oldDispenser[0].address}`);
-                unsubscribeFromTopic(`duc/conn_status/D${oldDispenser[0].address}`);
-            }
-            const topic = `S${address.padStart(5, '0')}`;
-            subscribeToTopic(topic, null);
-        }
-
         res.json({ 
             success: true,
             message: 'Dispenser updated successfully',
+            customer_code,
             dispenser_id
         });
     } catch (error) {
@@ -839,17 +889,21 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
 app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
     try {
         const { dispenser_id, nozzle_id } = req.params;
-        const { product, status, price_per_liter, total_quantity, total_amount, 
+        const { customer_code, product, status, price_per_liter, total_quantity, total_amount, 
                 total_sales_today, lock_unlock, keypad_lock_status, price, quantity } = req.body;
 
+        if (!customer_code) {
+            return res.status(400).json({ error: 'customer_code is required' });
+        }
+
         // Generate a unique hash for deduplication
-        const messageHash = JSON.stringify({ dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount, 
+        const messageHash = JSON.stringify({ customer_code, dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount, 
                                              total_sales_today, lock_unlock, keypad_lock_status, price, quantity });
         const now = Date.now();
         if (recentUpdates.has(messageHash)) {
             const [lastUpdateTime] = recentUpdates.get(messageHash);
             if (now - lastUpdateTime < DEDUPE_WINDOW) {
-                console.log(`Skipping duplicate update for ${dispenser_id}/${nozzle_id}`);
+                console.log(`Skipping duplicate update for ${customer_code}/${dispenser_id}/${nozzle_id}`);
                 return res.json({ resInboundError: true, message: 'Duplicate update skipped' });
             }
         }
@@ -940,12 +994,12 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
             return res.status(400).json({ error: 'No valid fields provided for update' });
         }
 
-        values.push(dispenser_id, decodeURIComponent(nozzle_id));
+        values.push(customer_code, dispenser_id, decodeURIComponent(nozzle_id));
 
         // Update nozzles first
         const [result] = await pool.query(
             `UPDATE nozzles SET ${fields.join(', ')}
-            WHERE dispenser_id = ? AND nozzle_id = ?`,
+            WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?`,
             values
         );
 
@@ -955,16 +1009,17 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
 
         // Insert into nozzle_history after update to capture new state
         const [updatedNozzle] = await pool.query(
-            'SELECT * FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
-            [dispenser_id, decodeURIComponent(nozzle_id)]
+            'SELECT * FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
+            [customer_code, dispenser_id, decodeURIComponent(nozzle_id)]
         );
         if (updatedNozzle.length > 0) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    dispenser_id, nozzle_id, product, status, price_per_liter,
+                    customer_code, dispenser_id, nozzle_id, product, status, price_per_liter,
                     total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
+                    updatedNozzle[0].customer_code,
                     updatedNozzle[0].dispenser_id,
                     updatedNozzle[0].nozzle_id,
                     updatedNozzle[0].product,
@@ -990,7 +1045,7 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
         });
     } catch (error) {
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to update nozzle' });
+        res.status(500).json({ error: 'Failed to update nozzle: ' + error.message });
     }
 });
 
@@ -1000,11 +1055,16 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         await connection.beginTransaction();
 
         const { id } = req.params;
-        const deleteHistory = req.query.delete_history === 'true';
+        const { customer_code, delete_history } = req.query;
+        
+        if (!customer_code) {
+            await connection.rollback();
+            return res.status(400).json({ error: 'customer_code is required' });
+        }
         
         const [dispenser] = await connection.query(
-            'SELECT address, dispenser_id FROM dispensers WHERE id = ?', 
-            [id]
+            'SELECT address, dispenser_id, customer_code FROM dispensers WHERE id = ? AND customer_code = ?', 
+            [id, customer_code]
         );
         
         if (dispenser.length === 0) {
@@ -1017,26 +1077,31 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         // Temporarily disable foreign key checks
         await connection.query('SET FOREIGN_KEY_CHECKS = 0');
         
+        const deleteHistory = delete_history === 'true';
+        
         if (deleteHistory) {
             // Delete historical data first
             await connection.query(
-                'DELETE FROM nozzle_history WHERE dispenser_id = ?',
-                [dispenser_id]
+                'DELETE FROM nozzle_history WHERE customer_code = ? AND dispenser_id = ?',
+                [customer_code, dispenser_id]
             );
             
             await connection.query(
-                'DELETE FROM transactions WHERE dispenser_id = ?',
-                [dispenser_id]
+                'DELETE FROM transactions WHERE customer_code = ? AND dispenser_id = ?',
+                [customer_code, dispenser_id]
             );
         }
         
         // Delete nozzles
-        await connection.query('DELETE FROM nozzles WHERE dispenser_id = ?', [dispenser_id]);
+        await connection.query(
+            'DELETE FROM nozzles WHERE customer_code = ? AND dispenser_id = ?', 
+            [customer_code, dispenser_id]
+        );
         
         // Delete dispenser
         const [result] = await connection.query(
-            'DELETE FROM dispensers WHERE id = ?',
-            [id]
+            'DELETE FROM dispensers WHERE id = ? AND customer_code = ?',
+            [id, customer_code]
         );
         
         // Re-enable foreign key checks
@@ -1055,15 +1120,18 @@ app.delete('/api/dispensers/:id', async (req, res) => {
                 : 'Dispenser deleted (historical records preserved)'
         });
 
-        unsubscribeFromTopic(`D${dispenser[0].address}`);
-        unsubscribeFromTopic(`duc/conn_status/D${dispenser[0].address}`);
+        // Unsubscribe from MQTT topics
+        if (typeof unsubscribeFromTopic === 'function') {
+            unsubscribeFromTopic(`D${address}`);
+            unsubscribeFromTopic(`duc/conn_status/D${address}`);
+        }
                
     } catch (error) {
         await connection.rollback();
         // Make sure to re-enable foreign key checks
         await pool.query('SET FOREIGN_KEY_CHECKS = 1').catch(() => {});
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to delete dispenser' });
+        res.status(500).json({ error: 'Failed to delete dispenser: ' + error.message });
     } finally {
         connection.release();
     }

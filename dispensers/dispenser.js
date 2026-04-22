@@ -106,7 +106,7 @@ async function renderDispenser() {
 
 async function createDispenserCard(dispenser, gridContainer) {
     const nozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
     );
     if (!nozzlesResponse.ok) return;
     const nozzles = await nozzlesResponse.json();
@@ -213,7 +213,7 @@ async function updateDispenserCard(dispenser) {
 
     try {
         const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
         );
         if (!nozzlesResponse.ok) return;
         const nozzles = await nozzlesResponse.json();
@@ -270,9 +270,6 @@ function initializeMQTT(dispensers) {
                             break;
                         case 6: // IR lock
                             window.updateIRStatus?.(dispenserAddr, parseInt(data.message));
-                            break;
-                        case 7: // Transaction data
-                            window.updateNozzleTransaction?.(nozzleId, data.message);
                             break;
                         default:
                             // console.warn('Unknown message type:', data.msg_type);

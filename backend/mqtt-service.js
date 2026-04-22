@@ -87,17 +87,21 @@ async function initializeMQTTSubscriptions() {
         await subscribeToTopic('duc/registration', statusTopics);
 
         // Fetch all dispensers from the database
-        const [dispensers] = await pool.query('SELECT dispenser_id, address FROM dispensers');
+        const [dispensers] = await pool.query(`
+            SELECT d.dispenser_id, d.address, s.customer_code, s.city 
+            FROM dispensers d
+            JOIN stations s ON d.customer_code = s.customer_code
+        `);
         
         // Subscribe to each dispenser's topic and initialize nozzles
         const serverStartTime = Date.now();
         for (const dispenser of dispensers) {
             // const topic = `S${dispenser.address.padStart(5, '0')}`;
             // const topic = `pso/karachi/103088/duc/s${dispenser.address.padStart(5, '0')}`;
-            const topic = `pso/deraismailkhan/115610/duc/s${dispenser.address.padStart(5, '0')}`;
+            const topic = `pso/${dispenser.city}/${dispenser.customer_code}/duc/s${dispenser.address}`;
             await subscribeToTopic(topic, deviceTopics);
             
-            const conn_stat_topic = `duc/conn_status/D${dispenser.address.padStart(5, '0')}`; 
+            const conn_stat_topic = `duc/conn_status/D${dispenser.address}`; 
             await subscribeToTopic(conn_stat_topic, statusTopics);
 
             // Fetch all nozzles for this dispenser
@@ -137,7 +141,7 @@ async function subscribeToTopic(topic, topicList) {
     if (!topicList.has(topic)) {
         mqttClient.subscribe(topic, { qos: 1 }, (err) => {
             if (!err) {
-                logWithTimestamp(null, `Subscribed to ${topic}`);
+                logWithTimestamp(chalk.green, `Subscribed to ${topic}`);
                 topicList.add(topic);
             } else {
                 errorWithTimestamp(`Subscription error for ${topic}:`, err.message);
@@ -426,16 +430,16 @@ function getWiFiStatus(dispenserAddr) {
 
 async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusData) {
     try {
-        let deviceType, deviceId, cleanAddr;
+        let cleanAddr;
+        let customerCode;
         
         // Check if this is a dispenser device
         if (deviceAddr.startsWith('D')) {
-            deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
-            // Get dispenser_id from address
+            // Get customer_code from address
             const [dispensers] = await pool.query(
-                'SELECT dispenser_id FROM dispensers WHERE address = ?',
+                'SELECT customer_code FROM dispensers WHERE address = ?',
                 [cleanAddr]
             );
             
@@ -443,7 +447,21 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
                 errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = dispensers[0].dispenser_id;
+                customerCode = dispensers[0].customer_code;
+            }
+        } else {
+            // If not a dispenser device, try to find by address directly
+            cleanAddr = deviceAddr;
+            const [dispensers] = await pool.query(
+                'SELECT customer_code FROM dispensers WHERE address = ?',
+                [cleanAddr]
+            );
+            
+            if (dispensers.length === 0) {
+                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
+                return;
+            } else {
+                customerCode = dispensers[0].customer_code;
             }
         }
 
@@ -453,29 +471,29 @@ async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusDa
         let master_sim = null;
 
         if (connectionType === 'GSM') {
-            // Extract from PDP contexts (use the first one if available)
+            // Extract from GSM status data
             if (statusData.pdpContexts && statusData.pdpContexts.length > 0) {
                 const context = statusData.pdpContexts[0];
                 apn_ssid = context.apn;
                 ipv4 = context.ipv4;
             }
-            signal_strength = statusData.gsm.signalStrength;
-            master_sim = statusData.gsm.masterSIM === 'SIM 1' ? 0 : 
-                        statusData.gsm.masterSIM === 'SIM 2' ? 1 : null;
+            signal_strength = statusData.gsm?.signalStrength || null;
+            master_sim = statusData.gsm?.masterSIM === 'SIM 1' ? 0 : 
+                        statusData.gsm?.masterSIM === 'SIM 2' ? 1 : null;
         } else if (connectionType === 'WIFI') {
-            apn_ssid = statusData.ssid;
-            ipv4 = statusData.ipv4;
-            signal_strength = statusData.signalStrength;
+            apn_ssid = statusData.ssid || null;
+            ipv4 = statusData.ipv4 || null;
+            signal_strength = statusData.signalStrength || null;
             master_sim = null; // Always null for WiFi
         }
 
-        // Insert into database
+        // Insert into database with customer_code
         await pool.query(
             `INSERT INTO network_status 
-            (device_id, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
+            (customer_code, address, connection_type, apn_ssid, ipv4, signal_strength, master_sim) 
             VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [
-                deviceId,
+                customerCode,
                 cleanAddr,
                 connectionType,
                 apn_ssid,
@@ -599,16 +617,16 @@ function hasErrors(dispenserAddr) {
 
 async function storeErrorInDatabase(deviceAddr, errorMessage) {
     try {
-        let deviceType, deviceId, cleanAddr;
+        let cleanAddr;
+        let customerCode;
         
         // Check if this is a dispenser device
         if (deviceAddr.startsWith('D')) {
-            deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
-            // Get dispenser_id from address
+            // Get customer_code from address
             const [dispensers] = await pool.query(
-                'SELECT dispenser_id FROM dispensers WHERE address = ?',
+                'SELECT customer_code FROM dispensers WHERE address = ?',
                 [cleanAddr]
             );
             
@@ -616,17 +634,31 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
                 errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
                 return;
             } else {
-                deviceId = dispensers[0].dispenser_id;
+                customerCode = dispensers[0].customer_code;
             }
-        } 
+        } else {
+            cleanAddr = deviceAddr;
+            const [dispensers] = await pool.query(
+                'SELECT customer_code FROM dispensers WHERE address = ?',
+                [cleanAddr]
+            );
+            
+            if (dispensers.length === 0) {
+                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
+                return;
+            } else {
+                customerCode = dispensers[0].customer_code;
+            }
+        }
+        
         await pool.query(
             `INSERT INTO errors 
-            (device_id, address, error_message) 
+            (customer_code, address, error_message) 
             VALUES (?, ?, ?)`,
-            [deviceId, cleanAddr, errorMessage]
+            [customerCode, cleanAddr, errorMessage]
         );
         
-        logWithTimestamp(null, `Error stored in database: ${deviceType} ${deviceId} - ${errorMessage}`);
+        logWithTimestamp(null, `Error stored in database: ${customerCode} ${cleanAddr} - ${errorMessage}`);
     } catch (error) {
         errorWithTimestamp('Error storing error in database:', error.message);
     }
@@ -965,10 +997,11 @@ async function recordNozzleHistory() {
         for (const nozzle of nozzles) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    dispenser_id, nozzle_id, product, status, price_per_liter,
+                    customer_code, dispenser_id, nozzle_id, product, status, price_per_liter,
                     total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
+                    nozzle.customer_code,
                     nozzle.dispenser_id,
                     nozzle.nozzle_id,
                     nozzle.product,
@@ -1007,12 +1040,11 @@ async function registerNewDevice(message) {
         const customerCode = deviceData.CustomerCode;
         const stationId = deviceData.StationId;
         const city = deviceData.City;
-        const dispenserAddress = (deviceData.dis_addr || deviceData.DeviceId || '').replace(/^D/, '');
-        const dispenserId = deviceData.dis_addr || deviceData.DeviceId;
+        const deviceAddress = (deviceData.dis_addr || deviceData.DeviceId || '').replace(/^D/, '');
         
         // Validate required fields
-        if (!customerCode || !dispenserAddress || !dispenserId) {
-            errorWithTimestamp('Missing required registration fields:', { customerCode, dispenserAddress, dispenserId });
+        if (!customerCode || !deviceAddress) {
+            errorWithTimestamp('Missing required registration fields:', { customerCode, deviceAddress });
             return;
         }
         
@@ -1033,7 +1065,7 @@ async function registerNewDevice(message) {
             dispenserBrand = dispenserBrand || 'Unknown';
         }
         
-        // Parse products - split by comma and trim
+        // Parse products
         const productsRaw = deviceData.Products || '';
         const productList = productsRaw.split(',').map(p => p.trim()).filter(p => p);
         
@@ -1042,20 +1074,13 @@ async function registerNewDevice(message) {
             return;
         }
         
-        // Calculate nozzles per side based on products
-        // If numberOfSides is 2, products should be distributed across sides
-        // Example: Products "hobc,hsd" with 2 sides -> Side A gets "hobc", Side B gets "hsd"
+        // Calculate nozzles per side
         const nozzlesPerSide = numberOfSides === 2 ? 1 : productList.length;
         const totalNozzles = numberOfSides * nozzlesPerSide;
         
-        logWithTimestamp(null, `Processing registration:`);
-        logWithTimestamp(null, `  Customer: ${customerCode}`);
-        logWithTimestamp(null, `  City: ${city}`);
-        logWithTimestamp(null, `  Dispenser: ${dispenserId}`);
-        logWithTimestamp(null, `  Sides: ${numberOfSides}`);
-        logWithTimestamp(null, `  Products: ${productList.join(', ')}`);
-        logWithTimestamp(null, `  Nozzles per side: ${nozzlesPerSide}`);
-        logWithTimestamp(null, `  Total nozzles: ${totalNozzles}`);
+        logWithTimestamp(null, `Processing registration for customer ${customerCode}:`);
+        logWithTimestamp(null, `  City: ${city}, Address: ${deviceAddress}`);
+        logWithTimestamp(null, `  Sides: ${numberOfSides}, Products: ${productList.join(', ')}`);
         
         // ===== 1. Check if station exists and create if not =====
         const [existingStations] = await pool.query(
@@ -1067,21 +1092,31 @@ async function registerNewDevice(message) {
             await pool.query(
                 `INSERT INTO stations (username, password, customer_code, station_id, city) 
                  VALUES (?, ?, ?, ?, ?)`,
-                [`station_${customerCode}`, 'default123', customerCode, stationId || customerCode, city || 'Unknown']
+                [`station_${customerCode}`, 'default123', customerCode, stationId, city || 'Unknown']
             );
             logWithTimestamp(chalk.green, `✓ New station registered: ${customerCode}`);
         } else {
             logWithTimestamp(chalk.blue, `✓ Station already exists: ${customerCode}`);
         }
         
-        // ===== 2. Check if dispenser exists =====
+        // ===== 2. Get next dispenser ID for this customer =====
+        const [maxIdResult] = await pool.query(
+            'SELECT MAX(dispenser_id) as max_id FROM dispensers WHERE customer_code = ?',
+            [customerCode]
+        );
+        const nextDispenserId = (maxIdResult[0].max_id || 0) + 1;
+        
+        // ===== 3. Check if dispenser with this address already exists =====
         const [existingDispensers] = await pool.query(
-            'SELECT id, dispenser_id FROM dispensers WHERE dispenser_id = ? OR address = ?',
-            [dispenserId, dispenserAddress]
+            'SELECT customer_code, dispenser_id FROM dispensers WHERE address = ? AND customer_code = ?',
+            [deviceAddress, customerCode]
         );
         
+        let finalDispenserId;
+        
         if (existingDispensers.length === 0) {
-            // Create new dispenser
+            // Create new dispenser with auto-incremented ID
+            finalDispenserId = nextDispenserId;
             await pool.query(
                 `INSERT INTO dispensers 
                  (customer_code, dispenser_id, address, conn_status, connected_at, 
@@ -1089,8 +1124,8 @@ async function registerNewDevice(message) {
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     customerCode,
-                    dispenserId,
-                    dispenserAddress,
+                    finalDispenserId,
+                    deviceAddress,
                     0, // conn_status - offline
                     null,
                     1, // ir_lock_status - unlocked
@@ -1098,30 +1133,29 @@ async function registerNewDevice(message) {
                     dispenserBrand
                 ]
             );
-            logWithTimestamp(chalk.green, `✓ New dispenser registered: ${dispenserId} (Address: ${dispenserAddress})`);
+            logWithTimestamp(chalk.green, `✓ New dispenser registered: ID ${finalDispenserId} (Address: ${deviceAddress})`);
             
-            // Subscribe to MQTT topics for this dispenser using new format
-            const topic = `pso/${city}/${customerCode}/duc/s${dispenserAddress.padStart(5, '0')}`;
+            // Subscribe to MQTT topics for this dispenser
+            const topic = `pso/${city}/${customerCode}/duc/s${deviceAddress.padStart(5, '0')}`;
             await subscribeToTopic(topic, null);
-            const connStatTopic = `duc/conn_status/D${dispenserAddress.padStart(5, '0')}`;
+            const connStatTopic = `duc/conn_status/D${deviceAddress.padStart(5, '0')}`;
             await subscribeToTopic(connStatTopic, statusTopics);
         } else {
-            logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ${dispenserId}`);
+            finalDispenserId = existingDispensers[0].dispenser_id;
+            logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ID ${finalDispenserId}`);
         }
         
-        // ===== 3. Register nozzles based on sides and products =====
-        // Determine which side gets which product
-        let sideProductMap = [];
+        // ===== 4. Register nozzles =====
+        const dispenserIdForNozzles = `D${finalDispenserId}`; // Format for nozzle_id: D{id}
         
+        // Determine side-product mapping
+        let sideProductMap = [];
         if (numberOfSides === 2) {
-            // 2 sides: Each side gets one product
-            // Side A gets first product, Side B gets second product (if available)
             sideProductMap = [
                 { side: 'A', product: productList[0] || 'Unknown' },
                 { side: 'B', product: productList[1] || productList[0] || 'Unknown' }
             ];
         } else {
-            // 1 side: All products on the same side
             for (let i = 0; i < productList.length; i++) {
                 sideProductMap.push({ side: 'A', product: productList[i] });
             }
@@ -1133,14 +1167,12 @@ async function registerNewDevice(message) {
             const side = sideConfig.side;
             const product = sideConfig.product;
             
-            // For each side, create nozzles (usually 1 nozzle per product per side)
             for (let nozzleNum = 1; nozzleNum <= nozzlesPerSide; nozzleNum++) {
-                const nozzleId = `${dispenserId}-${side}${nozzleNum}`;
+                const nozzleId = `${dispenserIdForNozzles}-${side}${nozzleNum}`;
                 
-                // Check if nozzle exists
                 const [existingNozzles] = await pool.query(
                     'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
-                    [customerCode, dispenserId, nozzleId]
+                    [customerCode, finalDispenserId, nozzleId]
                 );
                 
                 if (existingNozzles.length === 0) {
@@ -1151,9 +1183,9 @@ async function registerNewDevice(message) {
                           total_sales_today, lock_unlock, keypad_lock_status, price, quantity) 
                          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
-                            customerCode, dispenserId, nozzleId, product,
+                            customerCode, finalDispenserId, nozzleId, product,
                             0, 0.00, 0.00, 0.00, 0.00,
-                            1, 1, 0.00, 0.00
+                            0, 1, 0.00, 0.00
                         ]
                     );
                     newNozzleCount++;
@@ -1166,17 +1198,6 @@ async function registerNewDevice(message) {
         
         if (newNozzleCount > 0) {
             logWithTimestamp(chalk.green, `✓ Added ${newNozzleCount} new nozzles`);
-        } else {
-            logWithTimestamp(chalk.blue, `✓ All nozzles already exist`);
-        }
-        
-        // ===== 4. Update dispenser number_of_nozzles if needed =====
-        if (existingDispensers.length > 0) {
-            // Update the nozzle count in case it changed
-            await pool.query(
-                'UPDATE dispensers SET number_of_nozzles = ? WHERE dispenser_id = ?',
-                [totalNozzles, dispenserId]
-            );
         }
         
         // ===== 5. Store device info =====
@@ -1188,10 +1209,11 @@ async function registerNewDevice(message) {
                 LastDieTime: deviceData.LastDieTime,
                 WakeUpTime: deviceData.WakeUpTime
             };
-            await handleDeviceInfoMessage(dispenserId, deviceInfoMessage, customerCode);
+            // Pass the numeric dispenser ID
+            await handleDeviceInfoMessage(`D${finalDispenserId}`, deviceInfoMessage, customerCode);
         }
         
-        logWithTimestamp(chalk.green.bold, `✅ Registration completed for ${dispenserId}`);
+        logWithTimestamp(chalk.green.bold, `✅ Registration completed! Dispenser ID: ${finalDispenserId} for customer ${customerCode}`);
         
     } catch (error) {
         errorWithTimestamp('Error registering new device:', error.message);
