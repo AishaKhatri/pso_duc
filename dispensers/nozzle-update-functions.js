@@ -10,31 +10,6 @@ async function fetchNozzleData(dispenser_id, nozzle_id) {
     }
 }
 
-async function updateNozzleTransaction(nozzleId, transactionData) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    // Sort transaction keys numerically and get the last entry
-    const transactionKeys = Object.keys(transactionData).sort((a, b) => parseInt(a) - parseInt(b));
-    const lastTransaction = transactionData[transactionKeys[transactionKeys.length - 1]];
-
-    nozzleData.price = parseFloat(lastTransaction.A) || 0.00;
-    nozzleData.quantity = parseFloat(lastTransaction.V) || 0.00;
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    // Update total sales for the day
-    // nozzleData.totalPrice = await updateTotalSales(nozzleId);
-
-    // console.log(`Nozzle ${nozzleId} sales computed: Price ${nozzleData.totalPrice}`);
-
-    updateNozzleUI(nozzleId, nozzleData);
-
-    window.showNotification?.(
-        `Nozzle ${nozzleData.nozzleId} transaction updated: Price ${nozzleData.price.toFixed(2)}, Quantity ${nozzleData.quantity.toFixed(2)}`,
-        'success'
-    );
-}
-
 async function updateNozzleStatus(nozzleId, status) {
     const nozzleData = await getNozzleDataFromTopic(nozzleId);
     if (!nozzleData) return;
@@ -172,7 +147,7 @@ async function getNozzleDataFromTopic(nozzleId) {
 
     const dispenserId = dispenserCard.id.split('-')[1];
 
-    const nozzle = await fetchNozzleData(dispenserId, nozzleId);
+    const nozzle = await fetchNozzleData(customer_code, dispenserId, nozzleId);
     if (!nozzle) {
         console.warn(`No nozzle data found for ${nozzleId}`);
         return null;
@@ -341,7 +316,6 @@ async function sendGetCommandsForDispenser(dispenser) {
 }
 
 window.NozzleData = NozzleData;
-window.updateNozzleTransaction = updateNozzleTransaction;
 window.updateNozzleStatus = updateNozzleStatus;
 window.updateKeypadLockStatus = updateKeypadLockStatus;
 window.updatePricePerLiter = updatePricePerLiter;
