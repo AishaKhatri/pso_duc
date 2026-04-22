@@ -279,7 +279,7 @@ function createTransactionTable(transactions) {
         
         // Format date
         const transactionDate = new Date(transaction.time);
-        const formattedDate = transactionDate.toUTCString();
+        const formattedDate = transactionDate.toLocaleString();
         
         // Create cells - Serial number first, then the rest
         const cells = [
@@ -374,7 +374,7 @@ function exportToCSV(transactions, nozzleId) {
         ['Sr. No.', 'Date', 'Time', 'Amount (PKR)', 'Volume (Ltr)', 'Transaction ID'],
         ...transactions.map((transaction, index) => [
             (index + 1).toString(), // Serial number
-            new Date(transaction.time).toUTCString(),
+            new Date(transaction.time).toLocaleString(),
             parseFloat(transaction.amount).toFixed(2),
             parseFloat(transaction.volume).toFixed(2),
             transaction.id

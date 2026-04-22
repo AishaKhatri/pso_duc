@@ -414,10 +414,10 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
         // Show latest event type
         const latestStatus = recentPowerStatuses[0];
         
-        section.appendChild(createStatusRow('Wakeup Time', (new Date(latestStatus.wakeupTime).toUTCString())));  
+        section.appendChild(createStatusRow('Wakeup Time', (new Date(latestStatus.wakeupTime).toLocaleString())));  
         section.appendChild(createStatusRow('Last Downtime', ""));  
 
-        const infoText = [`Die Time: ${new Date(latestStatus.dieTime).toUTCString()}`,
+        const infoText = [`Die Time: ${new Date(latestStatus.dieTime).toLocaleString()}`,
                     `Duration: ${formatTimeString(latestStatus.downtimeMs)}`,
                     `Reason: ${latestStatus.message}`
         ]
