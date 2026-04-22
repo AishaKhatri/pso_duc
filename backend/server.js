@@ -70,43 +70,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-// Configure storage relative to your project root
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    // Use path relative to your server.js location
-    const uploadDir = path.join(__dirname, '..', 'assets', 'dip-charts');
-    
-    // Create directory if it doesn't exist
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    // Use the exact original filename
-    cb(null, file.originalname);
-  }
-});
-
-const upload = multer({ 
-  storage: storage,
-  limits: { 
-    fileSize: 10 * 1024 * 1024 // 10MB limit
-  },
-  fileFilter: (req, file, cb) => {
-    const allowedTypes = ['.csv', '.xlsx', '.xls', '.txt'];
-    const ext = path.extname(file.originalname).toLowerCase();
-    
-    if (allowedTypes.includes(ext)) {
-      cb(null, true);
-    } else {
-      cb(new Error(`Invalid file type. Allowed: ${allowedTypes.join(', ')}`));
-    }
-  }
-});
-
-
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
@@ -219,6 +182,36 @@ app.get('/api/auth/station/:id', async (req, res) => {
       message: 'Server error' 
     });
   }
+});
+
+// Add this endpoint to server.js if it doesn't exist
+app.get('/api/stations/:customerCode', async (req, res) => {
+    try {
+        const { customerCode } = req.params;
+        
+        const [stations] = await pool.query(
+            'SELECT id, username, customer_code, station_id, city, created_at FROM stations WHERE customer_code = ?',
+            [customerCode]
+        );
+        
+        if (stations.length === 0) {
+            return res.status(404).json({ 
+                success: false, 
+                message: 'Station not found' 
+            });
+        }
+        
+        res.json({
+            success: true,
+            station: stations[0]
+        });
+    } catch (error) {
+        console.error('Get station error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error' 
+        });
+    }
 });
 
 app.get('/api/dispensers', async (req, res) => {
@@ -591,6 +584,42 @@ app.post('/api/auth/signout', async (req, res) => {
   }
 });
 
+app.post('/api/stations', async (req, res) => {
+    try {
+        const { username, password, customer_code, station_id, city } = req.body;
+        
+        // Check if station already exists
+        const [existing] = await pool.query(
+            'SELECT id FROM stations WHERE customer_code = ?',
+            [customer_code]
+        );
+        
+        if (existing.length > 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: 'Station already exists' 
+            });
+        }
+        
+        const [result] = await pool.query(
+            `INSERT INTO stations (username, password, customer_code, station_id, city) 
+             VALUES (?, ?, ?, ?, ?)`,
+            [username, password, customer_code, station_id, city]
+        );
+        
+        res.status(201).json({
+            success: true,
+            id: result.insertId,
+            message: 'Station created successfully'
+        });
+    } catch (error) {
+        console.error('Create station error:', error);
+        res.status(500).json({ 
+            success: false, 
+            message: 'Server error' 
+        });
+    }
+});
 
 app.post('/api/dispensers', async (req, res) => {
     try {
@@ -643,8 +672,8 @@ app.post('/api/nozzles', async (req, res) => {
             dispenser_id, 
             nozzle_id, 
             product, 
-            status = 1, 
-            lock_unlock = 1, 
+            status = 0, 
+            lock_unlock = 0, 
             keypad_lock_status = 1, 
             price_per_liter = '0.00', 
             total_quantity = '0.00', 

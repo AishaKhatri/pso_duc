@@ -3,7 +3,6 @@ const chalk = require('chalk');
 const pool = require('./db');
 const fs = require('fs').promises;
 const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService } = require('./backend-services');
-const dipChartService = require('./dip-chart-service');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -27,9 +26,9 @@ const lastStatusMessage = new Map();
 // const mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 
 // const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
-const mqttClient = mqtt.connect('tcp://localhost:1883', {
-// const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
-    clientId: `server`,
+// const mqttClient = mqtt.connect('tcp://localhost:1883', {
+const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
+    clientId: `server_local`,
     keepalive: 0.5 * 60,  // 30 seconds
     clean: true,
     reconnectPeriod: 5000,
@@ -85,6 +84,8 @@ function startOfflineCheck() {
 
 async function initializeMQTTSubscriptions() {
     try {
+        await subscribeToTopic('duc/registration', statusTopics);
+
         // Fetch all dispensers from the database
         const [dispensers] = await pool.query('SELECT dispenser_id, address FROM dispensers');
         
@@ -98,8 +99,6 @@ async function initializeMQTTSubscriptions() {
             
             const conn_stat_topic = `duc/conn_status/D${dispenser.address.padStart(5, '0')}`; 
             await subscribeToTopic(conn_stat_topic, statusTopics);
-
-            await subscribeToTopic('duc/registration', statusTopics);
 
             // Fetch all nozzles for this dispenser
             const [nozzles] = await pool.query(
@@ -159,6 +158,34 @@ async function unsubscribeFromTopic(topic) {
             logWithTimestamp(null, `Unsubscribed from ${topic}`);
             statusTopics.delete(topic);
         });
+    }
+}
+
+async function callApi(endpoint, method, body = null) {
+    const url = `http://localhost:3001/api/${endpoint}`;
+    const options = {
+        method: method,
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    };
+    
+    if (body) {
+        options.body = JSON.stringify(body);
+    }
+    
+    try {
+        const response = await fetch(url, options);
+        const data = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(data.error || `API call failed: ${response.statusText}`);
+        }
+        
+        return data;
+    } catch (error) {
+        errorWithTimestamp(`API call failed (${endpoint}):`, error.message);
+        throw error;
     }
 }
 
@@ -605,8 +632,9 @@ async function storeErrorInDatabase(deviceAddr, errorMessage) {
     }
 }
 
-async function handleDeviceInfoMessage(deviceAddr, deviceData) {
+async function handleDeviceInfoMessage(deviceAddr, deviceData, customerCode = null) {
     try {
+        // Parse if string
         if (typeof deviceData === 'string') {
             try {
                 deviceData = JSON.parse(deviceData);
@@ -617,27 +645,26 @@ async function handleDeviceInfoMessage(deviceAddr, deviceData) {
         }
 
         const deviceInfo = {
-            temperature: parseFloat(deviceData.fTemperature) || 0.00,
-            firmwareVersion: deviceData.fFirmwareVersion || 'Unknown',
-            hardwareVersion: deviceData.fHardwareVersion || 'Unknown',
-            macAddress: deviceData.achMacAddress || 'Unknown',
-            serialNumber: deviceData.fSerialNumber || 'Unknown',
-            lastDieTime: deviceData.lLastDieTime || 0,
-            wakeupTime: deviceData.lWakeUpTime || 0,
+            firmwareVersion: deviceData.FirmwareVersion || deviceData.fFirmwareVersion || null,
+            hardwareVersion: deviceData.HardwareVersion || deviceData.fHardwareVersion || null,
+            wifiEnable: deviceData.WifiEnable !== undefined ? deviceData.WifiEnable : 
+                       (deviceData.fWifiEnable !== undefined ? deviceData.fWifiEnable : null),
+            lastDieTime: deviceData.LastDieTime || deviceData.lLastDieTime || null,
+            wakeupTime: deviceData.WakeUpTime || deviceData.lWakeUpTime || null,
             lastUpdated: new Date().toISOString()
         };
         
         deviceInfoCache.set(deviceAddr, deviceInfo);
         
-        // Store in database as history
-        await storeDeviceInfoInDatabase(deviceAddr, deviceInfo);
+        // Store in database
+        await storeDeviceInfoInDatabase(deviceAddr, deviceInfo, customerCode);
         
         logWithTimestamp(null, `Device info updated for ${deviceAddr}:`);
         logWithTimestamp(null, `  Firmware: ${deviceInfo.firmwareVersion}`);
         logWithTimestamp(null, `  Hardware: ${deviceInfo.hardwareVersion}`);
-        logWithTimestamp(null, `  MAC: ${deviceInfo.macAddress}`);
-        logWithTimestamp(null, `  Serial: ${deviceInfo.serialNumber}`);
-        logWithTimestamp(null, `  Temperature: ${deviceInfo.temperature}°C`);
+        logWithTimestamp(null, `  WiFi Enable: ${deviceInfo.wifiEnable}`);
+        logWithTimestamp(null, `  Last Die Time: ${deviceInfo.lastDieTime}`);
+        logWithTimestamp(null, `  Wake Up Time: ${deviceInfo.wakeupTime}`);
         
         return deviceInfo;
     } catch (error) {
@@ -646,49 +673,48 @@ async function handleDeviceInfoMessage(deviceAddr, deviceData) {
     }
 }
 
-async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo) {
+async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo, customerCode = null) {
     try {
-        let deviceType, deviceId, cleanAddr;
-         
-        // Check if this is a dispenser device
+        let cleanAddr;
+        
+        // Handle dispenser device (starts with 'D')
         if (deviceAddr.startsWith('D')) {
-            deviceType = 'dispenser';
             cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
             
-            // Get dispenser_id from address
-            const [dispensers] = await pool.query(
-                'SELECT dispenser_id FROM dispensers WHERE address = ?',
-                [cleanAddr]
+            // If customerCode not provided, get it from database
+            let finalCustomerCode = customerCode;
+            if (!finalCustomerCode) {
+                const [dispensers] = await pool.query(
+                    'SELECT customer_code FROM dispensers WHERE address = ?',
+                    [cleanAddr]
+                );
+                
+                if (dispensers.length === 0) {
+                    errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
+                    return;
+                }
+                finalCustomerCode = dispensers[0].customer_code;
+            }
+            
+            // Insert device info record
+            const [result] = await pool.query(
+                `INSERT INTO device_info 
+                 (customer_code, address, firmware_version, hardware_version, 
+                  wifi_enable, last_die_time, wakeup_time) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    finalCustomerCode,
+                    cleanAddr,
+                    deviceInfo.firmwareVersion,
+                    deviceInfo.hardwareVersion,
+                    deviceInfo.wifiEnable,
+                    deviceInfo.lastDieTime,
+                    deviceInfo.wakeupTime
+                ]
             );
             
-            if (dispensers.length === 0) {
-                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                return;
-            } else {
-                deviceId = dispensers[0].dispenser_id;
-            }
-        } 
-
-        // Always insert new record - no unique constraint to prevent this
-        const [result] = await pool.query(
-            `INSERT INTO device_info 
-            (device_id, address, temperature, firmware_version, hardware_version, 
-             mac_address, serial_number, last_die_time, wakeup_time) 
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-            [
-                deviceId,
-                cleanAddr,
-                deviceInfo.temperature,
-                deviceInfo.firmwareVersion,
-                deviceInfo.hardwareVersion,
-                deviceInfo.macAddress,
-                deviceInfo.serialNumber,
-                deviceInfo.lastDieTime,
-                deviceInfo.wakeupTime
-            ]
-        );
-
-        logWithTimestamp(null, `Device info stored for ${deviceType} ${deviceId} (${cleanAddr}) - Record ID: ${result.insertId}`);
+            logWithTimestamp(null, `Device info stored for address ${cleanAddr} - Record ID: ${result.insertId}`);
+        }
     } catch (error) {
         errorWithTimestamp('Error storing device info in database:', error.message);
     }
@@ -965,60 +991,211 @@ async function recordNozzleHistory() {
 
 async function registerNewDevice(message) {
     try {
-        const nozzles = message.nozzles || {};
-
-        const nozzlesInfo = Object.keys(nozzles).map(nozzleId => ({
-            nozzleId: `D${message.address}-${nozzleId}`,
-            product: nozzles[nozzleId] || 'Unknown'
-        }));
-
-        const newDispenser = {
-            // customer_code: message.CustomerCode,
-            address: message.address,
-            DispenserBrand: message.DispenserBrand,
-            dispenser_id: message.disp_number,
-            number_of_nozzles: nozzlesInfo.length,
-            ir_lock_status: message.ir_lock_status || 1,
-            nozzles: nozzlesInfo
-        }
-
-        const dispenserResponse = await fetch(`http://localhost:3001/api/dispensers`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(newDispenser)
-        });
-
-        if (!dispenserResponse.ok) {
-            const errorData = await dispenserResponse.json().catch(() => ({}));
-            throw new Error(errorData.error || 'Failed to save dispenser');
-        }
-
-        for (const nozzle of newDispenser.nozzles) {
-            const nozzleData = {
-                // customer_code: newDispenser.customer_code,
-                dispenser_id: newDispenser.dispenser_id,
-                nozzle_id: nozzle.nozzleId,
-                product: nozzle.product,
-            };
-
-            const nozzleResponse = await fetch(`http://localhost:3001/api/nozzles`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(nozzleData)
-            });
-
-            if (!nozzleResponse.ok) {
-                const errorData = await nozzleResponse.json().catch(() => ({}));
-                console.error('Nozzle save error details:', errorData);
-                throw new Error(errorData.error || 'Failed to save nozzle');
+        // Parse the nested message
+        let deviceData = message;
+        if (typeof message.message === 'string') {
+            try {
+                const parsedInnerMessage = JSON.parse(message.message);
+                deviceData = { ...message, ...parsedInnerMessage };
+            } catch (e) {
+                errorWithTimestamp('Failed to parse registration message:', e.message);
+                return;
             }
-        }            
+        }
+        
+        // Extract data from message
+        const customerCode = deviceData.CustomerCode;
+        const stationId = deviceData.StationId;
+        const city = deviceData.City;
+        const dispenserAddress = (deviceData.dis_addr || deviceData.DeviceId || '').replace(/^D/, '');
+        const dispenserId = deviceData.dis_addr || deviceData.DeviceId;
+        
+        // Validate required fields
+        if (!customerCode || !dispenserAddress || !dispenserId) {
+            errorWithTimestamp('Missing required registration fields:', { customerCode, dispenserAddress, dispenserId });
+            return;
+        }
+        
+        // Validate number of sides
+        const numberOfSides = parseInt(deviceData.NumberOfSides);
+        if (numberOfSides !== 1 && numberOfSides !== 2) {
+            errorWithTimestamp(`Invalid number of sides: ${numberOfSides}. Must be 1 or 2`);
+            return;
+        }
+        
+        // Convert DispenserBrand from number to string
+        let dispenserBrand = deviceData.DispenserBrand;
+        if (dispenserBrand === '0' || dispenserBrand === 0) {
+            dispenserBrand = 'Tatsuno';
+        } else if (dispenserBrand === '1' || dispenserBrand === 1) {
+            dispenserBrand = 'Wayne';
+        } else {
+            dispenserBrand = dispenserBrand || 'Unknown';
+        }
+        
+        // Parse products - split by comma and trim
+        const productsRaw = deviceData.Products || '';
+        const productList = productsRaw.split(',').map(p => p.trim()).filter(p => p);
+        
+        if (productList.length === 0) {
+            errorWithTimestamp('No products specified in registration message');
+            return;
+        }
+        
+        // Calculate nozzles per side based on products
+        // If numberOfSides is 2, products should be distributed across sides
+        // Example: Products "hobc,hsd" with 2 sides -> Side A gets "hobc", Side B gets "hsd"
+        const nozzlesPerSide = numberOfSides === 2 ? 1 : productList.length;
+        const totalNozzles = numberOfSides * nozzlesPerSide;
+        
+        logWithTimestamp(null, `Processing registration:`);
+        logWithTimestamp(null, `  Customer: ${customerCode}`);
+        logWithTimestamp(null, `  City: ${city}`);
+        logWithTimestamp(null, `  Dispenser: ${dispenserId}`);
+        logWithTimestamp(null, `  Sides: ${numberOfSides}`);
+        logWithTimestamp(null, `  Products: ${productList.join(', ')}`);
+        logWithTimestamp(null, `  Nozzles per side: ${nozzlesPerSide}`);
+        logWithTimestamp(null, `  Total nozzles: ${totalNozzles}`);
+        
+        // ===== 1. Check if station exists and create if not =====
+        const [existingStations] = await pool.query(
+            'SELECT id, customer_code FROM stations WHERE customer_code = ?',
+            [customerCode]
+        );
+        
+        if (existingStations.length === 0) {
+            await pool.query(
+                `INSERT INTO stations (username, password, customer_code, station_id, city) 
+                 VALUES (?, ?, ?, ?, ?)`,
+                [`station_${customerCode}`, 'default123', customerCode, stationId || customerCode, city || 'Unknown']
+            );
+            logWithTimestamp(chalk.green, `✓ New station registered: ${customerCode}`);
+        } else {
+            logWithTimestamp(chalk.blue, `✓ Station already exists: ${customerCode}`);
+        }
+        
+        // ===== 2. Check if dispenser exists =====
+        const [existingDispensers] = await pool.query(
+            'SELECT id, dispenser_id FROM dispensers WHERE dispenser_id = ? OR address = ?',
+            [dispenserId, dispenserAddress]
+        );
+        
+        if (existingDispensers.length === 0) {
+            // Create new dispenser
+            await pool.query(
+                `INSERT INTO dispensers 
+                 (customer_code, dispenser_id, address, conn_status, connected_at, 
+                  ir_lock_status, number_of_nozzles, DispenserBrand) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                [
+                    customerCode,
+                    dispenserId,
+                    dispenserAddress,
+                    0, // conn_status - offline
+                    null,
+                    1, // ir_lock_status - unlocked
+                    totalNozzles,
+                    dispenserBrand
+                ]
+            );
+            logWithTimestamp(chalk.green, `✓ New dispenser registered: ${dispenserId} (Address: ${dispenserAddress})`);
+            
+            // Subscribe to MQTT topics for this dispenser using new format
+            const topic = `pso/${city}/${customerCode}/duc/s${dispenserAddress.padStart(5, '0')}`;
+            await subscribeToTopic(topic, null);
+            const connStatTopic = `duc/conn_status/D${dispenserAddress.padStart(5, '0')}`;
+            await subscribeToTopic(connStatTopic, statusTopics);
+        } else {
+            logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ${dispenserId}`);
+        }
+        
+        // ===== 3. Register nozzles based on sides and products =====
+        // Determine which side gets which product
+        let sideProductMap = [];
+        
+        if (numberOfSides === 2) {
+            // 2 sides: Each side gets one product
+            // Side A gets first product, Side B gets second product (if available)
+            sideProductMap = [
+                { side: 'A', product: productList[0] || 'Unknown' },
+                { side: 'B', product: productList[1] || productList[0] || 'Unknown' }
+            ];
+        } else {
+            // 1 side: All products on the same side
+            for (let i = 0; i < productList.length; i++) {
+                sideProductMap.push({ side: 'A', product: productList[i] });
+            }
+        }
+        
+        let newNozzleCount = 0;
+        
+        for (const sideConfig of sideProductMap) {
+            const side = sideConfig.side;
+            const product = sideConfig.product;
+            
+            // For each side, create nozzles (usually 1 nozzle per product per side)
+            for (let nozzleNum = 1; nozzleNum <= nozzlesPerSide; nozzleNum++) {
+                const nozzleId = `${dispenserId}-${side}${nozzleNum}`;
+                
+                // Check if nozzle exists
+                const [existingNozzles] = await pool.query(
+                    'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
+                    [customerCode, dispenserId, nozzleId]
+                );
+                
+                if (existingNozzles.length === 0) {
+                    await pool.query(
+                        `INSERT INTO nozzles 
+                         (customer_code, dispenser_id, nozzle_id, product, status, 
+                          price_per_liter, total_quantity, total_amount, 
+                          total_sales_today, lock_unlock, keypad_lock_status, price, quantity) 
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        [
+                            customerCode, dispenserId, nozzleId, product,
+                            0, 0.00, 0.00, 0.00, 0.00,
+                            1, 1, 0.00, 0.00
+                        ]
+                    );
+                    newNozzleCount++;
+                    logWithTimestamp(chalk.green, `  ✓ Added nozzle: ${nozzleId} (${product})`);
+                } else {
+                    logWithTimestamp(chalk.blue, `  ✓ Nozzle already exists: ${nozzleId}`);
+                }
+            }
+        }
+        
+        if (newNozzleCount > 0) {
+            logWithTimestamp(chalk.green, `✓ Added ${newNozzleCount} new nozzles`);
+        } else {
+            logWithTimestamp(chalk.blue, `✓ All nozzles already exist`);
+        }
+        
+        // ===== 4. Update dispenser number_of_nozzles if needed =====
+        if (existingDispensers.length > 0) {
+            // Update the nozzle count in case it changed
+            await pool.query(
+                'UPDATE dispensers SET number_of_nozzles = ? WHERE dispenser_id = ?',
+                [totalNozzles, dispenserId]
+            );
+        }
+        
+        // ===== 5. Store device info =====
+        if (deviceData.FirmwareVersion || deviceData.HardwareVersion || deviceData.WifiEnable !== undefined) {
+            const deviceInfoMessage = {
+                FirmwareVersion: deviceData.FirmwareVersion,
+                HardwareVersion: deviceData.HardwareVersion,
+                WifiEnable: deviceData.WifiEnable,
+                LastDieTime: deviceData.LastDieTime,
+                WakeUpTime: deviceData.WakeUpTime
+            };
+            await handleDeviceInfoMessage(dispenserId, deviceInfoMessage, customerCode);
+        }
+        
+        logWithTimestamp(chalk.green.bold, `✅ Registration completed for ${dispenserId}`);
+        
     } catch (error) {
         errorWithTimestamp('Error registering new device:', error.message);
+        errorWithTimestamp('Stack:', error.stack);
     }
 }
 
@@ -1030,9 +1207,6 @@ mqttClient.on('connect', () => {
     lastStatusMessage.clear(); // Clear status tracking on new connection
     initializeMQTTSubscriptions(); // Subscribe to all dispenser topics
     startOfflineCheck(); // Start periodic offline check
-
-    // Initialize dip chart cache
-    initializeDipChartCache();
 
     // Start the periodic history snapshot
     setInterval(recordNozzleHistory, HISTORY_RECORD_INTERVAL);
