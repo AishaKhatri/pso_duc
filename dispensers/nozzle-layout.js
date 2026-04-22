@@ -30,23 +30,17 @@ window.createNozzleLayout = function (containerId, data) {
     card.style.padding = '0px';
     card.style.border = data.locked ? '3px solid #D32F2F' : '0.5px solid #dddddd';
 
-    const fuelConfig = {
-      'PMG': { header: '#FF7043', accent: '#FFCCBC' }, // Coral, Peach
-      'HSD': { header: '#FFB300', accent: '#FFE0B2' }, // Amber, Golden
-      'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
-    };
-
     const fuelType = data.fuelType;
-    const config = fuelConfig[fuelType];
+    const colorConfig = productColorConfig[fuelType];
 
     // Header with nozzle ID
     const header = document.createElement('div');
-    header.style.background = config.header;
+    header.style.background = colorConfig.header;
     header.style.color = '#111111';
     header.style.padding = '4px 8px 4px';
     header.style.display = 'flex';
     header.style.alignItems = 'center';
-    header.style.borderBottom = `4px solid ${config.accent}`;
+    header.style.borderBottom = `4px solid ${colorConfig.accent}`;
 
     // Left: Nozzle icon + number
     const nozzleLeft = document.createElement('div');

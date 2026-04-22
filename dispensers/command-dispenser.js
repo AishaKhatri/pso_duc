@@ -37,7 +37,7 @@ async function showCommandDispenserPopup() {
 
         for (const dispenser of dispensers) {
             const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
             );
             if (!nozzlesResponse.ok) continue;
             const nozzles = await nozzlesResponse.json();
@@ -217,17 +217,16 @@ function createNozzlesSection(dispenserTopic, nozzles, container) {
     nozzlesGrid.style.gap = '15px';
     nozzlesGrid.style.marginTop = '10px';
 
-    const config = { header: '#FF7043', accent: '#FFCCBC' };
-
     nozzles.forEach(nozzle => {
-        const nozzleCard = createNozzleCard(dispenserTopic, nozzle, config);
+        const product = nozzle.product
+        const nozzleCard = createNozzleCard(dispenserTopic, nozzle, productColorConfig[product]);
         nozzlesGrid.appendChild(nozzleCard);
     });
 
     container.appendChild(nozzlesGrid);
 }
 
-function createNozzleCard(dispenserTopic, nozzle, config) {
+function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
     const nozzleCard = document.createElement('div');
     nozzleCard.style.position = 'relative';
     nozzleCard.style.borderRadius = '8px';
@@ -242,13 +241,13 @@ function createNozzleCard(dispenserTopic, nozzle, config) {
 
     // Create header
     const header = document.createElement('div');
-    header.style.background = config.header;
+    header.style.background = colorConfig.header;
     header.style.color = '#111111';
     header.style.padding = '4px 8px 4px';
     header.style.display = 'flex';
     header.style.alignItems = 'center';
     header.style.justifyContent = 'space-between';
-    header.style.borderBottom = `4px solid ${config.accent}`;
+    header.style.borderBottom = `4px solid ${colorConfig.accent}`;
 
     const nozzleLeft = document.createElement('div');
     nozzleLeft.style.display = 'flex';

@@ -5,6 +5,12 @@ const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};
 
+const productColorConfig = {
+      'PMG': { header: '#FF7043', accent: '#FFCCBC' }, // Coral, Peach
+      'HSD': { header: '#FFB300', accent: '#FFE0B2' }, // Amber, Golden
+      'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
+    };
+
 function renderApp() {
     const app = document.getElementById('app');
     app.innerHTML = `
