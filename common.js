@@ -356,18 +356,18 @@ function createCard(address, customer_code) {
     nextContainer.style.marginRight = '5px';
     nextContainer.style.position = 'relative';
 
-    const addressText = document.createElement('div');
-    // addressText.textContent = `Address: ${address}`;
-    addressText.textContent = `${customer_code}`;
-    addressText.style.fontSize = '14px';
-    addressText.style.color = '#666';
+    // const addressText = document.createElement('div');
+    // // addressText.textContent = `Address: ${address}`;
+    // addressText.textContent = `${customer_code}`;
+    // addressText.style.fontSize = '14px';
+    // addressText.style.color = '#666';
 
     const uptime = document.createElement('div');
     uptime.className = 'uptime';
     uptime.style.fontSize = '12px';
     uptime.style.color = '#999';
     
-    nextContainer.appendChild(addressText);
+    // nextContainer.appendChild(addressText);
     nextContainer.appendChild(uptime);
     card.appendChild(nextContainer);
 

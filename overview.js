@@ -22,9 +22,8 @@ async function renderOverview() {
             message.style.width = '100%';
             gridContainer.appendChild(message);
         } else {
-            for (const dispenser of dispensers) {
-                await createDispenserCard(dispenser, gridContainer);
-            }
+            // Use station-wise rendering with SUMMARY layout
+            await window.renderStationWiseDispensers(dispensers, gridContainer, createDispenserCard, { layoutType: window.NOZZLE_LAYOUTS.SUMMARY });
         }
 
         content.appendChild(gridContainer);
@@ -51,7 +50,9 @@ async function renderOverview() {
     } 
 }
 
-async function createDispenserCard(dispenser, gridContainer) {
+async function createDispenserCard(dispenser, gridContainer, params = {}) {
+    const layoutType = params.layoutType || window.NOZZLE_LAYOUTS.SUMMARY;
+    
     const nozzlesResponse = await fetch(
         `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
     );
@@ -84,13 +85,13 @@ async function createDispenserCard(dispenser, gridContainer) {
         const nozzleData = window.NozzleData(nozzle);
         
         if (typeof window.setNozzleLayoutType === 'function') {
-            window.setNozzleLayoutType(nozzle.nozzle_id, window.NOZZLE_LAYOUTS.SUMMARY);
+            window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
         }
 
         if (typeof window.createNozzleLayout === 'function') {
             try {
                 setTimeout(() => {
-                    window.createNozzleLayout(nozzleContainer.id, nozzleData, window.NOZZLE_LAYOUTS.SUMMARY);
+                    window.createNozzleLayout(nozzleContainer.id, nozzleData, layoutType);
                 }, 50);
             } catch (e) {
                 console.error('Nozzle summary error:', e);

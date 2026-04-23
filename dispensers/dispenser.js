@@ -73,9 +73,8 @@ async function renderDispenser() {
             message.style.width = '100%';
             gridContainer.appendChild(message);
         } else {
-            for (const dispenser of dispensers) {
-                await createDispenserCard(dispenser, gridContainer);
-            }
+            // Use station-wise rendering
+            await window.renderStationWiseDispensers(dispensers, gridContainer, createDispenserCard, { layoutType: window.NOZZLE_LAYOUTS.FULL });
         }
 
         content.appendChild(gridContainer);
@@ -104,7 +103,9 @@ async function renderDispenser() {
     }
 }
 
-async function createDispenserCard(dispenser, gridContainer) {
+async function createDispenserCard(dispenser, gridContainer, params = {}) {
+    const layoutType = params.layoutType || window.NOZZLE_LAYOUTS.FULL;
+    
     const nozzlesResponse = await fetch(
         `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
     );
@@ -179,13 +180,13 @@ async function createDispenserCard(dispenser, gridContainer) {
         const nozzleData = window.NozzleData(nozzle);
         
         if (typeof window.setNozzleLayoutType === 'function') {
-            window.setNozzleLayoutType(nozzle.nozzle_id, window.NOZZLE_LAYOUTS.FULL);
+            window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
         }
 
         if (typeof window.createNozzleLayout === 'function') {
             try {
                 setTimeout(() => {
-                    window.createNozzleLayout(nozzleContainer.id, nozzleData, window.NOZZLE_LAYOUTS.FULL);
+                    window.createNozzleLayout(nozzleContainer.id, nozzleData, layoutType);
                 }, 50);
             } catch (e) {
                 console.error('Nozzle layout error:', e);
@@ -247,7 +248,6 @@ function initializeMQTT(dispensers) {
                     const nozzleNum = data.noz_number;
                     const nozzleId = `${dispenserAddr}-${side}${nozzleNum}`;
 
-                    // Only handle status messages (msg_type: 0)
                     if (data.msg_type === 0) {
                         window.updateNozzleStatus?.(nozzleId, parseInt(data.message));
                     }
