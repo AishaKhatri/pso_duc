@@ -20,6 +20,7 @@ const {
     startMidnightResetService,
     NotificationService,
     NotificationWebSocketServer } = require('./backend-services');
+const { log } = require('console');
 
 const app = express();
 app.use(cors());
@@ -257,7 +258,7 @@ app.get('/api/dispensers/next-id', async (req, res) => {
         }
         
         const [rows] = await pool.query(
-            'SELECT MAX(dispenser_id) as max_id FROM dispensers WHERE customer_code = ?',
+            'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) as max_id FROM dispensers WHERE customer_code = ?',
             [customer_code]
         );
 

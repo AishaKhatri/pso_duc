@@ -27,7 +27,7 @@ class NotificationHandler {
 
         try {
             // Connect directly to backend server on port 3001
-            const wsUrl = `ws://${host_PC_IP}:3001/ws/notifications`;
+            const wsUrl = `ws://localhost:3001/ws/notifications`;
             
             console.log('Attempting to connect to:', wsUrl);
             this.ws = new WebSocket(wsUrl);

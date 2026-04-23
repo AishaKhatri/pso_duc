@@ -303,7 +303,7 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
     }
 }
 
-function createCard(title, address) {
+function createCard(address, customer_code) {
     const card = document.createElement('div');
     Object.assign(card.style, {
         backgroundColor: '#fff',
@@ -327,7 +327,7 @@ function createCard(title, address) {
     titleContainer.style.position = 'relative';
 
     const titleText = document.createElement('h2');
-    titleText.textContent = title;
+    titleText.textContent = address;
 
     const statusText = createLink();
     statusText.className = 'conn-status';
@@ -352,7 +352,8 @@ function createCard(title, address) {
     nextContainer.style.position = 'relative';
 
     const addressText = document.createElement('div');
-    addressText.textContent = `Address: ${address}`;
+    // addressText.textContent = `Address: ${address}`;
+    addressText.textContent = `${customer_code}`;
     addressText.style.fontSize = '14px';
     addressText.style.color = '#666';
 
