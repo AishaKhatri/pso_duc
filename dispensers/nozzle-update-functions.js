@@ -1,6 +1,9 @@
-async function fetchNozzleData(dispenser_id, nozzle_id) {
+// Store layout type for each nozzle
+const nozzleLayoutType = new Map();
+
+async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}&customer_code=${customer_code}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
         return nozzles.find(n => n.nozzle_id === nozzle_id);
@@ -26,119 +29,9 @@ async function updateNozzleStatus(nozzleId, status) {
     );
 }
 
-async function updateKeypadLockStatus(nozzleId, lockStatus) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    const isLocked = lockStatus === 1;
-    nozzleData.keypadStatus = isLocked ? 'Locked' : 'Unlocked';
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-
-    window.showNotification?.(
-        `Nozzle ${nozzleData.nozzleId} keypad ${isLocked ? 'locked' : 'unlocked'}`,
-        isLocked ? 'warning' : 'success'
-    );
-}
-
-async function updatePricePerLiter(nozzleId, price) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    nozzleData.pricePerLitre = typeof price === 'string' ? parseFloat(price) : price;
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-}
-
-async function updateTotalQuantity(nozzleId, quantity) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    nozzleData.totalQuantity = typeof quantity === 'string' ? parseFloat(quantity) : quantity;
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-}
-
-async function updateTotalSales(nozzleId, totalSales) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    // nozzleData.totalPrice = typeof totalSales === 'string' ? parseFloat(totalSales) : totalSales;
-    nozzleData.totalSalesToday = 0.00;
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-}
-
-// async function updateTotalSales(nozzleId) {
-//     try {
-//         const response = await fetch(
-//             `${API_BASE_URL}/transactions/by-nozzle?nozzle_id=${encodeURIComponent(nozzleId)}`
-//         );
-        
-//         if (!response.ok) {
-//             throw new Error(`HTTP error! status: ${response.status}`);
-//         }
-
-//         const transactions = await response.json();
-
-//         // console.log(`computing total sales for nozzle ${nozzleId}`);
-
-//         // Calculate total sales for today
-//         const today = new Date().toDateString();
-//         const todaySales = transactions.reduce((total, transaction) => {
-//             const transactionDate = new Date(transaction.time).toDateString();
-//             if (transactionDate === today) {
-//                 return total + parseFloat(transaction.amount);
-//             }
-//             return total;
-//         }, 0);
-
-//         // console.log(`total sales for nozzle ${nozzleId}: `, todaySales);
-        
-//         return todaySales;
-
-//     } catch (error) {
-//         console.error('Error updating total sales: ', error);
-//     }
-// }
-
-async function updateNozzleLockStatus(nozzleId, lockStatus) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    const isLocked = lockStatus === 1;
-    nozzleData.locked = isLocked;
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-
-    window.showNotification?.(
-        `Nozzle ${nozzleData.nozzleId} ${isLocked ? 'locked' : 'unlocked'}`,
-        isLocked ? 'warning' : 'success'
-    );
-}
-
-async function updateIRStatus(dispenserId, lockStatus) {
-    const dispenserCard = document.querySelector(`div[data-address="${dispenserId}"]`);
-    if (dispenserCard) {
-        const irLockIcon = dispenserCard.querySelector('.ir-lock-icon');
-        if (irLockIcon) {
-            const isLocked = lockStatus === 1;
-            irLockIcon.src = isLocked 
-                ? 'assets/graphics/green-lock.png' 
-                : 'assets/graphics/red-unlock.png';
-            irLockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
-        }
-    }
-}
-
 async function getNozzleDataFromTopic(nozzleId) {
-    const topic = nozzleId.split('-')[0]; // e.g., D55225
-    const shortNozzleId = nozzleId.split('-').pop(); // e.g., A1
+    const topic = nozzleId.split('-')[0];
+    const shortNozzleId = nozzleId.split('-').pop();
     const dispenserCard = document.querySelector(`div[data-address="${topic}"]`);
     if (!dispenserCard) {
         console.warn(`No dispenser found for topic ${topic}`);
@@ -146,34 +39,40 @@ async function getNozzleDataFromTopic(nozzleId) {
     }
 
     const dispenserId = dispenserCard.id.split('-')[1];
+    const customerCode = dispenserCard.querySelector('.card-title')?.textContent.split(': ')[1];
 
-    const nozzle = await fetchNozzleData(customer_code, dispenserId, nozzleId);
+    const nozzle = await fetchNozzleData(customerCode, dispenserId, nozzleId);
     if (!nozzle) {
         console.warn(`No nozzle data found for ${nozzleId}`);
         return null;
     }
 
-    // Cache existing nozzleData to preserve price and quantity
     const container = document.getElementById(`nozzle-${nozzleId}`);
-    let existingNozzleData = null;
+    let layoutType = window.NOZZLE_LAYOUTS?.FULL || 'full';
+    
     if (container && container.nozzleData) {
-        existingNozzleData = container.nozzleData;
+        layoutType = container.nozzleData.layoutType || layoutType;
     }
+    
+    const storedType = nozzleLayoutType.get(nozzleId);
+    if (storedType) layoutType = storedType;
 
     return {
         nozzleId: shortNozzleId,
         fullNozzleId: nozzleId,
+        dispenserId: nozzle.dispenser_id,
         fuelType: normalizeFuelType(nozzle.product),
         status: nozzle.status ? 'Active' : 'Inactive',
         price: parseFloat(nozzle.price) || 0.00,
         quantity: parseFloat(nozzle.quantity) || 0.00,
         pricePerLitre: parseFloat(nozzle.price_per_liter) || 0.00,
         totalQuantity: parseFloat(nozzle.total_quantity) || 0.00,
-        totalPrice: parseFloat(nozzle.total_amount) || 0.00,
         totalSalesToday: parseFloat(nozzle.total_sales_today) || 0.00,
+        totalPrice: parseFloat(nozzle.total_amount) || 0.00,
         lastUpdated: new Date().toLocaleString(),
         keypadStatus: nozzle.keypad_lock_status ? 'Locked' : 'Unlocked',
-        locked: !!nozzle.lock_unlock
+        locked: !!nozzle.lock_unlock,
+        layoutType: layoutType
     };
 }
 
@@ -194,13 +93,13 @@ function updateNozzleUI(nozzleId, nozzleData) {
             return;
         }
 
-        // Store nozzleData on the container for future reference
         container.nozzleData = nozzleData;
+        
+        const layoutType = nozzleLayoutType.get(nozzleId) || nozzleData.layoutType || window.NOZZLE_LAYOUTS?.FULL || 'full';
 
-        console.debug(`Found nozzle container: nozzle-${nozzleId}`);
         if (typeof window.createNozzleLayout === 'function') {
             setTimeout(() => {
-                window.createNozzleLayout(`nozzle-${nozzleId}`, nozzleData);
+                window.createNozzleLayout(`nozzle-${nozzleId}`, nozzleData, layoutType);
             }, 50);
         } else {
             console.warn('createNozzleLayout function not found');
@@ -230,9 +129,31 @@ function NozzleData(nozzle) {
     };
 }
 
+function setNozzleLayoutType(nozzleId, layoutType) {
+    nozzleLayoutType.set(nozzleId, layoutType);
+}
+
+function getNozzleLayoutType(nozzleId) {
+    return nozzleLayoutType.get(nozzleId);
+}
+
+async function updateIRStatus(dispenserId, lockStatus) {
+    const dispenserCard = document.querySelector(`div[data-address="${dispenserId}"]`);
+    if (dispenserCard) {
+        const irLockIcon = dispenserCard.querySelector('.ir-lock-icon');
+        if (irLockIcon) {
+            const isLocked = lockStatus === 1;
+            irLockIcon.src = isLocked 
+                ? 'assets/graphics/green-lock.png' 
+                : 'assets/graphics/red-unlock.png';
+            irLockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
+        }
+    }
+}
+
 async function sendGetCommandsForDispenser(dispenser) {
-    const topic = `D${dispenser.address.padStart(5, '0')}`;
-    const dis_addr = `D${dispenser.address.padStart(5, '0')}`;
+    const topic = `D${dispenser.address}`;
+    const dis_addr = `D${dispenser.address}`;
     
     // Configuration - comment out message types you don't want to request
     const messageTypesToRequest = {
@@ -249,25 +170,21 @@ async function sendGetCommandsForDispenser(dispenser) {
     const DELAY_BETWEEN_MESSAGES = 500; // 500ms delay
 
     try {
-        // Fetch the actual nozzles for this dispenser
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
 
-        // Create a set of existing nozzle IDs (like "A1", "B2", etc.)
         const existingNozzles = new Set();
         nozzles.forEach(nozzle => {
-            const shortId = nozzle.nozzle_id.split('-').pop(); // Extract A1/B1/etc.
+            const shortId = nozzle.nozzle_id.split('-').pop();
             existingNozzles.add(shortId);
         });
 
-        // Collect all messages to be sent
         const messagesToSend = [];
         
         ['A1', 'A2', 'B1', 'B2'].forEach(nozzleId => {
             if (existingNozzles.has(nozzleId)) {
                 const side = nozzleId[0];
-                // const side = nozzleId[0] === 'A' ? '0' : '1';
                 const noz_number = nozzleId[1];
                 
                 Object.keys(messageTypesToRequest).forEach(msg_type => {
@@ -315,14 +232,13 @@ async function sendGetCommandsForDispenser(dispenser) {
     }
 }
 
+// Export functions
 window.NozzleData = NozzleData;
+window.setNozzleLayoutType = setNozzleLayoutType;
+window.getNozzleLayoutType = getNozzleLayoutType;
 window.updateNozzleStatus = updateNozzleStatus;
-window.updateKeypadLockStatus = updateKeypadLockStatus;
-window.updatePricePerLiter = updatePricePerLiter;
-window.updateTotalQuantity = updateTotalQuantity;
-window.updateTotalSales = updateTotalSales;
-window.updateNozzleLockStatus = updateNozzleLockStatus;
 window.updateIRStatus = updateIRStatus;
+window.updateConnStatus = updateConnStatus;
 window.getNozzleDataFromTopic = getNozzleDataFromTopic;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;

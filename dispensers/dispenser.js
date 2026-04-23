@@ -113,7 +113,7 @@ async function createDispenserCard(dispenser, gridContainer) {
 
     if (nozzles.length === 0) return;
 
-    const paddedAddress = dispenser.address.padStart(5, '0');
+    const paddedAddress = dispenser.address;
     const dispenserTopic = `D${paddedAddress}`;
 
     const { card, titleContainer } = createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
@@ -147,20 +147,18 @@ async function createDispenserCard(dispenser, gridContainer) {
     refreshButton.style.top = '0';
     refreshButton.style.left = '65%';
     refreshButton.style.cursor = 'pointer';
-    refreshButton.style.transition = 'transform 0.2s ease'; // Add smooth transition
+    refreshButton.style.transition = 'transform 0.2s ease';
     refreshButton.title = 'Refresh';
     refreshButton.addEventListener('click', () => {
         sendGetCommandsForDispenser(dispenser);
     });
 
-    // Add hover effect to enlarge the button slightly
     refreshButton.addEventListener('mouseover', () => {
-        refreshButton.style.transform = 'scale(1.05)'; // Enlarge by 10%
+        refreshButton.style.transform = 'scale(1.05)';
     });
 
-    // Return to normal size when mouse leaves
     refreshButton.addEventListener('mouseout', () => {
-        refreshButton.style.transform = 'scale(1)'; // Return to original size
+        refreshButton.style.transform = 'scale(1)';
     });
 
     titleContainer.appendChild(refreshButton);
@@ -179,11 +177,15 @@ async function createDispenserCard(dispenser, gridContainer) {
         nozzleGrid.appendChild(nozzleContainer);
 
         const nozzleData = window.NozzleData(nozzle);
+        
+        if (typeof window.setNozzleLayoutType === 'function') {
+            window.setNozzleLayoutType(nozzle.nozzle_id, window.NOZZLE_LAYOUTS.FULL);
+        }
 
         if (typeof window.createNozzleLayout === 'function') {
             try {
                 setTimeout(() => {
-                    window.createNozzleLayout(nozzleContainer.id, nozzleData);
+                    window.createNozzleLayout(nozzleContainer.id, nozzleData, window.NOZZLE_LAYOUTS.FULL);
                 }, 50);
             } catch (e) {
                 console.error('Nozzle layout error:', e);
@@ -198,17 +200,13 @@ async function updateDispenserCard(dispenser) {
     if (!card) return;
 
     if (typeof window.updateIRStatus === 'function') {
-        const dispenserAddr = dispenser.address.padStart(5, '0');
+        const dispenserAddr = dispenser.address;
         window.updateIRStatus(`D${dispenserAddr}`, dispenser.ir_lock_status ? 1 : 0);
-    } else {
-        console.warn('updateIRStatus function not available');
     }
 
     if (typeof window.updateConnStatus === 'function') {
-        const dispenserAddr = dispenser.address.padStart(5, '0');
+        const dispenserAddr = dispenser.address;
         window.updateConnStatus(`D${dispenserAddr}`, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
-    } else {
-        console.warn('updateConnStatus function not available');
     }
 
     try {
@@ -232,8 +230,9 @@ async function updateDispenserCard(dispenser) {
 function initializeMQTT(dispensers) {
     initializeMQTTClient(() => {
         dispensers.forEach(dispenser => {
-            // const topic = `S${dispenser.address.padStart(5, '0')}`;
-            const topic = `pso/deraismailkhan/115610/duc/s${dispenser.address.padStart(5, '0')}`;
+            const city = window.currentStation?.city || 'deraismailkhan';
+            const customerCode = dispenser.customer_code;
+            const topic = `pso/${city}/${customerCode}/duc/s${dispenser.address}`;
             
             subscribeToTopic(topic, async (receivedTopic, message) => {
                 const messageStr = message.toString();
@@ -248,31 +247,9 @@ function initializeMQTT(dispensers) {
                     const nozzleNum = data.noz_number;
                     const nozzleId = `${dispenserAddr}-${side}${nozzleNum}`;
 
-                    switch(data.msg_type) {
-                        case 0: // Online/offline status
-                            window.updateNozzleStatus?.(nozzleId, parseInt(data.message));
-                            // await generateNotification('Online', `Nozzle ${nozzleId} is online`, type = 'success')
-                            break;
-                        case 1: // Price per liter
-                            window.updatePricePerLiter?.(nozzleId, parseFloat(data.message));
-                            break;
-                        case 2: // Total quantity
-                            window.updateTotalQuantity?.(nozzleId, parseFloat(data.message));
-                            break;
-                        case 3: // Total sales
-                            window.updateTotalSales?.(nozzleId, parseFloat(data.message));
-                            break;
-                        case 4: // Nozzle lock
-                            window.updateNozzleLockStatus?.(nozzleId, parseInt(data.message));
-                            break;
-                        case 5: // Keypad lock
-                            window.updateKeypadLockStatus?.(nozzleId, parseInt(data.message));
-                            break;
-                        case 6: // IR lock
-                            window.updateIRStatus?.(dispenserAddr, parseInt(data.message));
-                            break;
-                        default:
-                            // console.warn('Unknown message type:', data.msg_type);
+                    // Only handle status messages (msg_type: 0)
+                    if (data.msg_type === 0) {
+                        window.updateNozzleStatus?.(nozzleId, parseInt(data.message));
                     }
                 } catch (error) {
                     console.error('Error processing MQTT message:', error);

@@ -17,12 +17,14 @@ function renderSidebar() {
     
     // Sidebar items array (keeping comments for reference)
     const items = [
-        { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'index.html' },
+        { page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' },
+        { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' },
     ];
 
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
     const pageMap = {
+        'index': 'overview',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
     };

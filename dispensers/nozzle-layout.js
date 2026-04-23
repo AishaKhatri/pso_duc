@@ -1,43 +1,46 @@
-window.createNozzleLayout = function (containerId, data) {
-    try {
-        const container = document.getElementById(containerId);
-        if (!container) {
-            console.warn(`Container ${containerId} not found, retrying...`);
-            setTimeout(() => {
-                const retryContainer = document.getElementById(containerId);
-                if (retryContainer) {
-                    window.createNozzleLayout(containerId, data);
-                }
-            }, 50);
-            return;
-        }
-    
-    container.innerHTML = '';
+// Common configuration for both layouts
+const LAYOUT_CONFIG = {
+    [NOZZLE_LAYOUTS.FULL]: {
+        width: '220px',
+        minWidth: '220px',
+        maxWidth: '220px',
+        iconSize: '40px',
+        fontSize: '36px',
+        showKeypad: true,
+        showLockStatus: true,
+        showMetrics: true,
+        showTotals: true,
+        showLastUpdated: true,
+        headerPadding: '4px 8px 4px',
+        sectionPadding: '10px 15px',
+        statusFontSize: '14px'
+    },
+    [NOZZLE_LAYOUTS.SUMMARY]: {
+        width: '160px',
+        minWidth: '160px',
+        maxWidth: '160px',
+        iconSize: '30px',
+        fontSize: '24px',
+        showKeypad: false,
+        showLockStatus: false,
+        showMetrics: false,
+        showTotals: false,
+        showLastUpdated: false,
+        headerPadding: '4px 8px 4px',
+        sectionPadding: '10px 15px',
+        statusFontSize: '12px'
+    }
+};
 
-    const card = document.createElement('div');
-    // Add position relative to contain the absolute positioned overlay
-    card.style.position = 'relative';
-    card.style.width = '220px';
-    card.style.minWidth = '220px';
-    card.style.maxWidth = '220px';
-    card.style.borderRadius = '10px';
-    card.style.background = '#ffffff';
-    card.style.fontFamily = 'Segoe UI, sans-serif';
-    card.style.color = '#333';
-    card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
-    card.style.overflow = 'hidden';
-    card.style.flexShrink = '0';
-    card.style.padding = '0px';
-    card.style.border = data.locked ? '3px solid #D32F2F' : '0.5px solid #dddddd';
-
-    const fuelType = data.fuelType;
+// Create the header section (common)
+function createHeaderSection(fuelType, nozzleId, layoutType) {
+    const config = LAYOUT_CONFIG[layoutType];
     const colorConfig = productColorConfig[fuelType];
-
-    // Header with nozzle ID
+    
     const header = document.createElement('div');
     header.style.background = colorConfig.header;
     header.style.color = '#111111';
-    header.style.padding = '4px 8px 4px';
+    header.style.padding = config.headerPadding;
     header.style.display = 'flex';
     header.style.alignItems = 'center';
     header.style.borderBottom = `4px solid ${colorConfig.accent}`;
@@ -48,26 +51,26 @@ window.createNozzleLayout = function (containerId, data) {
     nozzleLeft.style.alignItems = 'center';
     nozzleLeft.style.gap = '8px';
 
-    const nozzleIcon = createIconFromImage('assets/graphics/nozzle-icon.png', 'Nozzle Icon', '40px', '40px');
+    const nozzleIcon = createIconFromImage('assets/graphics/nozzle-icon.png', 'Nozzle Icon', config.iconSize, config.iconSize);
     nozzleIcon.style.objectFit = 'contain';
 
     const nozzleNumber = document.createElement('div');
-    nozzleNumber.style.fontSize = '36px';
+    nozzleNumber.style.fontSize = config.fontSize;
     nozzleNumber.style.fontWeight = 'bold';
-    nozzleNumber.textContent = data.nozzleId?.toString().padStart(2, '0') ?? '--';
+    nozzleNumber.textContent = nozzleId?.toString().padStart(2, '0') ?? '--';
 
     nozzleLeft.appendChild(nozzleIcon);
     nozzleLeft.appendChild(nozzleNumber);
-
     header.appendChild(nozzleLeft);
-    card.appendChild(header);
+    
+    return header;
+}
 
-    const bodyWrapper = document.createElement('div');
-    bodyWrapper.style.position = 'relative';
-
-    // Main metrics section
+// Create status section (common)
+function createStatusSection(data, layoutType) {
+    const config = LAYOUT_CONFIG[layoutType];
     const section = document.createElement('div');
-    section.style.padding = '10px 15px';
+    section.style.padding = config.sectionPadding;
 
     const statusWrapper = document.createElement('div');
     statusWrapper.style.display = 'flex';
@@ -75,30 +78,33 @@ window.createNozzleLayout = function (containerId, data) {
     statusWrapper.style.alignItems = 'center';
     statusWrapper.style.marginBottom = '12px';
 
-    // Keypad and lock/unlock icons (left-aligned)
-    const keypadContainer = document.createElement('div');
-    keypadContainer.style.display = 'flex';
-    keypadContainer.style.alignItems = 'center';
-    keypadContainer.style.gap = '8px';
+    // Keypad and lock/unlock icons (only for FULL layout)
+    if (config.showKeypad && config.showLockStatus) {
+        const keypadContainer = document.createElement('div');
+        keypadContainer.style.display = 'flex';
+        keypadContainer.style.alignItems = 'center';
+        keypadContainer.style.gap = '8px';
 
-    const keypadBox = document.createElement('div');
-    keypadBox.style.border = '1px solid #000000';
-    keypadBox.style.borderRadius = '4px';
-    keypadBox.style.padding = '2px';
-    keypadBox.style.display = 'flex';
-    keypadBox.style.alignItems = 'center';
-    keypadBox.style.justifyContent = 'center';
+        const keypadBox = document.createElement('div');
+        keypadBox.style.border = '1px solid #000000';
+        keypadBox.style.borderRadius = '4px';
+        keypadBox.style.padding = '2px';
+        keypadBox.style.display = 'flex';
+        keypadBox.style.alignItems = 'center';
+        keypadBox.style.justifyContent = 'center';
 
-    const keypadIcon = createIconFromImage('assets/graphics/keypad-icon.png', 'Keypad Icon', '20px');
-    keypadBox.appendChild(keypadIcon);
+        const keypadIcon = createIconFromImage('assets/graphics/keypad-icon.png', 'Keypad Icon', '20px');
+        keypadBox.appendChild(keypadIcon);
 
-    const lockIcon = document.createElement('img');
-    lockIcon.src = data.keypadStatus === 'Locked' ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
-    lockIcon.alt = data.keypadStatus === 'Locked' ? 'Locked' : 'Unlocked';
-    lockIcon.style.height = '25px';
+        const lockIcon = document.createElement('img');
+        lockIcon.src = data.keypadStatus === 'Locked' ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
+        lockIcon.alt = data.keypadStatus === 'Locked' ? 'Locked' : 'Unlocked';
+        lockIcon.style.height = '25px';
 
-    keypadContainer.appendChild(keypadBox);
-    keypadContainer.appendChild(lockIcon);
+        keypadContainer.appendChild(keypadBox);
+        keypadContainer.appendChild(lockIcon);
+        statusWrapper.appendChild(keypadContainer);
+    }
 
     // Status (right-aligned)
     const status = document.createElement('div');
@@ -107,109 +113,112 @@ window.createNozzleLayout = function (containerId, data) {
     status.style.fontWeight = '500';
     status.style.padding = '4px 10px';
     status.style.borderRadius = '20px';
-    status.style.fontSize = '14px';
+    status.style.fontSize = config.statusFontSize;
     status.textContent = data.status ?? 'Unknown';
 
-    statusWrapper.appendChild(keypadContainer);
     statusWrapper.appendChild(status);
     section.appendChild(statusWrapper);
+    
+    return section;
+}
 
+// Create metrics section (only for FULL layout)
+function createMetricsSection(data) {
     const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
+    
+    const section = document.createElement('div');
+    section.style.padding = '0 15px';
+    
+    const metricBox = (label, value) => {
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.justifyContent = 'space-between';
+        div.style.alignItems = 'center';
+        div.style.marginBottom = '10px';
+        
+        const labelDiv = document.createElement('div');
+        labelDiv.style.fontSize = '14px';
+        labelDiv.style.color = '#333';
+        labelDiv.style.fontWeight = '500';
+        labelDiv.textContent = label;
+        
+        const valueDiv = document.createElement('div');
+        valueDiv.style.fontSize = '16px';
+        valueDiv.style.fontWeight = '600';
+        valueDiv.style.color = '#014421';
+        valueDiv.style.background = 'linear-gradient(to bottom, #f8f8f8, rgb(241, 241, 241))';
+        valueDiv.style.border = '1px solid #ccc';
+        valueDiv.style.borderRadius = '2px';
+        valueDiv.style.padding = '3px 6px';
+        valueDiv.style.minWidth = '75px';
+        valueDiv.style.textAlign = 'right';
+        valueDiv.style.boxShadow = 'inset 1px 1px 2px rgba(0,0,0,0.2)';
+        valueDiv.style.fontFamily = "'Segoe UI', 'Arial', sans-serif";
+        valueDiv.textContent = value;
+        
+        div.appendChild(labelDiv);
+        div.appendChild(valueDiv);
+        return div;
+    };
+    
+    section.appendChild(metricBox("Price (PKR)", `${safeNumber(data.price).toFixed(2)}`));
+    section.appendChild(metricBox("Quantity (Ltr)", `${safeNumber(data.quantity).toFixed(2)}`));
+    section.appendChild(metricBox("Price/Ltr (PKR)", `${safeNumber(data.pricePerLitre).toFixed(2)}`));
+    
+    return section;
+}
 
-    const metricBox = (label, value) => `
-      <div style="
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-bottom: 10px;
-      ">
-        <div style="
-          font-size: 14px;
-          color: #333;
-          font-weight: 500;
-        ">
-          ${label}
-        </div>
-        <div style="
-          font-size: 16px;
-          font-weight: 600;
-          color: #014421;
-          background: linear-gradient(to bottom, #f8f8f8, rgb(241, 241, 241));
-          border: 1px solid #ccc;
-          border-radius: 2px;
-          padding: 3px 6px;
-          min-width: 75px;
-          text-align: right;
-          box-shadow: inset 1px 1px 2px rgba(0,0,0,0.2);
-          font-family: 'Segoe UI', 'Arial', sans-serif;
-        ">
-          ${value}
-        </div>
-      </div>
-    `;
-
-    section.innerHTML += `
-      ${metricBox("Price (PKR)", `${safeNumber(data.price).toFixed(2)}`)}
-      ${metricBox("Quantity (Ltr)", `${safeNumber(data.quantity).toFixed(2)}`)}
-      ${metricBox("Price/Ltr (PKR)", `${safeNumber(data.pricePerLitre).toFixed(2)}`)}
-    `;
-    // card.appendChild(section);
-
-    // Totals
+// Create totals footer (only for FULL layout)
+function createTotalsFooter(data) {
+    const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
+    
     const footer = document.createElement('div');
     footer.style.padding = '8px 20px 8px';
     footer.style.borderTop = '1px solid #999999';
     footer.style.background = 'rgb(248, 248, 248)';
     footer.style.fontSize = '14px';
-
-    const row = (label, value) => `
-      <div style="margin-bottom: 0px;">
-        <div>${label}</div>
-        <div style="text-align: right; font-weight: bold; color: #014421;">${value}</div>
-      </div>
+    
+    const totalQuantityDiv = document.createElement('div');
+    totalQuantityDiv.style.marginBottom = '0px';
+    totalQuantityDiv.innerHTML = `
+        <div>Total Quantity:</div>
+        <div style="text-align: right; font-weight: bold; color: #014421;">${safeNumber(data.totalQuantity).toFixed(2)} Ltr</div>
     `;
-
-    footer.innerHTML = `
-      ${row("Total Quantity:", `${safeNumber(data.totalQuantity).toFixed(2)} Ltr`)}
-      ${row("Sales Today:", `Rs. </span><span style="font-size: 28px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span>`)}
+    
+    const salesTodayDiv = document.createElement('div');
+    salesTodayDiv.innerHTML = `
+        <div>Sales Today:</div>
+        <div style="text-align: right; font-weight: bold; color: #014421;">Rs. <span style="font-size: 28px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
     `;
+    
+    footer.appendChild(totalQuantityDiv);
+    footer.appendChild(salesTodayDiv);
+    
+    return footer;
+}
 
-    bodyWrapper.appendChild(section);
-    bodyWrapper.appendChild(footer);
+// Create last updated section (only for FULL layout)
+function createLastUpdatedSection(lastUpdated) {
+    const updated = document.createElement('div');
+    updated.style.textAlign = 'center';
+    updated.style.fontSize = '11px';
+    updated.style.borderTop = '1px solid #999999';
+    updated.style.color = '#666';
+    updated.style.padding = '4px 0 4px';
+    updated.textContent = `Last Updated: ${lastUpdated ?? '-'}`;
+    return updated;
+}
 
-    // Disabled overlay if locked
-    if (data.locked) {
-      const overlay = document.createElement('div');
-      overlay.style.position = 'absolute';
-      overlay.style.top = '0';
-      overlay.style.left = '0';
-      overlay.style.width = '100%';
-      overlay.style.height = '100%';
-      overlay.style.background = 'rgba(255, 255, 255, 0.7)';
-      overlay.style.display = 'flex';
-      overlay.style.alignItems = 'center';
-      overlay.style.justifyContent = 'center';
-      overlay.style.zIndex = '1';
-
-      const disabledImg = createIconFromImage('assets/graphics/disabled.png', 'Disabled', 'auto', '75%');
-      disabledImg.style.opacity = '0.5';
-
-      overlay.appendChild(disabledImg);
-      bodyWrapper.appendChild(overlay);
-    }
-
-    card.appendChild(bodyWrapper);
-
-    // View transaction log
+// Create transaction log link (common)
+function createTransactionLogLink(data) {
     const view_trans_log = createLink();
     view_trans_log.style.fontSize = '14px';
     view_trans_log.style.borderTop = '1px solid #999999';
     view_trans_log.style.padding = '4px 0 4px';
     view_trans_log.textContent = `View Transactions ↗`;
-    card.appendChild(view_trans_log);
-
-    view_trans_log.addEventListener('click', () => {
-        // Make sure we have the required data
+    
+    view_trans_log.addEventListener('click', (e) => {
+        e.stopPropagation();
         if (!data.dispenserId || !data.fullNozzleId) {
             console.error('Missing dispenserId or fullNozzleId in nozzle data:', data);
             window.showNotification?.('Nozzle information incomplete', 'error');
@@ -219,10 +228,8 @@ window.createNozzleLayout = function (containerId, data) {
         if (typeof window.showTransactionLogPopup === 'function') {
             window.showTransactionLogPopup(data.fullNozzleId);
         } else {
-            // Load the script with correct relative path
             const script = document.createElement('script');
-            script.src = '../stations/transaction-log.js'; // Use ../ if dispenser.html is in root
-            
+            script.src = '../stations/transaction-log.js';
             script.onload = () => {
                 if (typeof window.showTransactionLogPopup === 'function') {
                     window.showTransactionLogPopup(data.fullNozzleId);
@@ -230,33 +237,131 @@ window.createNozzleLayout = function (containerId, data) {
                     window.showNotification?.('Transaction log functionality not available', 'error');
                 }
             };
-            
-            script.onerror = (error) => {
-                console.error('Failed to load transaction log script:', error);
+            script.onerror = () => {
                 window.showNotification?.('Failed to load transaction log functionality', 'error');
             };
-            
             document.head.appendChild(script);
         }
     });
+    
+    return view_trans_log;
+}
 
-    // Last updated time
-    const updated = document.createElement('div');
-    updated.style.textAlign = 'center';
-    updated.style.fontSize = '11px';
-    updated.style.borderTop = '1px solid #999999';
-    updated.style.color = '#666';
-    updated.style.padding = '4px 0 4px';
-    updated.textContent = `Last Updated: ${data.lastUpdated ?? '-'}`;
-    card.appendChild(updated);
+// Create disabled overlay (common)
+function createDisabledOverlay() {
+    const overlay = document.createElement('div');
+    overlay.style.position = 'absolute';
+    overlay.style.top = '0';
+    overlay.style.left = '0';
+    overlay.style.width = '100%';
+    overlay.style.height = '100%';
+    overlay.style.background = 'rgba(255, 255, 255, 0.7)';
+    overlay.style.display = 'flex';
+    overlay.style.alignItems = 'center';
+    overlay.style.justifyContent = 'center';
+    overlay.style.zIndex = '1';
 
-    container.appendChild(card);
+    const disabledImg = createIconFromImage('assets/graphics/disabled.png', 'Disabled', 'auto', '75%');
+    disabledImg.style.opacity = '0.5';
+    overlay.appendChild(disabledImg);
+    
+    return overlay;
+}
 
-  } catch (error) {
-    console.error('Error in createNozzleLayout:', error);
-    const container = document.getElementById(containerId);
-    if (container) {
-      container.innerHTML = `<div style="color:red">Error rendering nozzle: ${error.message}</div>`;
+// Main function to create nozzle layout (with type control)
+window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYOUTS.FULL) {
+    try {
+        const container = document.getElementById(containerId);
+        if (!container) {
+            console.warn(`Container ${containerId} not found, retrying...`);
+            setTimeout(() => {
+                const retryContainer = document.getElementById(containerId);
+                if (retryContainer) {
+                    window.createNozzleLayout(containerId, data, layoutType);
+                }
+            }, 50);
+            return;
+        }
+        
+        container.innerHTML = '';
+        
+        const config = LAYOUT_CONFIG[layoutType];
+        const card = document.createElement('div');
+        card.style.position = 'relative';
+        card.style.width = config.width;
+        card.style.minWidth = config.minWidth;
+        card.style.maxWidth = config.maxWidth;
+        card.style.borderRadius = '10px';
+        card.style.background = '#ffffff';
+        card.style.fontFamily = 'Segoe UI, sans-serif';
+        card.style.color = '#333';
+        card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
+        card.style.overflow = 'hidden';
+        card.style.flexShrink = '0';
+        card.style.padding = '0px';
+        card.style.border = data.locked ? '3px solid #D32F2F' : '0.5px solid #dddddd';
+        
+        // Header
+        const header = createHeaderSection(data.fuelType, data.nozzleId, layoutType);
+        card.appendChild(header);
+        
+        const bodyWrapper = document.createElement('div');
+        bodyWrapper.style.position = 'relative';
+        
+        // Status section
+        const statusSection = createStatusSection(data, layoutType);
+        bodyWrapper.appendChild(statusSection);
+        
+        // Metrics section (only for FULL layout)
+        if (config.showMetrics) {
+            const metricsSection = createMetricsSection(data);
+            bodyWrapper.appendChild(metricsSection);
+        }
+        
+        // Totals footer (only for FULL layout)
+        if (config.showTotals) {
+            const totalsFooter = createTotalsFooter(data);
+            bodyWrapper.appendChild(totalsFooter);
+        }
+        
+        // Disabled overlay if locked
+        if (data.locked) {
+            const overlay = createDisabledOverlay();
+            bodyWrapper.appendChild(overlay);
+        }
+        
+        card.appendChild(bodyWrapper);
+        
+        // Transaction log link (common for both layouts)
+        const transactionLink = createTransactionLogLink(data);
+        card.appendChild(transactionLink);
+        
+        // Last updated (only for FULL layout)
+        if (config.showLastUpdated) {
+            const lastUpdated = createLastUpdatedSection(data.lastUpdated);
+            card.appendChild(lastUpdated);
+        }
+        
+        container.appendChild(card);
+        
+    } catch (error) {
+        console.error('Error in createNozzleLayout:', error);
+        const container = document.getElementById(containerId);
+        if (container) {
+            container.innerHTML = `<div style="color:red">Error rendering nozzle: ${error.message}</div>`;
+        }
     }
-  }
 };
+
+// Backward compatibility wrapper for full layout
+window.createFullNozzleLayout = function(containerId, data) {
+    window.createNozzleLayout(containerId, data, NOZZLE_LAYOUTS.FULL);
+};
+
+// Backward compatibility wrapper for summary layout
+window.createNozzleSummary = function(containerId, data) {
+    window.createNozzleLayout(containerId, data, NOZZLE_LAYOUTS.SUMMARY);
+};
+
+// Export constants for external use
+window.NOZZLE_LAYOUTS = NOZZLE_LAYOUTS;

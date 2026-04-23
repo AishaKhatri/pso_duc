@@ -5,6 +5,11 @@ const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};
 
+const NOZZLE_LAYOUTS = {
+    FULL: 'full',      // Full layout with all metrics (for main page)
+    SUMMARY: 'summary'  // Summary layout with limited info (for overview page)
+};
+
 const productColorConfig = {
       'PMG': { header: '#FF7043', accent: '#FFCCBC' }, // Coral, Peach
       'HSD': { header: '#FFB300', accent: '#FFE0B2' }, // Amber, Golden
