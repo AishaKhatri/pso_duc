@@ -185,7 +185,7 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
                 if (displayProduct === product) {
                     nozzlesToUpdate.push({
                         nozzle,
-                        dispenserAddr: dispenser.address.padStart(5, '0')
+                        dispenserAddr: dispenser.address
                     });
                 }
             });

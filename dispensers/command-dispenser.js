@@ -48,7 +48,7 @@ async function showCommandDispenserPopup() {
 
         validDispensers.forEach((dispenser, index) => {
             const option = document.createElement('option');
-            option.value = dispenser.address.padStart(5, '0');
+            option.value = dispenser.address;
             option.textContent = `Dispenser ${index + 1} (D${option.value})`;
             dispenserSelect.appendChild(option);
         });
@@ -84,7 +84,7 @@ async function showCommandDispenserPopup() {
     });
 
     if (validDispensers.length === 1) {
-        dispenserSelect.value = validDispensers[0].address.padStart(5, '0');
+        dispenserSelect.value = validDispensers[0].address;
         showDispenserControls(dispenserSelect.value, validDispensers);
     }
 }
@@ -114,7 +114,7 @@ function showCommandStatusMessage(message, type) {
 }
 
 function showDispenserControls(dispenserAddr, dispensers) {
-    const dispenser = dispensers.find(d => d.address.padStart(5, '0') === dispenserAddr);
+    const dispenser = dispensers.find(d => d.address === dispenserAddr);
     if (!dispenser) return;
 
     const controlsContainer = document.getElementById('dispenserControls');

@@ -96,8 +96,8 @@ async function initializeMQTTSubscriptions() {
         // Subscribe to each dispenser's topic and initialize nozzles
         const serverStartTime = Date.now();
         for (const dispenser of dispensers) {
-            // const topic = `S${dispenser.address.padStart(5, '0')}`;
-            // const topic = `pso/karachi/103088/duc/s${dispenser.address.padStart(5, '0')}`;
+            // const topic = `S${dispenser.address}`;
+            // const topic = `pso/karachi/103088/duc/s${dispenser.address}`;
             const topic = `pso/${dispenser.city}/${dispenser.customer_code}/duc/s${dispenser.address}`;
             await subscribeToTopic(topic, deviceTopics);
             
@@ -1117,9 +1117,9 @@ async function registerNewDevice(message) {
             logWithTimestamp(chalk.green, `✓ New dispenser registered: ID ${finalDispenserId} (Address: ${deviceAddress})`);
             
             // Subscribe to MQTT topics for this dispenser
-            const topic = `pso/${city}/${customerCode}/duc/s${deviceAddress.padStart(5, '0')}`;
+            const topic = `pso/${city}/${customerCode}/duc/s${deviceAddress}`;
             await subscribeToTopic(topic, null);
-            const connStatTopic = `duc/conn_status/D${deviceAddress.padStart(5, '0')}`;
+            const connStatTopic = `duc/conn_status/D${deviceAddress}`;
             await subscribeToTopic(connStatTopic, statusTopics);
         } else {
             finalDispenserId = existingDispensers[0].dispenser_id;

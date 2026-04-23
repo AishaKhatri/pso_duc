@@ -708,7 +708,7 @@ app.post('/api/dispensers', async (req, res) => {
         );
 
         // Subscribe to the new dispenser's topic using new format
-        const topic = `pso/${city}/${customer_code}/duc/s${address.padStart(5, '0')}`;
+        const topic = `pso/${city}/${customer_code}/duc/s${address}`;
         if (typeof subscribeToTopic === 'function') {
             await subscribeToTopic(topic, null);
         }

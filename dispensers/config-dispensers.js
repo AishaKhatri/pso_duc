@@ -616,7 +616,7 @@ async function renderConfigDispensers() {
 
             // Check for duplicate address within same customer
             const isDuplicate = window.dispensers.some((d, i) => 
-                i !== index && d.customer_code === customerCode && d.address === addressInput.padStart(5, '0'));
+                i !== index && d.customer_code === customerCode && d.address === addressInput);
             if (isDuplicate) {
                 alert('Dispenser address must be unique for this customer');
                 return;
@@ -632,7 +632,7 @@ async function renderConfigDispensers() {
                 return;
             }
 
-            const address = addressInput.padStart(5, '0');
+            const address = addressInput;
             let dispenser_id = dispenser.dispenser_id;
 
             // Fetch next dispenser_id for new dispensers (per customer)
