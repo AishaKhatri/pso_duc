@@ -431,7 +431,7 @@ app.get('/api/error-log/:address', async (req, res) => {
         // Fetch errors at this address
         const [errors] = await pool.query(
             `SELECT 
-                device_id,
+                customer_code,
                 error_message, 
                 created_at 
             FROM errors 
@@ -444,9 +444,9 @@ app.get('/api/error-log/:address', async (req, res) => {
         // Parse the error_message JSON and structure the data
         const parsedErrors = errors.map(error => {
             try {
-                const parsedMessage = JSON.parse(error.error_message);
+                const parsedMessage = error.error_message;
                 return {
-                    device_id: error.device_id,
+                    customer_code: error.customer_code,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
                     unix_time: parsedMessage.Time || null,
@@ -461,7 +461,7 @@ app.get('/api/error-log/:address', async (req, res) => {
             } catch (e) {
                 // If parsing fails, return the raw data
                 return {
-                    device_id: error.device_id,
+                    customer_code: error.customer_code,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
                     raw_message: error.error_message
@@ -490,12 +490,11 @@ app.get('/api/device-info/:address', async (req, res) => {
         // Get the latest device info for this address
         const [deviceInfo] = await pool.query(
             `SELECT 
-                device_id,
-                temperature,
+                customer_code,
+                address,
                 firmware_version,
                 hardware_version,
-                mac_address,
-                serial_number,
+                wifi_enable,
                 last_die_time,
                 wakeup_time,
                 created_at

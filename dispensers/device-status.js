@@ -520,11 +520,11 @@ function createErrorsTable(errorLogs) {
 }
 
 // Function to create modal header
-function createModalHeader(dispenserTopic, overlay) {
+function createModalHeader(address, overlay) {
     const header = createHeader();
     
     const title = createTitle();
-    title.textContent = `Device Status - ${dispenserTopic}`;
+    title.textContent = `Device Status - ${address}`;
     
     const closeButton = createCloseButton(overlay);
     
@@ -618,17 +618,17 @@ async function fetchDeviceInfo(deviceIdentifier, infoElements) {
 }
 
 // Main function to show device status popup
-async function showDevStatusPopup(dispenserTopic) {
+async function showDevStatusPopup(address) {
     try {
         // Fetch GSM, WiFi, MQTT, power status, error logs, and connection statuses
         const [gsmResponse, wifiResponse, mqttResponse, powerResponse, errorsResponse, gsmConnResponse, wifiConnResponse] = await Promise.allSettled([
-            fetch(`${API_BASE_URL}/gsm-status/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/wifi-status/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/mqtt-status/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/power-status/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/error-log/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/gsm-connection-status/${dispenserTopic}`),
-            fetch(`${API_BASE_URL}/wifi-connection-status/${dispenserTopic}`)
+            fetch(`${API_BASE_URL}/gsm-status/${address}`),
+            fetch(`${API_BASE_URL}/wifi-status/${address}`),
+            fetch(`${API_BASE_URL}/mqtt-status/${address}`),
+            fetch(`${API_BASE_URL}/power-status/${address}`),
+            fetch(`${API_BASE_URL}/error-log/${address}`),
+            fetch(`${API_BASE_URL}/gsm-connection-status/${address}`),
+            fetch(`${API_BASE_URL}/wifi-connection-status/${address}`)
         ]);
 
         const gsmStatus = gsmResponse.status === 'fulfilled' && gsmResponse.value.ok ? await gsmResponse.value.json() : null;
@@ -701,7 +701,7 @@ async function showDevStatusPopup(dispenserTopic) {
         };
         
         // Add header
-        const header = createModalHeader(dispenserTopic, overlay);
+        const header = createModalHeader(address, overlay);
         
         modal.appendChild(header);
         modal.appendChild(tabsContainer);
@@ -714,7 +714,7 @@ async function showDevStatusPopup(dispenserTopic) {
         document.body.appendChild(overlay);
         
         // Add device info footer
-        addDeviceInfoFooter(modal, dispenserTopic);
+        addDeviceInfoFooter(modal, address);
         
         // Close on overlay click
         overlay.addEventListener('click', (e) => {
