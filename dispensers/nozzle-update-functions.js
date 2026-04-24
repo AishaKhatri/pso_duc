@@ -85,7 +85,7 @@ function normalizeFuelType(product) {
     return 'Premier';
 }
 
-async function updateNozzleUI(nozzleId, nozzleData) {
+function updateNozzleUI(nozzleId, nozzleData) {
     try {
         const container = document.getElementById(`nozzle-${nozzleId}`);
         if (!container) {
@@ -93,15 +93,6 @@ async function updateNozzleUI(nozzleId, nozzleData) {
             return;
         }
 
-        // Preserve existing error count or fetch new one
-        let errorCount = nozzleData.errorCount || 0;
-        if (container.nozzleData && container.nozzleData.errorCount !== undefined) {
-            errorCount = container.nozzleData.errorCount;
-        } else if (nozzleData.dispenserTopic) {
-            errorCount = await fetchErrorCount(nozzleData.dispenserTopic);
-        }
-        
-        nozzleData.errorCount = errorCount;
         container.nozzleData = nozzleData;
         
         const layoutType = nozzleLayoutType.get(nozzleId) || nozzleData.layoutType || window.NOZZLE_LAYOUTS?.FULL || 'full';
@@ -137,7 +128,6 @@ function NozzleData(nozzle) {
         lastUpdated: new Date().toLocaleString(),
         keypadStatus: nozzle.keypad_lock_status ? 'Locked' : 'Unlocked',
         locked: !!nozzle.lock_unlock,
-        errorCount: 0  // Will be updated separately
     };
 }
 
@@ -244,21 +234,6 @@ async function sendGetCommandsForDispenser(dispenser) {
     }
 }
 
-async function fetchErrorCount(dispenserTopic) {
-    try {
-        const address = dispenserTopic.replace(/^D/, '');
-        const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
-        if (response.ok) {
-            const errors = await response.json();
-            return errors.length;
-        }
-        return 0;
-    } catch (error) {
-        console.error('Error fetching error count:', error);
-        return 0;
-    }
-}
-
 // Export functions
 window.NozzleData = NozzleData;
 window.setNozzleLayoutType = setNozzleLayoutType;
@@ -269,4 +244,3 @@ window.updateConnStatus = updateConnStatus;
 window.getNozzleDataFromTopic = getNozzleDataFromTopic;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;
-window.fetchErrorCount = fetchErrorCount;

@@ -64,7 +64,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const paddedAddress = dispenser.address;
     const dispenserTopic = `D${paddedAddress}`;
 
-    const { card, titleContainer } = createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
+    const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
 
     card.id = `dispenser-${dispenser.dispenser_id}`;
     card.dataset.address = dispenserTopic;
@@ -82,12 +82,10 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
         nozzleContainer.id = `nozzle-${nozzle.nozzle_id}`;
         nozzleGrid.appendChild(nozzleContainer);
 
-        // Store layout type for this nozzle
         if (typeof window.setNozzleLayoutType === 'function') {
             window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
         }
         
-        // Let updateNozzleUI handle the rendering and error count fetching
         const nozzleData = window.NozzleData(nozzle);
         if (typeof window.updateNozzleUI === 'function') {
             window.updateNozzleUI(nozzle.nozzle_id, nozzleData);

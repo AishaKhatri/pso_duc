@@ -308,7 +308,7 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
     }
 }
 
-function createCard(address, customer_code) {
+async function createCard(address, customer_code) {
     const card = document.createElement('div');
     Object.assign(card.style, {
         backgroundColor: '#fff',
@@ -362,16 +362,72 @@ function createCard(address, customer_code) {
     // addressText.style.fontSize = '14px';
     // addressText.style.color = '#666';
 
+    const errorContainer = document.createElement('div');
+    errorContainer.className = 'dispenser-error-container';
+    errorContainer.style.display = 'flex';
+    errorContainer.style.alignItems = 'center';
+    errorContainer.style.gap = '8px';
+    errorContainer.style.cursor = 'pointer';
+    
+    const errorIcon = createIconFromImage('assets/graphics/alert-icon.png', 'Errors', '18px');
+    errorIcon.style.display = 'none';
+    
+    const errorCountSpan = document.createElement('span');
+    errorCountSpan.className = 'dispenser-error-count';
+    errorCountSpan.style.fontSize = '13px';
+    errorCountSpan.style.fontWeight = 'bold';
+    errorCountSpan.style.color = '#d32f2f';
+    errorCountSpan.style.backgroundColor = '#ffebee';
+    errorCountSpan.style.padding = '2px 8px';
+    errorCountSpan.style.borderRadius = '12px';
+    errorCountSpan.style.display = 'none';
+    
+    const count = await fetchErrorCount(address);
+    errorCountSpan.textContent = count;
+    console.log(`Initial error count for ${address}: ${count}`);
+
+    if (count > 0) {
+        errorIcon.style.display = 'inline-block';
+        errorCountSpan.style.display = 'inline-block';
+    }
+    
+    errorContainer.appendChild(errorIcon);
+    errorContainer.appendChild(errorCountSpan);
+    
+    errorContainer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.showDevStatusPopup === 'function') {
+            window.showDevStatusPopup(address, 'errorLogs');
+        }
+    });
+
     const uptime = document.createElement('div');
     uptime.className = 'uptime';
     uptime.style.fontSize = '12px';
     uptime.style.color = '#999';
     
     // nextContainer.appendChild(addressText);
+    nextContainer.appendChild(errorContainer);
     nextContainer.appendChild(uptime);
     card.appendChild(nextContainer);
 
     return { card, titleContainer };
+}
+
+async function fetchErrorCount(dispenserTopic) {
+    try {
+        const address = dispenserTopic.replace(/^D/, '');
+        const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
+        if (response.ok) {
+            const errors = await response.json();
+            console.log(`Fetched ${errors.length} errors for dispenser ${dispenserTopic}`);
+            return errors.length;
+        }
+        return 0;
+    } catch (error) {
+        console.error('Error fetching error count:', error);
+        return 0;
+    }
 }
 
 function renderPageHeader(pageTitleText) {

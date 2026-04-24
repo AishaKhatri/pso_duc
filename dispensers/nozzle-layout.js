@@ -118,45 +118,6 @@ function createStatusSection(data, layoutType) {
 
     statusWrapper.appendChild(status);
     section.appendChild(statusWrapper);
-
-    if (layoutType === NOZZLE_LAYOUTS.SUMMARY) {
-        const errorRow = document.createElement('div');
-        errorRow.style.display = 'flex';
-        errorRow.style.justifyContent = 'space-between';
-        errorRow.style.alignItems = 'center';
-        errorRow.style.marginTop = '10px';
-        errorRow.style.paddingTop = '8px';
-        errorRow.style.borderTop = '1px solid #eee';
-        errorRow.style.cursor = 'pointer';
-        
-        const errorLabel = document.createElement('span');
-        errorLabel.textContent = '⚠ Errors';
-        errorLabel.style.fontSize = '12px';
-        errorLabel.style.fontWeight = 'bold';
-        errorLabel.style.color = '#d32f2f';
-        
-        const errorCount = document.createElement('span');
-        errorCount.textContent = data.errorCount || '0';
-        errorCount.style.fontSize = '14px';
-        errorCount.style.fontWeight = 'bold';
-        errorCount.style.color = '#d32f2f';
-        errorCount.style.backgroundColor = '#ffebee';
-        errorCount.style.padding = '2px 8px';
-        errorCount.style.borderRadius = '12px';
-        
-        errorRow.appendChild(errorLabel);
-        errorRow.appendChild(errorCount);
-        
-        errorRow.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const dispenserTopic = `D${data.address}`;
-            if (typeof window.showDevStatusPopup === 'function') {
-                window.showDevStatusPopup(dispenserTopic, 'errorLogs');
-            }
-        });
-    
-    section.appendChild(errorRow);
-}
     
     return section;
 }

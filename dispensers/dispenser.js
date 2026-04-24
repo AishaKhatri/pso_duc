@@ -117,7 +117,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const paddedAddress = dispenser.address;
     const dispenserTopic = `D${paddedAddress}`;
 
-    const { card, titleContainer } = createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
+    const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
 
     card.id = `dispenser-${dispenser.dispenser_id}`;
     card.dataset.address = dispenserTopic;
