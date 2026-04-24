@@ -211,18 +211,30 @@ async function updateDispenserCard(dispenser) {
         if (!nozzlesResponse.ok) return;
         const nozzles = await nozzlesResponse.json();
 
-        nozzles.forEach(nozzle => {
+        // Use Promise.all to handle async operations in parallel
+        await Promise.all(nozzles.map(async (nozzle) => {
             const nozzleData = window.NozzleData(nozzle);
 
+            // Add dispenserTopic if it doesn't exist
+            if (!nozzleData.dispenserTopic) {
+                nozzleData.dispenserTopic = `D${dispenser.address}`;
+            }
+
+            // Handle error count fetching properly
             if (typeof window.fetchErrorCount === 'function') {
-                const errorCount = await window.fetchErrorCount(nozzleData.dispenserTopic);
-                nozzleData.errorCount = errorCount;
+                try {
+                    const errorCount = await window.fetchErrorCount(nozzleData.dispenserTopic);
+                    nozzleData.errorCount = errorCount;
+                } catch (error) {
+                    console.error('Error fetching error count for nozzle:', nozzle.nozzle_id, error);
+                    nozzleData.errorCount = 0; // Default value
+                }
             }
 
             if (typeof window.updateNozzleUI === 'function') {
                 window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
             }
-        });
+        }));
     } catch (error) {
         console.error('Error updating nozzle data:', error);
     }
