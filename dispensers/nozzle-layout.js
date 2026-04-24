@@ -16,19 +16,20 @@ const LAYOUT_CONFIG = {
         statusFontSize: '14px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
-        width: '160px',
-        minWidth: '160px',
-        maxWidth: '160px',
-        iconSize: '30px',
+        width: '120px',
+        minWidth: '120px',
+        maxWidth: '120px',
+        iconSize: '25px',
         fontSize: '24px',
         showKeypad: false,
         showLockStatus: false,
         showMetrics: false,
         showTotals: false,
         showLastUpdated: false,
-        headerPadding: '4px 8px 4px',
+        headerPadding: '2px 16px 2px',
         sectionPadding: '10px 15px',
-        statusFontSize: '12px'
+        statusFontSize: '12px',
+        ViewTransactionsFontSize: '12px'
     }
 };
 
@@ -210,9 +211,11 @@ function createLastUpdatedSection(lastUpdated) {
 }
 
 // Create transaction log link (common)
-function createTransactionLogLink(data) {
+function createTransactionLogLink(data, layoutType) {
+    const config = LAYOUT_CONFIG[layoutType];
+
     const view_trans_log = createLink();
-    view_trans_log.style.fontSize = '14px';
+    view_trans_log.style.fontSize = config.ViewTransactionsFontSize;
     view_trans_log.style.borderTop = '1px solid #999999';
     view_trans_log.style.padding = '4px 0 4px';
     view_trans_log.textContent = `View Transactions ↗`;
@@ -333,7 +336,7 @@ window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYO
         card.appendChild(bodyWrapper);
         
         // Transaction log link (common for both layouts)
-        const transactionLink = createTransactionLogLink(data);
+        const transactionLink = createTransactionLogLink(data, layoutType);
         card.appendChild(transactionLink);
         
         // Last updated (only for FULL layout)

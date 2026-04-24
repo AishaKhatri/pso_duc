@@ -300,8 +300,9 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
         
         if (connStatus === 1 && connected_at) {            
             uptime.textContent = `Connected at: ${connectedTime}`;
+            uptime.textContent = `At: ${connectedTime}`;
         } else {
-            uptime.textContent = `Disconnected at: ${connectedTime}`;
+            uptime.textContent = `At: ${connectedTime}`;
         }
     } else {
         console.error(`❌ Device card not found for ${deviceType} with ID: ${deviceId}`);
