@@ -47,6 +47,7 @@ const gsmStatusCache = new Map(); // Cache for GSM status by dispenser address
 const wifiStatusCache = new Map(); // Cache for Wi-Fi status by dispenser address
 const mqttStatusCache = new Map();
 const powerOnCache = new Map();
+const clearedResetsCache = new Map();
 const errorLogCache = new Map();
 const deviceInfoCache = new Map();
 

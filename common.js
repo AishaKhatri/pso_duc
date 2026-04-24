@@ -402,6 +402,48 @@ async function createCard(address, customer_code) {
         }
     });
 
+    const resetContainer = document.createElement('div');
+    resetContainer.className = 'dispenser-reset-container';
+    resetContainer.style.display = 'flex';
+    resetContainer.style.alignItems = 'center';
+    resetContainer.style.gap = '8px';
+    resetContainer.style.cursor = 'pointer';
+
+    const resetIcon = createIconFromImage('assets/graphics/reset-icon.png', 'Resets', '18px');
+    resetIcon.style.display = 'none';
+
+    const resetCountSpan = document.createElement('span');
+    resetCountSpan.className = 'dispenser-reset-count';
+    resetCountSpan.style.fontSize = '13px';
+    resetCountSpan.style.fontWeight = 'bold';
+    resetCountSpan.style.color = '#f57c00';
+    resetCountSpan.style.backgroundColor = '#fff3e0';
+    resetCountSpan.style.padding = '2px 8px';
+    resetCountSpan.style.borderRadius = '12px';
+    resetCountSpan.style.display = 'none';
+
+    // Fetch reset count
+    (async () => {
+        const count = await fetchResetCount(address);
+        resetCountSpan.textContent = count;
+        console.log(`Initial reset count for ${address}: ${count}`);
+        
+        if (count > 0) {
+            resetIcon.style.display = 'inline-block';
+            resetCountSpan.style.display = 'inline-block';
+        }
+    })();
+
+    resetContainer.appendChild(resetIcon);
+    resetContainer.appendChild(resetCountSpan);
+
+    resetContainer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.showDevStatusPopup === 'function') {
+            window.showDevStatusPopup(address, 'resetLogs');
+        }
+    });
+
     const uptime = document.createElement('div');
     uptime.className = 'uptime';
     uptime.style.fontSize = '12px';
@@ -409,6 +451,7 @@ async function createCard(address, customer_code) {
     
     // nextContainer.appendChild(addressText);
     nextContainer.appendChild(errorContainer);
+    nextContainer.appendChild(resetContainer);
     nextContainer.appendChild(uptime);
     card.appendChild(nextContainer);
 
@@ -428,6 +471,44 @@ async function fetchErrorCount(dispenserTopic) {
     } catch (error) {
         console.error('Error fetching error count:', error);
         return 0;
+    }
+}
+
+async function fetchResetCount(dispenserAddr) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/power-status/D${dispenserAddr}`);
+        if (response.ok) {
+            const powerStatuses = await response.json();
+            if (Array.isArray(powerStatuses)) {
+                // Count only uncleared resets
+                return powerStatuses.filter(status => !status.cleared).length;
+            }
+        }
+        return 0;
+    } catch (error) {
+        console.error('Error fetching reset count:', error);
+        return 0;
+    }
+}
+
+async function updateResetCount(dispenserAddr) {
+    const card = document.querySelector(`div[data-address="D${dispenserAddr}"]`);
+    if (!card) return;
+    
+    const resetCountSpan = card.querySelector('.dispenser-reset-count');
+    const resetIcon = card.querySelector('.dispenser-reset-container img');
+    
+    if (resetCountSpan) {
+        const count = await fetchResetCount(dispenserAddr);
+        resetCountSpan.textContent = count;
+        
+        if (count > 0) {
+            resetCountSpan.style.display = 'inline-block';
+            if (resetIcon) resetIcon.style.display = 'inline-block';
+        } else {
+            resetCountSpan.style.display = 'none';
+            if (resetIcon) resetIcon.style.display = 'none';
+        }
     }
 }
 
