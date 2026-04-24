@@ -177,21 +177,15 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
         nozzleContainer.id = `nozzle-${nozzle.nozzle_id}`;
         nozzleGrid.appendChild(nozzleContainer);
 
-        const nozzleData = window.NozzleData(nozzle);
-        
+        // Store layout type for this nozzle
         if (typeof window.setNozzleLayoutType === 'function') {
             window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
         }
-
-        if (typeof window.createNozzleLayout === 'function') {
-            try {
-                setTimeout(() => {
-                    window.createNozzleLayout(nozzleContainer.id, nozzleData, layoutType);
-                }, 50);
-            } catch (e) {
-                console.error('Nozzle layout error:', e);
-                nozzleContainer.innerHTML = `Error: ${e.message}`;
-            }
+        
+        // Let updateNozzleUI handle the rendering and error count fetching
+        const nozzleData = window.NozzleData(nozzle);
+        if (typeof window.updateNozzleUI === 'function') {
+            window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
         }
     });
 }
@@ -219,6 +213,12 @@ async function updateDispenserCard(dispenser) {
 
         nozzles.forEach(nozzle => {
             const nozzleData = window.NozzleData(nozzle);
+
+            if (typeof window.fetchErrorCount === 'function') {
+                const errorCount = await window.fetchErrorCount(nozzleData.dispenserTopic);
+                nozzleData.errorCount = errorCount;
+            }
+
             if (typeof window.updateNozzleUI === 'function') {
                 window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
             }

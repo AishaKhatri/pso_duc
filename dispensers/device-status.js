@@ -465,58 +465,233 @@ function formatTimeString(timeMs) {
 }
 
 // Function to create error logs table view
-function createErrorsTable(errorLogs) {
-    if (errorLogs.length === 0 || !errorLogs) {
-        const noData = createNoDataMessage('No Error logs found for this device');
-        noData.style.padding = '40px';
-        return noData;
-    } else {
-        const headers = ['', 'Log Time', 'Error Code', 'Severity', 'File', 'Line', 'Function', 'Context'];
-
-        const { tableContainer, tbody } = createTable(headers);
-
-        if (!errorLogs || errorLogs.length === 0) {
-            container.appendChild(createNoDataMessage('No error logs available'));
-            return container;
+function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilterValue = 'uncleared') {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '15px';
+    
+    // Action bar
+    const actionBar = document.createElement('div');
+    actionBar.style.display = 'flex';
+    actionBar.style.justifyContent = 'space-between';
+    actionBar.style.alignItems = 'center';
+    actionBar.style.padding = '10px';
+    actionBar.style.backgroundColor = '#f8f9fa';
+    actionBar.style.borderRadius = '8px';
+    actionBar.style.border = '1px solid #e0e0e0';
+    
+    // Create filter dropdown
+    const filterDropdown = document.createElement('select');
+    filterDropdown.style.padding = '8px';
+    filterDropdown.style.border = '1px solid #ccc';
+    filterDropdown.style.borderRadius = '4px';
+    filterDropdown.style.width = '200px';
+    filterDropdown.style.marginBottom = '0';
+    
+    const allOption = document.createElement('option');
+    allOption.value = 'all';
+    allOption.textContent = 'All Errors';
+    filterDropdown.appendChild(allOption);
+    
+    const unclearedOption = document.createElement('option');
+    unclearedOption.value = 'uncleared';
+    unclearedOption.textContent = 'Uncleared Only';
+    filterDropdown.appendChild(unclearedOption);
+    
+    // Set the dropdown value based on currentFilter
+    filterDropdown.value = currentFilterValue;
+    
+    // Mark as cleared button
+    const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
+    markClearedBtn.textContent = '✓ Mark as Cleared';
+    markClearedBtn.disabled = true;
+    markClearedBtn.style.opacity = '0.5';
+    markClearedBtn.style.cursor = 'not-allowed';
+    
+    actionBar.appendChild(filterDropdown);
+    actionBar.appendChild(markClearedBtn);
+    container.appendChild(actionBar);
+    
+    let selectedErrorIds = new Set();
+    
+    const updateMarkButtonState = () => {
+        const hasSelected = selectedErrorIds.size > 0;
+        markClearedBtn.disabled = !hasSelected;
+        markClearedBtn.style.opacity = hasSelected ? '1' : '0.5';
+        markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
+    };
+    
+    // Function to render the table
+    const renderTable = (errors) => {
+        // Remove existing table
+        const existingTable = container.querySelector('.error-table-container');
+        if (existingTable) {
+            existingTable.remove();
         }
         
-        errorLogs.forEach((log, index) => {
+        // Check if no errors
+        if (errors.length === 0) {
+            const noDataMsg = createNoDataMessage(
+                filterDropdown.value === 'uncleared' 
+                    ? 'No uncleared errors found' 
+                    : 'No errors found'
+            );
+            noDataMsg.style.padding = '40px';
+            noDataMsg.classList.add('error-table-container');
+            container.appendChild(noDataMsg);
+            return;
+        }
+        
+        // Create table
+        const headers = ['', 'Log Time', 'Error Code', 'Severity', 'File', 'Line', 'Function', 'Context', 'Status'];
+        const { tableContainer, tbody } = createTable(headers);
+        tableContainer.classList.add('error-table-container');
+        
+        selectedErrorIds.clear();
+        updateMarkButtonState();
+        
+        errors.forEach((log, index) => {
             const row = document.createElement('tr');
-            row.style.backgroundColor = index % 2 === 0 ? '#f9f9f9' : 'white';
+            row.style.backgroundColor = log.cleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
+            row.style.opacity = log.cleared ? '0.6' : '1';
             
-            // Create cells - Serial number first, then the rest
-            const cells = [
-                (index + 1).toString(), // Serial number
-                log.log_time, // Serial number
-                log.error_code,
-                log.severity,
-                log.file,
-                log.line,
-                log.function,
-                log.context
-            ];
+            // Checkbox cell
+            const checkboxTd = document.createElement('td');
+            checkboxTd.style.padding = '12px';
+            checkboxTd.style.textAlign = 'center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'error-checkbox';
+            checkbox.value = log.id;
+            checkbox.disabled = log.cleared === 1;
+            if (log.cleared === 0) {
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        selectedErrorIds.add(log.id);
+                    } else {
+                        selectedErrorIds.delete(log.id);
+                    }
+                    updateMarkButtonState();
+                    updateSelectAllCheckbox();
+                });
+            } else {
+                checkbox.style.opacity = '0.5';
+            }
+            checkboxTd.appendChild(checkbox);
+            row.appendChild(checkboxTd);
+            
+            // Data cells
+            const errorCode = log.error_code || log.Code || 'N/A';
+            const severity = log.severity || log.Sev || 'N/A';
+            const file = log.file || log.File || 'N/A';
+            const line = log.line || log.Line || 'N/A';
+            const functionName = log.function || log.Func || 'N/A';
+            const context = log.context || log.Cntx || 'N/A';
+            const status = log.cleared ? 'Cleared' : 'Active';
+            
+            const cells = [log.log_time || 'N/A', errorCode, severity, file, line, functionName, context, status];
             
             cells.forEach((cellText, cellIndex) => {
                 const td = document.createElement('td');
-                td.textContent = cellText || 'N/A';
+                td.textContent = cellText;
                 td.style.padding = '12px';
-                
-                // Special handling for Context column (wider text)
-                if (cellIndex === cells.length - 1) {
+                td.style.borderBottom = '1px solid #ddd';
+                if (cellIndex === cells.length - 2) {
                     td.style.maxWidth = '300px';
                     td.style.overflow = 'auto';
                     td.style.wordBreak = 'break-word';
                     td.style.whiteSpace = 'normal';
                 }
-                            
+                if (log.cleared) {
+                    td.style.color = '#999';
+                }
                 row.appendChild(td);
             });
             
             tbody.appendChild(row);
         });
         
-        return tableContainer;
-    }
+        // Select all checkbox in header
+        const thead = tableContainer.querySelector('thead');
+        const headerRow = thead.querySelector('tr');
+        const firstTh = headerRow.querySelector('th');
+        const selectAllContainer = document.createElement('div');
+        selectAllContainer.style.display = 'flex';
+        selectAllContainer.style.alignItems = 'center';
+        selectAllContainer.style.gap = '5px';
+        
+        const selectAllCheckbox = document.createElement('input');
+        selectAllCheckbox.type = 'checkbox';
+        selectAllCheckbox.style.margin = '0';
+        
+        selectAllContainer.appendChild(selectAllCheckbox);
+        firstTh.innerHTML = '';
+        firstTh.appendChild(selectAllContainer);
+        
+        const updateSelectAllCheckbox = () => {
+            const allCheckboxes = document.querySelectorAll('.error-checkbox');
+            const checkedCount = document.querySelectorAll('.error-checkbox:checked').length;
+            selectAllCheckbox.checked = allCheckboxes.length > 0 && checkedCount === allCheckboxes.length;
+            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+        };
+        
+        selectAllCheckbox.addEventListener('change', () => {
+            const isChecked = selectAllCheckbox.checked;
+            const checkboxes = document.querySelectorAll('.error-checkbox');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+                const errorId = parseInt(checkbox.value);
+                if (isChecked) {
+                    selectedErrorIds.add(errorId);
+                } else {
+                    selectedErrorIds.delete(errorId);
+                }
+            });
+            updateMarkButtonState();
+        });
+        
+        container.appendChild(tableContainer);
+    };
+    
+    // Initial render
+    renderTable(errorLogs);
+    
+    // Mark as cleared button click handler
+    markClearedBtn.addEventListener('click', async () => {
+        if (selectedErrorIds.size === 0) return;
+        
+        if (confirm(`Are you sure you want to mark ${selectedErrorIds.size} error(s) as cleared?`)) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/error-log/mark-cleared`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ errorIds: Array.from(selectedErrorIds) })
+                });
+                
+                if (!response.ok) throw new Error('Failed to mark errors as cleared');
+                const result = await response.json();
+                window.showNotification?.(result.message, 'success');
+                
+                if (typeof onRefresh === 'function') {
+                    onRefresh(filterDropdown.value === 'all');
+                }
+            } catch (error) {
+                console.error('Error marking errors as cleared:', error);
+                window.showNotification?.('Failed to mark errors as cleared', 'error');
+            }
+        }
+    });
+    
+    // Filter dropdown handler
+    filterDropdown.addEventListener('change', async () => {
+        const showAll = filterDropdown.value === 'all';
+        if (typeof onRefresh === 'function') {
+            onRefresh(showAll);
+        }
+    });
+    
+    return container;
 }
 
 // Function to create modal header
@@ -542,7 +717,7 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         bottom: 0;
         left: 0;
         right: 0;
-        padding: 16px 15px;
+        padding: 5px 20px;
         border-top: 1px solid #ddd;
         font-size: 14px;
         display: flex;
@@ -618,17 +793,20 @@ async function fetchDeviceInfo(deviceIdentifier, infoElements) {
 }
 
 // Main function to show device status popup
-async function showDevStatusPopup(address) {
+async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
     try {
+        // Remove 'D' prefix for API calls
+        const dispenserAddress = dispenserTopic.replace(/^D/, '');
+        
         // Fetch GSM, WiFi, MQTT, power status, error logs, and connection statuses
         const [gsmResponse, wifiResponse, mqttResponse, powerResponse, errorsResponse, gsmConnResponse, wifiConnResponse] = await Promise.allSettled([
-            fetch(`${API_BASE_URL}/gsm-status/${address}`),
-            fetch(`${API_BASE_URL}/wifi-status/${address}`),
-            fetch(`${API_BASE_URL}/mqtt-status/${address}`),
-            fetch(`${API_BASE_URL}/power-status/${address}`),
-            fetch(`${API_BASE_URL}/error-log/${address}`),
-            fetch(`${API_BASE_URL}/gsm-connection-status/${address}`),
-            fetch(`${API_BASE_URL}/wifi-connection-status/${address}`)
+            fetch(`${API_BASE_URL}/gsm-status/${dispenserTopic}`),
+            fetch(`${API_BASE_URL}/wifi-status/${dispenserTopic}`),
+            fetch(`${API_BASE_URL}/mqtt-status/${dispenserTopic}`),
+            fetch(`${API_BASE_URL}/power-status/${dispenserTopic}`),
+            fetch(`${API_BASE_URL}/error-log/${dispenserAddress}`),
+            fetch(`${API_BASE_URL}/gsm-connection-status/${dispenserTopic}`),
+            fetch(`${API_BASE_URL}/wifi-connection-status/${dispenserTopic}`)
         ]);
 
         const gsmStatus = gsmResponse.status === 'fulfilled' && gsmResponse.value.ok ? await gsmResponse.value.json() : null;
@@ -643,8 +821,8 @@ async function showDevStatusPopup(address) {
         const wifiStatuses = wifiConnData?.status || [];
         
         // Determine GSM/WiFi enabled state
-        const gsmEnabled = gsmStatuses && gsmStatuses.length > 0 && gsmStatuses.some(status => status.message.includes('CONNECTED'));
-        const wifiEnabled = wifiStatuses && wifiStatuses.length > 0 && wifiStatuses.some(status => status.message.includes('CONNECTED'));
+        const gsmEnabled = gsmStatuses && gsmStatuses.length > 0 && gsmStatuses.some(status => status.message && status.message.includes('CONNECTED'));
+        const wifiEnabled = wifiStatuses && wifiStatuses.length > 0 && wifiStatuses.some(status => status.message && status.message.includes('CONNECTED'));
         
         // Create modal overlay
         const overlay = createModalOverlay();
@@ -652,30 +830,47 @@ async function showDevStatusPopup(address) {
         // Create modal content
         const modal = document.createElement('div');
         modal.className = 'popup-modal';
-        modal.style.width = '1200px'; // Wider for error logs table
+        modal.style.width = '1200px';
         modal.style.maxWidth = '95%';
-        modal.style.height = '700px'; // Taller for error logs table
+        modal.style.height = '700px';
         modal.style.maxHeight = '85%';
+        modal.style.display = 'flex';
+        modal.style.flexDirection = 'column';
         dragPopup(overlay, modal);
         
         // Create main content container
         const contentContainer = document.createElement('div');
-        contentContainer.style.height = 'calc(100% - 60px)';
+        contentContainer.style.flex = '1';
         contentContainer.style.overflow = 'auto';
+        contentContainer.style.padding = '10px';
         
         // Create main tabs
-        let activeTab = 'connectivity';
-        let mainContent = null;
+        let activeTab = defaultTab;
+        let currentContent = null;
         
-        const { tabsContainer } = createMainTabs((tab) => {
+        const { tabsContainer, connectivityTab, errorLogsTab } = createMainTabs((tab) => {
             activeTab = tab === 'connectivity' ? 'connectivity' : 'errorLogs';
             updateMainContent();
         });
         
+        // Function to refresh errors
+        const refreshErrors = async (showCleared = true) => {
+            const url = showCleared 
+                ? `${API_BASE_URL}/error-log/${dispenserAddress}`
+                : `${API_BASE_URL}/error-log/${dispenserAddress}?showCleared=false`;
+            const response = await fetch(url);
+            if (response.ok) {
+                const newErrors = await response.json();
+                return newErrors;
+            }
+            return [];
+        };
+        
         // Function to update main content based on active tab
         const updateMainContent = () => {
-            if (mainContent) {
-                contentContainer.removeChild(mainContent);
+            // Remove existing content if it exists and is a child
+            if (currentContent && contentContainer.contains(currentContent)) {
+                contentContainer.removeChild(currentContent);
             }
             
             if (activeTab === 'connectivity') {
@@ -691,30 +886,61 @@ async function showDevStatusPopup(address) {
                 // Add MQTT status section
                 columnsContainer.appendChild(createMqttStatusSection(mqttStatus, powerStatus));
                 
-                mainContent = columnsContainer;
-            } else {
-                // Create error logs table view
-                mainContent = createErrorsTable(errorLogs);
+                currentContent = columnsContainer;
+            } else if (activeTab === 'errorLogs') {
+                const errorContainer = document.createElement('div');
+                errorContainer.id = 'error-logs-container';
+                errorContainer.style.height = '100%';
+                errorContainer.style.overflow = 'auto';
+                
+                let currentFilterValue = 'uncleared';
+                
+                const loadErrors = async (showAll = false) => {
+                    currentFilterValue = showAll ? 'all' : 'uncleared';
+                    const url = showAll 
+                        ? `${API_BASE_URL}/error-log/${dispenserAddress}`
+                        : `${API_BASE_URL}/error-log/${dispenserAddress}?showCleared=false`;
+                    const response = await fetch(url);
+                    if (response.ok) {
+                        const errors = await response.json();
+                        errorContainer.innerHTML = '';
+                        const table = createErrorsTable(errors, dispenserAddress, (showAllErrors) => {
+                            loadErrors(showAllErrors);
+                        }, currentFilterValue);
+                        errorContainer.appendChild(table);
+                    }
+                };
+                
+                // Initial load (uncleared only)
+                loadErrors(false);
+                currentContent = errorContainer;
             }
             
-            contentContainer.appendChild(mainContent);
+            contentContainer.appendChild(currentContent);
         };
         
         // Add header
-        const header = createModalHeader(address, overlay);
+        const header = createModalHeader(dispenserTopic, overlay);
         
         modal.appendChild(header);
         modal.appendChild(tabsContainer);
         modal.appendChild(contentContainer);
         
-        // Initialize with connectivity status
+        // Initialize with the default tab
+        if (defaultTab === 'errorLogs') {
+            // Trigger error logs tab style
+            connectivityTab.style.borderBottom = 'none';
+            connectivityTab.style.fontWeight = 'normal';
+            errorLogsTab.style.borderBottom = '3px solid #2e7d32';
+            errorLogsTab.style.fontWeight = 'bold';
+        }
         updateMainContent();
         
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
         
         // Add device info footer
-        addDeviceInfoFooter(modal, address);
+        addDeviceInfoFooter(modal, dispenserTopic);
         
         // Close on overlay click
         overlay.addEventListener('click', (e) => {

@@ -147,8 +147,10 @@ CREATE TABLE `errors` (
   `customer_code` varchar(8) NOT NULL,
   `address` varchar(8) NOT NULL,
   `error_message` json NOT NULL,
+  `cleared` tinyint NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_customer_code_address` (`customer_code`,`address`),
-  KEY `idx_address` (`address`)
+  KEY `idx_address` (`address`),
+  KEY `idx_cleared` (`cleared`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

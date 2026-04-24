@@ -85,7 +85,7 @@ function normalizeFuelType(product) {
     return 'Premier';
 }
 
-function updateNozzleUI(nozzleId, nozzleData) {
+async function updateNozzleUI(nozzleId, nozzleData) {
     try {
         const container = document.getElementById(`nozzle-${nozzleId}`);
         if (!container) {
@@ -93,6 +93,15 @@ function updateNozzleUI(nozzleId, nozzleData) {
             return;
         }
 
+        // Preserve existing error count or fetch new one
+        let errorCount = nozzleData.errorCount || 0;
+        if (container.nozzleData && container.nozzleData.errorCount !== undefined) {
+            errorCount = container.nozzleData.errorCount;
+        } else if (nozzleData.dispenserTopic) {
+            errorCount = await fetchErrorCount(nozzleData.dispenserTopic);
+        }
+        
+        nozzleData.errorCount = errorCount;
         container.nozzleData = nozzleData;
         
         const layoutType = nozzleLayoutType.get(nozzleId) || nozzleData.layoutType || window.NOZZLE_LAYOUTS?.FULL || 'full';
@@ -101,8 +110,6 @@ function updateNozzleUI(nozzleId, nozzleData) {
             setTimeout(() => {
                 window.createNozzleLayout(`nozzle-${nozzleId}`, nozzleData, layoutType);
             }, 50);
-        } else {
-            console.warn('createNozzleLayout function not found');
         }
     } catch (error) {
         console.error('Error updating nozzle UI:', error);
@@ -111,10 +118,14 @@ function updateNozzleUI(nozzleId, nozzleData) {
 
 function NozzleData(nozzle) {
     const shortNozzleId = nozzle.nozzle_id.split('-').pop();
+    const dispenserTopic = nozzle.nozzle_id.split('-')[0];
+    
     return {
         nozzleId: shortNozzleId,
         fullNozzleId: nozzle.nozzle_id,
         dispenserId: nozzle.dispenser_id,
+        dispenserTopic: dispenserTopic,
+        address: dispenserTopic.replace(/^D/, ''),
         fuelType: normalizeFuelType(nozzle.product),
         status: nozzle.status ? 'Active' : 'Inactive',
         price: parseFloat(nozzle.price) || 0.00,
@@ -125,7 +136,8 @@ function NozzleData(nozzle) {
         totalPrice: parseFloat(nozzle.total_amount) || 0.00,
         lastUpdated: new Date().toLocaleString(),
         keypadStatus: nozzle.keypad_lock_status ? 'Locked' : 'Unlocked',
-        locked: !!nozzle.lock_unlock
+        locked: !!nozzle.lock_unlock,
+        errorCount: 0  // Will be updated separately
     };
 }
 
@@ -232,6 +244,21 @@ async function sendGetCommandsForDispenser(dispenser) {
     }
 }
 
+async function fetchErrorCount(dispenserTopic) {
+    try {
+        const address = dispenserTopic.replace(/^D/, '');
+        const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
+        if (response.ok) {
+            const errors = await response.json();
+            return errors.length;
+        }
+        return 0;
+    } catch (error) {
+        console.error('Error fetching error count:', error);
+        return 0;
+    }
+}
+
 // Export functions
 window.NozzleData = NozzleData;
 window.setNozzleLayoutType = setNozzleLayoutType;
@@ -242,3 +269,4 @@ window.updateConnStatus = updateConnStatus;
 window.getNozzleDataFromTopic = getNozzleDataFromTopic;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;
+window.fetchErrorCount = fetchErrorCount;

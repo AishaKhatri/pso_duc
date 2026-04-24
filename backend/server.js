@@ -427,25 +427,37 @@ app.get('/api/error-log/:address', async (req, res) => {
     try {
         let { address } = req.params;
         address = address.replace(/^D/, '');
-        
-        // Fetch errors at this address
-        const [errors] = await pool.query(
-            `SELECT 
+
+        const { showCleared } = req.query;
+
+        let query = `
+            SELECT 
+                id,
                 customer_code,
                 error_message, 
+                cleared,
                 created_at 
             FROM errors 
             WHERE address = ?
-            ORDER BY created_at DESC
-            LIMIT 100`,
-            [address]
-        );
+        `;
+        
+        const queryParams = [address];
+        
+        // Filter by cleared status if specified
+        if (showCleared === 'false' || showCleared === '0') {
+            query += ' AND cleared = 0';
+        }
+        
+        query += ' ORDER BY created_at DESC LIMIT 100';
+
+        const [errors] = await pool.query(query, queryParams);
         
         // Parse the error_message JSON and structure the data
         const parsedErrors = errors.map(error => {
             try {
                 const parsedMessage = error.error_message;
                 return {
+                    id: error.id,
                     customer_code: error.customer_code,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
@@ -456,14 +468,17 @@ app.get('/api/error-log/:address', async (req, res) => {
                     line: parsedMessage.Line || null,
                     function: parsedMessage.Func || null,
                     context: parsedMessage.Cntx || null,
+                    cleared: error.cleared || 0,
                     raw_message: error.error_message
                 };
             } catch (e) {
                 // If parsing fails, return the raw data
                 return {
+                    id: error.id,
                     customer_code: error.customer_code,
                     timestamp: error.created_at,
                     log_time: new Date(error.created_at).toLocaleString(),
+                    cleared: error.cleared || 0,
                     raw_message: error.error_message
                 };
             }
@@ -1046,6 +1061,31 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to update nozzle: ' + error.message });
+    }
+});
+
+app.put('/api/error-log/mark-cleared', async (req, res) => {
+    try {
+        const { errorIds } = req.body;
+        
+        if (!errorIds || !Array.isArray(errorIds) || errorIds.length === 0) {
+            return res.status(400).json({ error: 'errorIds array is required' });
+        }
+        
+        const placeholders = errorIds.map(() => '?').join(',');
+        const [result] = await pool.query(
+            `UPDATE errors SET cleared = 1 WHERE id IN (${placeholders})`,
+            errorIds
+        );
+        
+        res.json({ 
+            success: true, 
+            message: `${result.affectedRows} error(s) marked as cleared`,
+            affectedRows: result.affectedRows
+        });
+    } catch (error) {
+        console.error('Error marking errors as cleared:', error);
+        res.status(500).json({ error: 'Failed to mark errors as cleared' });
     }
 });
 
