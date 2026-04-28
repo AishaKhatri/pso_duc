@@ -75,7 +75,7 @@ function createStationFilterDropdown(stations, onFilterChange) {
 }
 
 // Create a station container with header
-function createStationContainer(stationCode, dispenserCount) {
+function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     const stationSection = document.createElement('div');
     stationSection.className = 'station-section';
     stationSection.setAttribute('data-station-code', stationCode);
@@ -95,6 +95,7 @@ function createStationContainer(stationCode, dispenserCount) {
     stationHeader.style.paddingBottom = '10px';
     stationHeader.style.borderBottom = `2px solid #2E7D32`;
     
+    // Left side - Station title
     const stationTitle = document.createElement('h3');
     stationTitle.textContent = `Station: ${stationCode}`;
     stationTitle.style.margin = '0';
@@ -102,6 +103,42 @@ function createStationContainer(stationCode, dispenserCount) {
     stationTitle.style.fontSize = '22px';
     stationTitle.style.fontWeight = '650';
     
+    // Center - Location info with icon
+    const locationContainer = document.createElement('div');
+    locationContainer.style.display = 'flex';
+    locationContainer.style.alignItems = 'center';
+    locationContainer.style.justifyContent = 'center';
+    locationContainer.style.gap = '6px';
+    locationContainer.style.flex = '1';
+    
+    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '20px');
+    
+    const locationText = document.createElement('span');
+    let cityName = stationInfo.city || '';
+    if (cityName) {
+        cityName = cityName.split(' ').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        ).join(' ');
+    }
+    
+    let locationString = '';
+    if (cityName && stationInfo.station_id) {
+        locationString = `${cityName} - ${stationInfo.station_id}`;
+    } else if (cityName) {
+        locationString = cityName;
+    } else if (stationInfo.station_id) {
+        locationString = stationInfo.station_id;
+    } else {
+        locationString = 'Location not available';
+    }
+    locationText.textContent = locationString;
+    locationText.style.fontSize = '18px';
+    locationText.style.fontWeight = '500';
+    
+    locationContainer.appendChild(locationIcon);
+    locationContainer.appendChild(locationText);
+    
+    // Right side - Dispenser count
     const dispenserCountSpan = document.createElement('span');
     dispenserCountSpan.textContent = `${dispenserCount} Dispenser${dispenserCount !== 1 ? 's' : ''}`;
     dispenserCountSpan.style.backgroundColor = '#e9ecef';
@@ -111,6 +148,7 @@ function createStationContainer(stationCode, dispenserCount) {
     dispenserCountSpan.style.color = '#495057';
     
     stationHeader.appendChild(stationTitle);
+    stationHeader.appendChild(locationContainer);
     stationHeader.appendChild(dispenserCountSpan);
     
     // Horizontal scroll container for dispensers
@@ -205,18 +243,50 @@ function createStationContainer(stationCode, dispenserCount) {
     stationSection.appendChild(stationHeader);
     stationSection.appendChild(scrollWrapper);
     
-    // Hide scroll buttons if content doesn't overflow
+    // Function to check overflow and show/hide buttons
     const checkOverflow = () => {
-        const isOverflowing = scrollContainer.scrollWidth > scrollContainer.clientWidth;
-        leftScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
-        rightScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
+        // Small delay to ensure DOM is rendered
+        setTimeout(() => {
+            if (scrollContainer && scrollContainer.parentElement) {
+                const isOverflowing = scrollContainer.scrollWidth > scrollContainer.clientWidth;
+                leftScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
+                rightScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
+            }
+        }, 50);
     };
     
-    // Check overflow after content is added
-    setTimeout(checkOverflow, 100);
+    // Use MutationObserver to watch for content changes in stationGrid
+    const observer = new MutationObserver(() => {
+        checkOverflow();
+    });
+    
+    // Start observing the stationGrid for child additions/changes
+    observer.observe(stationGrid, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class']
+    });
+    
+    // Also observe the scrollContainer for size changes
+    const resizeObserver = new ResizeObserver(() => {
+        checkOverflow();
+    });
+    resizeObserver.observe(scrollContainer);
+    resizeObserver.observe(stationSection);
+    
+    // Initial check after a delay to ensure all content is loaded
+    setTimeout(checkOverflow, 200);
+    setTimeout(checkOverflow, 500);
+    setTimeout(checkOverflow, 1000);
     
     // Also check on window resize
-    window.addEventListener('resize', checkOverflow);
+    window.addEventListener('resize', () => {
+        setTimeout(checkOverflow, 100);
+    });
+    
+    // Store observer references for cleanup if needed
+    stationSection._observers = { observer, resizeObserver };
     
     return { stationSection, stationGrid, scrollContainer, checkOverflow };
 }
@@ -261,8 +331,30 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
     
     for (const stationCode of sortedStations) {
         const stationData = groupedDispensers[stationCode];
-        const { stationSection, stationGrid, scrollContainer, checkOverflow } = createStationContainer(stationCode, stationData.dispensers.length);
         
+        // Get station info from the first dispenser (or fetch from API)
+        const firstDispenser = stationData.dispensers[0];
+        let stationInfo = {};
+        
+        try {
+            const stationResponse = await fetch(`${API_BASE_URL}/stations/${stationCode}`);
+            if (stationResponse.ok) {
+                const stationData = await stationResponse.json();
+                stationInfo = {
+                    city: stationData.station?.city || '',
+                    station_id: stationData.station?.station_id || ''
+                };
+            }
+        } catch (error) {
+            console.error('Error fetching station info:', error);
+        }
+        
+        const { stationSection, stationGrid, scrollContainer, checkOverflow } = createStationContainer(
+            stationCode, 
+            stationData.dispensers.length,
+            stationInfo
+        );
+    
         // Store grid reference for updates
         window.stationGrids[stationCode] = stationGrid;
         window.stationCheckOverflow[stationCode] = checkOverflow;
