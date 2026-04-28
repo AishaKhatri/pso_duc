@@ -357,12 +357,6 @@ async function createCard(address, customer_code) {
     nextContainer.style.marginRight = '5px';
     nextContainer.style.position = 'relative';
 
-    // const addressText = document.createElement('div');
-    // // addressText.textContent = `Address: ${address}`;
-    // addressText.textContent = `${customer_code}`;
-    // addressText.style.fontSize = '14px';
-    // addressText.style.color = '#666';
-
     const errorContainer = document.createElement('div');
     errorContainer.className = 'dispenser-error-container';
     errorContainer.style.display = 'flex';

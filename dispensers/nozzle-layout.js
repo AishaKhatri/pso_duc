@@ -16,9 +16,9 @@ const LAYOUT_CONFIG = {
         statusFontSize: '14px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
-        width: '120px',
-        minWidth: '120px',
-        maxWidth: '120px',
+        width: '140px',
+        minWidth: '140px',
+        maxWidth: '140px',
         iconSize: '25px',
         fontSize: '24px',
         showKeypad: false,

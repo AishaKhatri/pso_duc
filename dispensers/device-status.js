@@ -437,7 +437,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     container.style.flexDirection = 'column';
     container.style.gap = '15px';
     
-    // Action bar with filter dropdown
+    // Action bar with filter dropdown and stats
     const actionBar = document.createElement('div');
     actionBar.style.display = 'flex';
     actionBar.style.justifyContent = 'space-between';
@@ -471,14 +471,14 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     const totalCount = powerStatuses.length;
     const unclearedCount = powerStatuses.filter(status => !currentClearedIds.has(status.id)).length;
     const statsSpan = document.createElement('span');
-    statsSpan.textContent = `Total: ${totalCount} | Active: ${unclearedCount}`;
+    statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
     statsSpan.style.fontSize = '14px';
     statsSpan.style.fontWeight = 'bold';
     statsSpan.style.color = '#666';
     
     // Mark as cleared button
-    const markClearedBtn = createActionButton('#FF9800', '#F57C00');
-    markClearedBtn.textContent = '✓ Mark Selected as Cleared';
+    const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
+    markClearedBtn.textContent = '✓ Mark as Cleared';
     markClearedBtn.disabled = true;
     markClearedBtn.style.opacity = '0.5';
     markClearedBtn.style.cursor = 'not-allowed';
@@ -533,14 +533,14 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
         selectedResetIds.clear();
         updateMarkButtonState();
         
-        sortedStatuses.forEach((status) => {
+        sortedStatuses.forEach((status, index) => {
             const isCleared = currentClearedIds.has(status.id);
             
             const row = document.createElement('tr');
-            row.style.backgroundColor = isCleared ? '#f5f5f5' : '#fff3e0';
+            row.style.backgroundColor = isCleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
             row.style.opacity = isCleared ? '0.6' : '1';
             
-            // Checkbox cell - only for uncleared items
+            // Checkbox cell
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
@@ -709,6 +709,14 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     filterDropdown.appendChild(unclearedOption);
     
     filterDropdown.value = currentFilterValue;
+
+    const totalCount = errorLogs.length;
+    const unclearedCount = errorLogs.filter(log => log.cleared !== 1).length;
+    const statsSpan = document.createElement('span');
+    statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
+    statsSpan.style.fontSize = '14px';
+    statsSpan.style.fontWeight = 'bold';
+    statsSpan.style.color = '#666';
     
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
@@ -717,6 +725,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     markClearedBtn.style.cursor = 'not-allowed';
     
     actionBar.appendChild(filterDropdown);
+    actionBar.appendChild(statsSpan);
     actionBar.appendChild(markClearedBtn);
     container.appendChild(actionBar);
     
@@ -729,15 +738,21 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
     };
     
-    const renderTable = (errors) => {
+    const renderTable = () => {
         const existingTable = container.querySelector('.error-table-container');
         if (existingTable) {
             existingTable.remove();
         }
         
-        if (errors.length === 0) {
+        // Filter based on dropdown selection
+        let displayErrors = [...errorLogs];
+        if (currentFilterValue === 'uncleared') {
+            displayErrors = displayErrors.filter(log => log.cleared !== 1);
+        }
+        
+        if (displayErrors.length === 0) {
             const noDataMsg = createNoDataMessage(
-                filterDropdown.value === 'uncleared' 
+                currentFilterValue === 'uncleared' 
                     ? 'No uncleared errors found' 
                     : 'No errors found'
             );
@@ -754,7 +769,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         selectedErrorIds.clear();
         updateMarkButtonState();
         
-        errors.forEach((log, index) => {
+        displayErrors.forEach((log, index) => {
             const row = document.createElement('tr');
             row.style.backgroundColor = log.cleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
             row.style.opacity = log.cleared ? '0.6' : '1';
@@ -830,10 +845,10 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         firstTh.appendChild(selectAllContainer);
         
         const updateSelectAllCheckbox = () => {
-            const allCheckboxes = document.querySelectorAll('.error-checkbox');
+            const checkboxes = document.querySelectorAll('.error-checkbox');
             const checkedCount = document.querySelectorAll('.error-checkbox:checked').length;
-            selectAllCheckbox.checked = allCheckboxes.length > 0 && checkedCount === allCheckboxes.length;
-            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < allCheckboxes.length;
+            selectAllCheckbox.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
+            selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
         };
         
         selectAllCheckbox.addEventListener('change', () => {
@@ -854,7 +869,14 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         container.appendChild(tableContainer);
     };
     
-    renderTable(errorLogs);
+    // Initial render
+    renderTable();
+    
+    // Filter dropdown handler - just re-render, don't fetch again
+    filterDropdown.addEventListener('change', () => {
+        currentFilterValue = filterDropdown.value;
+        renderTable();
+    });
     
     markClearedBtn.addEventListener('click', async () => {
         if (selectedErrorIds.size === 0) return;
@@ -882,13 +904,6 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
                     window.showNotification('Failed to mark errors as cleared', 'error');
                 }
             }
-        }
-    });
-    
-    filterDropdown.addEventListener('change', async () => {
-        const showAll = filterDropdown.value === 'all';
-        if (typeof onRefresh === 'function') {
-            onRefresh(showAll);
         }
     });
     
@@ -1102,14 +1117,11 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 
                 const loadErrors = async (showAll = false) => {
                     currentFilterValue = showAll ? 'all' : 'uncleared';
-                    const url = showAll 
-                        ? `${API_BASE_URL}/error-log/${dispenserAddress}`
-                        : `${API_BASE_URL}/error-log/${dispenserAddress}?showCleared=false`;
-                    const response = await fetch(url);
+                    const response = await fetch(`${API_BASE_URL}/error-log/${dispenserAddress}`);
                     if (response.ok) {
-                        const errors = await response.json();
+                        const allErrors = await response.json();
                         errorContainer.innerHTML = '';
-                        const table = createErrorsTable(errors, dispenserAddress, (showAllErrors) => {
+                        const table = createErrorsTable(allErrors, dispenserAddress, (showAllErrors) => {
                             loadErrors(showAllErrors);
                         }, currentFilterValue);
                         errorContainer.appendChild(table);

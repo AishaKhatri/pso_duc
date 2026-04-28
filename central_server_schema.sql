@@ -38,7 +38,8 @@ CREATE TABLE `dispensers` (
   `imei2` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `customer_code` (`customer_code`,`dispenser_id`,`address`),
+  UNIQUE KEY `idx_address` (`address`),
+  UNIQUE KEY `idx_customer_dispenser` (`customer_code`,`dispenser_id`),
   CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 
