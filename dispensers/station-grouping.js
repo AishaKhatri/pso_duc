@@ -85,6 +85,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationSection.style.padding = '15px';
     stationSection.style.border = '1px solid #ddd';
     stationSection.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+    stationSection.style.overflowX = 'hidden'; // Prevent page-level horizontal scroll
     
     // Station header
     const stationHeader = document.createElement('div');
@@ -111,7 +112,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     locationContainer.style.gap = '6px';
     locationContainer.style.flex = '1';
     
-    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '20px');
+    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '14px');
+    locationIcon.style.opacity = '0.7';
     
     const locationText = document.createElement('span');
     let cityName = stationInfo.city || '';
@@ -123,7 +125,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     
     let locationString = '';
     if (cityName && stationInfo.station_id) {
-        locationString = `${cityName} - ${stationInfo.station_id}`;
+        locationString = `${cityName} / ${stationInfo.station_id}`;
     } else if (cityName) {
         locationString = cityName;
     } else if (stationInfo.station_id) {
@@ -132,7 +134,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         locationString = 'Location not available';
     }
     locationText.textContent = locationString;
-    locationText.style.fontSize = '18px';
+    locationText.style.fontSize = '13px';
+    locationText.style.color = '#6c757d';
     locationText.style.fontWeight = '500';
     
     locationContainer.appendChild(locationIcon);
@@ -151,6 +154,14 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationHeader.appendChild(locationContainer);
     stationHeader.appendChild(dispenserCountSpan);
     
+    // Wrapper for scrollable content
+    const scrollWrapper = document.createElement('div');
+    scrollWrapper.style.position = 'relative';
+    scrollWrapper.style.display = 'flex';
+    scrollWrapper.style.alignItems = 'center';
+    scrollWrapper.style.gap = '10px';
+    scrollWrapper.style.width = '100%';
+    
     // Horizontal scroll container for dispensers
     const scrollContainer = document.createElement('div');
     scrollContainer.style.overflowX = 'auto';
@@ -158,13 +169,11 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     scrollContainer.style.whiteSpace = 'nowrap';
     scrollContainer.style.padding = '10px 0';
     scrollContainer.style.scrollBehavior = 'smooth';
+    scrollContainer.style.flex = '1';
+    scrollContainer.style.minWidth = '0'; // Important for flex overflow
     
-    // Add scroll buttons container
-    const scrollWrapper = document.createElement('div');
-    scrollWrapper.style.position = 'relative';
-    scrollWrapper.style.display = 'flex';
-    scrollWrapper.style.alignItems = 'center';
-    scrollWrapper.style.gap = '10px';
+    // Hide default scrollbar
+    scrollContainer.style.scrollbarWidth = 'thin';
     
     // Left scroll button
     const leftScrollBtn = document.createElement('button');
@@ -178,12 +187,13 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     leftScrollBtn.style.fontSize = '28px';
     leftScrollBtn.style.fontWeight = 'bold';
     leftScrollBtn.style.cursor = 'pointer';
-    leftScrollBtn.style.display = 'flex';
+    leftScrollBtn.style.display = 'none';
     leftScrollBtn.style.alignItems = 'center';
     leftScrollBtn.style.justifyContent = 'center';
     leftScrollBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     leftScrollBtn.style.transition = 'all 0.2s ease';
     leftScrollBtn.style.flexShrink = '0';
+    leftScrollBtn.style.zIndex = '10';
     
     leftScrollBtn.addEventListener('mouseenter', () => {
         leftScrollBtn.style.backgroundColor = '#2E7D32';
@@ -193,7 +203,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         leftScrollBtn.style.backgroundColor = '#fff';
         leftScrollBtn.style.color = '#2E7D32';
     });
-    leftScrollBtn.addEventListener('click', () => {
+    leftScrollBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         scrollContainer.scrollBy({ left: -300, behavior: 'smooth' });
     });
     
@@ -209,12 +220,13 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     rightScrollBtn.style.fontSize = '28px';
     rightScrollBtn.style.fontWeight = 'bold';
     rightScrollBtn.style.cursor = 'pointer';
-    rightScrollBtn.style.display = 'flex';
+    rightScrollBtn.style.display = 'none';
     rightScrollBtn.style.alignItems = 'center';
     rightScrollBtn.style.justifyContent = 'center';
     rightScrollBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     rightScrollBtn.style.transition = 'all 0.2s ease';
     rightScrollBtn.style.flexShrink = '0';
+    rightScrollBtn.style.zIndex = '10';
     
     rightScrollBtn.addEventListener('mouseenter', () => {
         rightScrollBtn.style.backgroundColor = '#2E7D32';
@@ -224,7 +236,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         rightScrollBtn.style.backgroundColor = '#fff';
         rightScrollBtn.style.color = '#2E7D32';
     });
-    rightScrollBtn.addEventListener('click', () => {
+    rightScrollBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
         scrollContainer.scrollBy({ left: 300, behavior: 'smooth' });
     });
     
@@ -245,27 +258,25 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     
     // Function to check overflow and show/hide buttons
     const checkOverflow = () => {
-        // Small delay to ensure DOM is rendered
-        setTimeout(() => {
+        // Use requestAnimationFrame to ensure DOM is ready
+        requestAnimationFrame(() => {
             if (scrollContainer && scrollContainer.parentElement) {
                 const isOverflowing = scrollContainer.scrollWidth > scrollContainer.clientWidth;
                 leftScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
                 rightScrollBtn.style.display = isOverflowing ? 'flex' : 'none';
             }
-        }, 50);
+        });
     };
     
-    // Use MutationObserver to watch for content changes in stationGrid
+    // Use MutationObserver to watch for content changes
     const observer = new MutationObserver(() => {
         checkOverflow();
     });
     
-    // Start observing the stationGrid for child additions/changes
     observer.observe(stationGrid, {
         childList: true,
         subtree: true,
-        attributes: true,
-        attributeFilter: ['style', 'class']
+        attributes: true
     });
     
     // Also observe the scrollContainer for size changes
@@ -273,20 +284,34 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         checkOverflow();
     });
     resizeObserver.observe(scrollContainer);
-    resizeObserver.observe(stationSection);
     
-    // Initial check after a delay to ensure all content is loaded
-    setTimeout(checkOverflow, 200);
+    // Initial check with delays to ensure all content is loaded
+    setTimeout(checkOverflow, 100);
+    setTimeout(checkOverflow, 300);
     setTimeout(checkOverflow, 500);
     setTimeout(checkOverflow, 1000);
     
-    // Also check on window resize
+    // Check on window resize
     window.addEventListener('resize', () => {
         setTimeout(checkOverflow, 100);
     });
     
-    // Store observer references for cleanup if needed
-    stationSection._observers = { observer, resizeObserver };
+    // Also check when scrollContainer is scrolled (for dynamic content)
+    scrollContainer.addEventListener('scroll', () => {
+        // Optional: update button states based on scroll position
+        requestAnimationFrame(() => {
+            const atStart = scrollContainer.scrollLeft <= 10;
+            const atEnd = scrollContainer.scrollLeft + scrollContainer.clientWidth >= scrollContainer.scrollWidth - 10;
+            leftScrollBtn.style.opacity = atStart ? '0.5' : '1';
+            rightScrollBtn.style.opacity = atEnd ? '0.5' : '1';
+        });
+    });
+    
+    // Store cleanup function
+    stationSection._cleanup = () => {
+        observer.disconnect();
+        resizeObserver.disconnect();
+    };
     
     return { stationSection, stationGrid, scrollContainer, checkOverflow };
 }
