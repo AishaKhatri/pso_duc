@@ -14,7 +14,8 @@ const {
     getMqttStatus, 
     getPowerOnStatus, 
     getGsmConnectionStatus,
-    getWifiConnectionStatus } = require('./mqtt-service');
+    getWifiConnectionStatus,
+    clearedResetsCache } = require('./mqtt-service');
 
 const { 
     startMidnightResetService,
@@ -409,23 +410,18 @@ app.get('/api/mqtt-status/:dispenser_addr', (req, res) => {
 
 app.get('/api/power-status/:dispenser_addr', (req, res) => {
     try {
-        const { dispenser_addr } = req.params;
-        let status = getPowerOnStatus(dispenser_addr);
-        
-        if (!status) {
-            return res.status(404).json({ error: 'Power-on status not found for this dispenser' });
+        const { dispenser_addr } = req.params;       
+        let status = getPowerOnStatus(dispenser_addr);        
+        let statusArray = [];
+        if (status) {
+            statusArray = Array.isArray(status) ? status : [status];
         }
         
-        // Make sure status is an array
-        let statusArray = Array.isArray(status) ? status : (status ? [status] : []);
+        const clearedIds = clearedResetsCache.get(dispenser_addr) || new Set();
         
-        // Get cleared indices for this dispenser
-        const clearedIndices = clearedResetsCache.get(dispenser_addr) || new Set();
-        
-        // Add cleared flag to each status (without modifying original cache)
-        const statusWithCleared = statusArray.map((item, index) => ({
+        const statusWithCleared = statusArray.map((item) => ({
             ...item,
-            cleared: clearedIndices.has(index)
+            cleared: clearedIds.has(item.id)
         }));
         
         res.json(statusWithCleared);
@@ -438,8 +434,8 @@ app.get('/api/power-status/:dispenser_addr', (req, res) => {
 app.get('/api/cleared-resets/:dispenser_addr', (req, res) => {
     try {
         const { dispenser_addr } = req.params;
-        const clearedIndices = clearedResetsCache.get(dispenser_addr) || new Set();
-        res.json({ indices: Array.from(clearedIndices) });
+        const clearedIds = clearedResetsCache.get(dispenser_addr) || new Set();
+        res.json({ ids: Array.from(clearedIds) });
     } catch (error) {
         console.error('Error fetching cleared resets:', error);
         res.status(500).json({ error: 'Failed to fetch cleared resets' });
@@ -1089,10 +1085,10 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
 
 app.put('/api/reset-logs/mark-cleared', (req, res) => {
     try {
-        const { dispenserAddress, resetIndices } = req.body;
+        const { dispenserAddress, resetIds } = req.body;
         
-        if (!dispenserAddress || !resetIndices || !Array.isArray(resetIndices) || resetIndices.length === 0) {
-            return res.status(400).json({ error: 'dispenserAddress and resetIndices array are required' });
+        if (!dispenserAddress || !resetIds || !Array.isArray(resetIds) || resetIds.length === 0) {
+            return res.status(400).json({ error: 'dispenserAddress and resetIds array are required' });
         }
         
         // Get or create cleared set for this dispenser
@@ -1101,12 +1097,12 @@ app.put('/api/reset-logs/mark-cleared', (req, res) => {
         }
         
         const clearedSet = clearedResetsCache.get(dispenserAddress);
-        resetIndices.forEach(idx => clearedSet.add(parseInt(idx)));
+        resetIds.forEach(id => clearedSet.add(id));
         
         res.json({ 
             success: true, 
-            message: `${resetIndices.length} reset log(s) marked as cleared`,
-            affectedRows: resetIndices.length
+            message: `${resetIds.length} reset log(s) marked as cleared`,
+            affectedRows: resetIds.length
         });
     } catch (error) {
         console.error('Error marking resets as cleared:', error);

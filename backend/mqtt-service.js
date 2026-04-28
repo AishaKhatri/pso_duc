@@ -14,7 +14,7 @@ const recentUpdates = new Map();
 const DEDUPE_WINDOW = 5000; // 5 seconds
 
 // Duration for offline timeout (in milliseconds)
-const OFFLINE_TIMEOUT = 3 * 60 * 1000; // 1 minute
+const OFFLINE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 // Track last msg_type: 0 message timestamp for each nozzle
 const lastStatusMessage = new Map();
 
@@ -29,6 +29,7 @@ const lastStatusMessage = new Map();
 // const mqttClient = mqtt.connect('tcp://localhost:1883', {
 const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
     clientId: `server_local`,
+    // clientId: `server`,
     keepalive: 0.5 * 60,  // 30 seconds
     clean: true,
     reconnectPeriod: 5000,
@@ -48,6 +49,7 @@ const wifiStatusCache = new Map(); // Cache for Wi-Fi status by dispenser addres
 const mqttStatusCache = new Map();
 const powerOnCache = new Map();
 const clearedResetsCache = new Map();
+const resetCounters = new Map();
 const errorLogCache = new Map();
 const deviceInfoCache = new Map();
 
@@ -328,10 +330,6 @@ async function handleGsmStatusMessage(dispenserAddr, gsmData) {
     try {
         const status = {
             gsm: {
-                status: gsmData.GSM?.Status || 'UNKNOWN',
-                simInserted: gsmData.GSM?.SimInserted || false,
-                registered: gsmData.GSM?.Registered || 0,
-                cops: gsmData.GSM?.Cops || 0,
                 signalStrength: gsmData.GSM?.SignalStrength || 0,
                 masterSIM: (() => {
                     const masterSimValue = gsmData.GSM?.MasterSim;
@@ -344,10 +342,6 @@ async function handleGsmStatusMessage(dispenserAddr, gsmData) {
                 contextId: context.ContextId || 0,
                 apn: context.Apn || '',
                 ipv4: context.Ipv4 || context.IPv4 || '',
-                // Store additional fields if they exist
-                ...(context.ContextType && { contextType: context.ContextType }),
-                ...(context.Username && { username: context.Username }),
-                ...(context.Password && { password: context.Password })
             })) : [],
             lastUpdated: new Date().toISOString()
         };
@@ -356,16 +350,6 @@ async function handleGsmStatusMessage(dispenserAddr, gsmData) {
         
         await storeNetworkStatusInDatabase(dispenserAddr, 'GSM', status);
 
-        logWithTimestamp(null, `GSM status updated for ${dispenserAddr}:`);
-        logWithTimestamp(null, `  GSM Status: ${status.gsm.status}`);
-        logWithTimestamp(null, `  Signal Strength: ${status.gsm.signalStrength}`);
-        logWithTimestamp(null, `  Master SIM: ${status.gsm.masterSIM}`);
-        logWithTimestamp(null, `  PDP Contexts: ${status.pdpContexts.length}`);
-        
-        status.pdpContexts.forEach(context => {
-            logWithTimestamp(null, `    Context ${context.contextId}: ${context.apn} -> ${context.ipv4}`);
-        });
-        
         return status;
     } catch (error) {
         errorWithTimestamp('Error parsing GSM status:', error.message);
@@ -508,7 +492,7 @@ function getMqttStatus(dispenserAddr) {
 }
 
 function handlePowerOnMessage(dispenserAddr, message) {
-    try {
+    try {       
         let parsedMessage;
         let statusType;
         let dieTime;
@@ -516,7 +500,6 @@ function handlePowerOnMessage(dispenserAddr, message) {
         let lastUpdated;
         let downtimeMs;
         
-        // Parse the message which could be string or object
         if (typeof message === 'string') {
             try {
                 parsedMessage = JSON.parse(message);
@@ -527,35 +510,43 @@ function handlePowerOnMessage(dispenserAddr, message) {
             parsedMessage = message;
         }
         
-        // Extract status and timestamp
         statusType = parsedMessage.Status || parsedMessage.status;
         dieTime = parsedMessage.DT ? new Date(parsedMessage.DT * 1000) : null;
         wakeupTime = parsedMessage.WT ? new Date(parsedMessage.WT * 1000) : null;
-        downtimeMs = wakeupTime - dieTime;
+        downtimeMs = wakeupTime && dieTime ? (wakeupTime - dieTime) : null;
         lastUpdated = new Date();
         
+        // Get or create counter for this dispenser
+        if (!resetCounters.has(dispenserAddr)) {
+            resetCounters.set(dispenserAddr, 0);
+        }
+        const nextId = resetCounters.get(dispenserAddr) + 1;
+        resetCounters.set(dispenserAddr, nextId);
+        
         const status = {
+            id: nextId,
             message: statusType,
             dieTime: dieTime,
             wakeupTime: wakeupTime,
             type: 'power_on',
-            // raw: message.includes('raw=') ? parseInt(message.split('raw=')[1]) : null,
             lastUpdated: lastUpdated,
             downtimeMs: downtimeMs
         };
 
+        // Initialize array for this dispenser if it doesn't exist
         if (!powerOnCache.has(dispenserAddr)) {
             powerOnCache.set(dispenserAddr, []);
         }
+        
         const powerOnStatuses = powerOnCache.get(dispenserAddr);
-        powerOnStatuses.push(status);
-        // Keep only last 5 statuses
-        if (powerOnStatuses.length > 5) {
-            powerOnStatuses.shift();
+        powerOnStatuses.unshift(status);
+        
+        if (powerOnStatuses.length > 20) {
+            powerOnStatuses.pop();
         }
-
-        // powerOnCache.set(dispenserAddr, status);
-        logWithTimestamp(chalk.null, `Power-on status updated for ${dispenserAddr}: ${message}`);
+        
+        logWithTimestamp(chalk.cyan, `Power-on status updated for ${dispenserAddr}: ${statusType} (ID: ${nextId})`);
+        
         return status;
     } catch (error) {
         errorWithTimestamp('Error parsing power-on message:', error.message);
@@ -1016,6 +1007,8 @@ async function registerNewDevice(message) {
         const stationId = deviceData.StationId;
         const city = deviceData.City;
         const deviceAddress = (deviceData.dis_addr || deviceData.DeviceId || '').replace(/^D/, '');
+        const imei1 = deviceData.IMEI1 || null;
+        const imei2 = deviceData.IMEI2 || null;
         
         // Validate required fields
         if (!customerCode || !deviceAddress) {
@@ -1102,8 +1095,8 @@ async function registerNewDevice(message) {
             await pool.query(
                 `INSERT INTO dispensers 
                  (customer_code, dispenser_id, address, conn_status, connected_at, 
-                  ir_lock_status, number_of_nozzles, DispenserBrand) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                  ir_lock_status, number_of_nozzles, DispenserBrand, IMEI1, IMEI2) 
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     customerCode,
                     finalDispenserId,
@@ -1112,7 +1105,9 @@ async function registerNewDevice(message) {
                     null,
                     1, // ir_lock_status - unlocked
                     totalNozzles,
-                    dispenserBrand
+                    dispenserBrand,
+                    imei1,
+                    imei2
                 ]
             );
             logWithTimestamp(chalk.green, `✓ New dispenser registered: ID ${finalDispenserId} (Address: ${deviceAddress})`);
@@ -1124,6 +1119,28 @@ async function registerNewDevice(message) {
             await subscribeToTopic(connStatTopic, statusTopics);
         } else {
             finalDispenserId = existingDispensers[0].dispenser_id;
+
+            // Update IMEI fields if they exist and are different
+            if (imei1 || imei2) {
+                const updateFields = [];
+                const updateValues = [];
+                if (imei1) {
+                    updateFields.push('imei1 = ?');
+                    updateValues.push(imei1);
+                }
+                if (imei2) {
+                    updateFields.push('imei2 = ?');
+                    updateValues.push(imei2);
+                }
+                updateValues.push(customerCode, deviceAddress);
+                
+                await pool.query(
+                    `UPDATE dispensers SET ${updateFields.join(', ')} WHERE customer_code = ? AND address = ?`,
+                    updateValues
+                );
+                logWithTimestamp(chalk.blue, `✓ Updated IMEIs for existing dispenser: ${deviceAddress}`);
+            }
+
             logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ID ${finalDispenserId}`);
         }
         
@@ -1433,6 +1450,7 @@ module.exports = {
     getWiFiStatus,
     getMqttStatus,
     getPowerOnStatus,
+    clearedResetsCache,
     getErrorLog,
     getDeviceInfo,
     hasErrors,

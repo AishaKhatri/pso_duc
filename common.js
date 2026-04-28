@@ -385,7 +385,6 @@ async function createCard(address, customer_code) {
     
     const count = await fetchErrorCount(address);
     errorCountSpan.textContent = count;
-    console.log(`Initial error count for ${address}: ${count}`);
 
     if (count > 0) {
         errorIcon.style.display = 'inline-block';
@@ -426,8 +425,6 @@ async function createCard(address, customer_code) {
     (async () => {
         const count = await fetchResetCount(address);
         resetCountSpan.textContent = count;
-        console.log(`Initial reset count for ${address}: ${count}`);
-        
         if (count > 0) {
             resetIcon.style.display = 'inline-block';
             resetCountSpan.style.display = 'inline-block';
@@ -449,7 +446,6 @@ async function createCard(address, customer_code) {
     uptime.style.fontSize = '12px';
     uptime.style.color = '#999';
     
-    // nextContainer.appendChild(addressText);
     nextContainer.appendChild(errorContainer);
     nextContainer.appendChild(resetContainer);
     nextContainer.appendChild(uptime);
@@ -464,7 +460,6 @@ async function fetchErrorCount(dispenserTopic) {
         const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
         if (response.ok) {
             const errors = await response.json();
-            console.log(`Fetched ${errors.length} errors for dispenser ${dispenserTopic}`);
             return errors.length;
         }
         return 0;
@@ -476,12 +471,18 @@ async function fetchErrorCount(dispenserTopic) {
 
 async function fetchResetCount(dispenserAddr) {
     try {
-        const response = await fetch(`${API_BASE_URL}/power-status/D${dispenserAddr}`);
+        const response = await fetch(`${API_BASE_URL}/power-status/${dispenserAddr}`);
         if (response.ok) {
             const powerStatuses = await response.json();
-            if (Array.isArray(powerStatuses)) {
-                // Count only uncleared resets
-                return powerStatuses.filter(status => !status.cleared).length;
+            if (Array.isArray(powerStatuses) && powerStatuses.length > 0) {
+                const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserAddr}`);
+                let clearedIds = new Set();
+                if (clearedResponse.ok) {
+                    const clearedData = await clearedResponse.json();
+                    clearedIds = new Set(clearedData.ids || []);
+                }
+                // Return ONLY uncleared count
+                return powerStatuses.filter(status => !clearedIds.has(status.id)).length;
             }
         }
         return 0;
@@ -492,7 +493,7 @@ async function fetchResetCount(dispenserAddr) {
 }
 
 async function updateResetCount(dispenserAddr) {
-    const card = document.querySelector(`div[data-address="D${dispenserAddr}"]`);
+    const card = document.querySelector(`div[data-address="${dispenserAddr}"]`);
     if (!card) return;
     
     const resetCountSpan = card.querySelector('.dispenser-reset-count');

@@ -1,18 +1,5 @@
 // device-status-functions.js
 
-let clearedResetIndices = new Set();
-
-// Load cleared resets from server
-try {
-    const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
-    if (clearedResponse.ok) {
-        const clearedData = await clearedResponse.json();
-        clearedResetIndices = new Set(clearedData.indices || []);
-    }
-} catch (error) {
-    console.error('Error loading cleared resets:', error);
-}
-
 // Helper function to create a base row element
 function createBaseRow() {
     const row = document.createElement('div');
@@ -100,7 +87,6 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     const buttonsContainer = document.createElement('div');
     buttonsContainer.style.display = 'flex';
     buttonsContainer.style.justifyContent = 'flex-end';
-    // buttonsContainer.style.marginBottom = '15px';
     buttonsContainer.style.gap = '10px';
     
     const gsmButton = document.createElement('button');
@@ -123,7 +109,6 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     wifiButton.style.cursor = wifiEnabled ? 'pointer' : 'not-allowed';
     wifiButton.disabled = !wifiEnabled;
     
-    // Set initial active button based on availability
     let activeButton = gsmEnabled ? 'gsm' : (wifiEnabled ? 'wifi' : 'gsm');
     
     const updateButtonStyles = () => {
@@ -160,7 +145,6 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
         }
     });
     
-    // Initialize styles
     updateButtonStyles();
     
     buttonsContainer.appendChild(gsmButton);
@@ -169,7 +153,7 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     return { buttonsContainer, gsmButton, wifiButton };
 }
 
-// Function to create main tabs (Connectivity Status and Error Logs and Reset Logs)
+// Function to create main tabs (Connectivity Status, Error Logs, and Reset Logs)
 function createMainTabs(onTabChange) {
     const tabsContainer = document.createElement('div');
     tabsContainer.style.display = 'flex';
@@ -203,7 +187,7 @@ function createMainTabs(onTabChange) {
     resetLogsTab.style.border = 'none';
     resetLogsTab.style.background = 'none';
     resetLogsTab.style.fontWeight = 'normal';
-    resetLogsTab.style.color = '#f57c00';
+    resetLogsTab.style.color = '#2e7d32';
     resetLogsTab.style.cursor = 'pointer';
     resetLogsTab.style.fontSize = '16px';
     
@@ -211,33 +195,24 @@ function createMainTabs(onTabChange) {
         if (activeTab === 'connectivity') {
             connectivityTab.style.borderBottom = '3px solid #2e7d32';
             connectivityTab.style.fontWeight = 'bold';
-            connectivityTab.style.color = '#2e7d32';
             errorLogsTab.style.borderBottom = 'none';
             errorLogsTab.style.fontWeight = 'normal';
-            errorLogsTab.style.color = '#2e7d32';
             resetLogsTab.style.borderBottom = 'none';
             resetLogsTab.style.fontWeight = 'normal';
-            resetLogsTab.style.color = '#f57c00';
         } else if (activeTab === 'errorLogs') {
             errorLogsTab.style.borderBottom = '3px solid #2e7d32';
             errorLogsTab.style.fontWeight = 'bold';
-            errorLogsTab.style.color = '#2e7d32';
             connectivityTab.style.borderBottom = 'none';
             connectivityTab.style.fontWeight = 'normal';
-            connectivityTab.style.color = '#2e7d32';
             resetLogsTab.style.borderBottom = 'none';
             resetLogsTab.style.fontWeight = 'normal';
-            resetLogsTab.style.color = '#f57c00';
         } else {
-            resetLogsTab.style.borderBottom = '3px solid #f57c00';
+            resetLogsTab.style.borderBottom = '3px solid #2e7d32';
             resetLogsTab.style.fontWeight = 'bold';
-            resetLogsTab.style.color = '#f57c00';
             connectivityTab.style.borderBottom = 'none';
             connectivityTab.style.fontWeight = 'normal';
-            connectivityTab.style.color = '#2e7d32';
             errorLogsTab.style.borderBottom = 'none';
             errorLogsTab.style.fontWeight = 'normal';
-            errorLogsTab.style.color = '#2e7d32';
         }
     };
     
@@ -263,7 +238,7 @@ function createMainTabs(onTabChange) {
     return { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab };
 }
 
-// Function to create wireless connectivity section (combined GSM/WiFi)
+// Function to create wireless connectivity section
 function createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wifiEnabled) {
     const section = document.createElement('div');
     section.style.flex = '1';
@@ -272,7 +247,6 @@ function createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wi
     
     section.appendChild(createSectionHeader('Wireless Connectivity'));
    
-    // Create toggle buttons
     let activeWirelessMode = gsmEnabled ? 'gsm' : (wifiEnabled ? 'wifi' : 'gsm');
     let currentContent = null;
     
@@ -287,7 +261,6 @@ function createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wi
     
     section.appendChild(buttonsContainer);
     
-    // Function to update wireless content based on active mode
     const updateWirelessContent = () => {
         if (currentContent) {
             section.removeChild(currentContent);
@@ -302,7 +275,6 @@ function createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wi
         section.appendChild(currentContent);
     };
     
-    // Initialize with GSM or WiFi content
     updateWirelessContent();
     
     return section;
@@ -316,25 +288,10 @@ function createGsmStatusContent(gsmStatus) {
         container.appendChild(createNoDataMessage('No GSM status available'));
         return container;
     }
-    
-    // GSM Status
-    container.appendChild(createStatusRow('GSM Status', gsmStatus.gsm.status));
-    
-    // Signal Strength
-    container.appendChild(createStatusRow('Signal Strength', `${gsmStatus.gsm.signalStrength} dB`));
 
-    // Master SIM
+    container.appendChild(createStatusRow('Signal Strength', `${gsmStatus.gsm.signalStrength} dB`));
     container.appendChild(createStatusRow('Master SIM', `${gsmStatus.gsm.masterSIM}`));
     
-    // SIM Status
-    const simStatus = gsmStatus.gsm.simInserted ? 'Inserted' : 'Not Inserted';
-    container.appendChild(createStatusRow('SIM Status', simStatus));
-    
-    // Network Registration
-    const regStatus = gsmStatus.gsm.registered === 1 ? 'Registered' : 'Not Registered';
-    container.appendChild(createStatusRow('Network Registration', regStatus));
-    
-    // PDP Contexts
     if (gsmStatus.pdpContexts && gsmStatus.pdpContexts.length > 0) {
         const pdpHeader = document.createElement('h4');
         pdpHeader.textContent = 'PDP Contexts';
@@ -345,18 +302,15 @@ function createGsmStatusContent(gsmStatus) {
         
         gsmStatus.pdpContexts.forEach((context, index) => {
             const contextDiv = createStyledContainer();
-            
             contextDiv.innerHTML = `
                 <div style="font-weight: bold; margin-bottom: 5px;">Context ${context.ContextId || index + 1}</div>
                 <div>APN: ${context.apn || 'N/A'}</div>
                 <div>IPv4: ${context.ipv4 || 'N/A'}</div>
             `;
-            
             container.appendChild(contextDiv);
         });
     }
     
-    // Last Updated
     container.appendChild(createLastUpdatedText(gsmStatus.lastUpdated));
     
     return container;
@@ -371,10 +325,8 @@ function createWifiStatusContent(wifiStatus) {
         return container;
     }
     
-    // WiFi Status
     container.appendChild(createStatusRow('Wi-Fi Status', wifiStatus.status));
     
-    // Connection details
     if (wifiStatus.ssid) {
         container.appendChild(createStatusRow('SSID', wifiStatus.ssid));
     }
@@ -387,13 +339,12 @@ function createWifiStatusContent(wifiStatus) {
         container.appendChild(createStatusRow('Signal Strength', `${wifiStatus.signalStrength} dB`));
     }
     
-    // Last Updated
     container.appendChild(createLastUpdatedText(wifiStatus.lastUpdated));
     
     return container;
 }
 
-// Function to create MQTT status section with power status included
+// Function to create MQTT status section
 function createMqttStatusSection(mqttStatus, powerStatus) {
     const section = document.createElement('div');
     section.style.flex = '1';
@@ -404,13 +355,11 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
     if (!mqttStatus) {
         section.appendChild(createNoDataMessage('No MQTT status available'));
     } else {
-        // MQTT Status indicators
         section.appendChild(createStatusIndicator('MQTT Started', mqttStatus.started));
         section.appendChild(createStatusIndicator('Client Acquired', mqttStatus.clientAcquired));
         section.appendChild(createStatusIndicator('Broker Connected', mqttStatus.brokerConnected));
         section.appendChild(createStatusRow('Subscribed Topics', mqttStatus.subscribedCount.toString()));
         
-        // Subscribed topics list
         if (mqttStatus.subscribedTopics && mqttStatus.subscribedTopics.length > 0) {
             const topicsList = createStyledContainer();
             topicsList.style.maxHeight = '120px';
@@ -438,25 +387,21 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
 
     section.appendChild(createSectionHeader('Power Status', '#2e7d32'));
     
-    // Handle powerStatus whether it's an array or single object
     let powerStatuses = [];
     
     if (Array.isArray(powerStatus)) {
         powerStatuses = powerStatus;
     } else if (powerStatus) {
-        // If it's a single object, convert to array
         powerStatuses = [powerStatus];
     }
     
     if (powerStatuses.length === 0) {
         section.appendChild(createNoDataMessage('No power-on status available'));
     } else {
-        // Get the last 5 power statuses (most recent first)
         const recentPowerStatuses = powerStatuses
             .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated))
             .slice(0, 5);
         
-        // Show latest event type
         const latestStatus = recentPowerStatuses[0];
         
         section.appendChild(createStatusRow('Wakeup Time', (new Date(latestStatus.wakeupTime).toLocaleString())));  
@@ -465,58 +410,34 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
         const infoText = [`Die Time: ${new Date(latestStatus.dieTime).toLocaleString()}`,
                     `Duration: ${formatTimeString(latestStatus.downtimeMs)}`,
                     `Reason: ${latestStatus.message}`
-        ]
+        ];
         
-        // Message details
         const messageDiv = createStyledContainer();
         messageDiv.style.fontFamily = 'monospace';
         messageDiv.style.fontSize = '14px';
         
         infoText.forEach(text => {
-                const topicItem = document.createElement('div');
-                topicItem.textContent = text;
-                topicItem.style.padding = '2px 0';
-                messageDiv.appendChild(topicItem);
-            });
+            const topicItem = document.createElement('div');
+            topicItem.textContent = text;
+            topicItem.style.padding = '2px 0';
+            messageDiv.appendChild(topicItem);
+        });
             
         section.appendChild(messageDiv);
-       
-        // Last updated using the latest event
         section.appendChild(createLastUpdatedText(latestStatus.lastUpdated));
     }
    
     return section;
 }
 
-function formatTimeString(timeMs) {
-    if (timeMs < 1000) {
-        return 'Less than 1 second';
-    }
-    
-    const seconds = Math.floor(timeMs / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-    
-    if (days > 0) {
-        return `${days} day${days > 1 ? 's' : ''} ${hours % 24} hour${hours % 24 > 1 ? 's' : ''}`;
-    } else if (hours > 0) {
-        return `${hours} hour${hours > 1 ? 's' : ''} ${minutes % 60} minute${minutes % 60 > 1 ? 's' : ''}`;
-    } else if (minutes > 0) {
-        return `${minutes} minute${minutes > 1 ? 's' : ''} ${seconds % 60} second${seconds % 60 > 1 ? 's' : ''}`;
-    } else {
-        return `${seconds} second${seconds > 1 ? 's' : ''}`;
-    }
-}
-
-// Function to create error logs table view
-function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilterValue = 'uncleared') {
+// Function to create reset logs table
+function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, currentClearedIds = new Set(), currentFilter = 'uncleared') {
     const container = document.createElement('div');
     container.style.display = 'flex';
     container.style.flexDirection = 'column';
     container.style.gap = '15px';
     
-    // Action bar
+    // Action bar with filter dropdown
     const actionBar = document.createElement('div');
     actionBar.style.display = 'flex';
     actionBar.style.justifyContent = 'space-between';
@@ -536,6 +457,249 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     
     const allOption = document.createElement('option');
     allOption.value = 'all';
+    allOption.textContent = 'All Resets';
+    filterDropdown.appendChild(allOption);
+    
+    const unclearedOption = document.createElement('option');
+    unclearedOption.value = 'uncleared';
+    unclearedOption.textContent = 'Uncleared Only';
+    filterDropdown.appendChild(unclearedOption);
+    
+    filterDropdown.value = currentFilter;
+    
+    // Stats display
+    const totalCount = powerStatuses.length;
+    const unclearedCount = powerStatuses.filter(status => !currentClearedIds.has(status.id)).length;
+    const statsSpan = document.createElement('span');
+    statsSpan.textContent = `Total: ${totalCount} | Active: ${unclearedCount}`;
+    statsSpan.style.fontSize = '14px';
+    statsSpan.style.fontWeight = 'bold';
+    statsSpan.style.color = '#666';
+    
+    // Mark as cleared button
+    const markClearedBtn = createActionButton('#FF9800', '#F57C00');
+    markClearedBtn.textContent = '✓ Mark Selected as Cleared';
+    markClearedBtn.disabled = true;
+    markClearedBtn.style.opacity = '0.5';
+    markClearedBtn.style.cursor = 'not-allowed';
+    
+    actionBar.appendChild(filterDropdown);
+    actionBar.appendChild(statsSpan);
+    actionBar.appendChild(markClearedBtn);
+    container.appendChild(actionBar);
+    
+    let selectedResetIds = new Set();
+    
+    const updateMarkButtonState = () => {
+        const hasSelected = selectedResetIds.size > 0;
+        markClearedBtn.disabled = !hasSelected;
+        markClearedBtn.style.opacity = hasSelected ? '1' : '0.5';
+        markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
+    };
+    
+    const renderTable = () => {
+        const existingTable = container.querySelector('.reset-table-container');
+        if (existingTable) {
+            existingTable.remove();
+        }
+        
+        // Filter based on dropdown selection
+        let filteredStatuses = [...powerStatuses];
+        if (currentFilter === 'uncleared') {
+            filteredStatuses = filteredStatuses.filter(status => !currentClearedIds.has(status.id));
+        }
+        
+        if (filteredStatuses.length === 0) {
+            const noDataMsg = createNoDataMessage(
+                currentFilter === 'uncleared' 
+                    ? 'No uncleared resets found' 
+                    : 'No reset logs found'
+            );
+            noDataMsg.style.padding = '40px';
+            noDataMsg.classList.add('reset-table-container');
+            container.appendChild(noDataMsg);
+            return;
+        }
+        
+        // Sort by lastUpdated descending (most recent first)
+        const sortedStatuses = [...filteredStatuses].sort((a, b) => 
+            new Date(b.lastUpdated) - new Date(a.lastUpdated)
+        );
+        
+        const headers = ['', 'Wakeup Time', 'Die Time', 'Duration', 'Reason', 'Status'];
+        const { tableContainer, tbody } = createTable(headers);
+        tableContainer.classList.add('reset-table-container');
+        
+        selectedResetIds.clear();
+        updateMarkButtonState();
+        
+        sortedStatuses.forEach((status) => {
+            const isCleared = currentClearedIds.has(status.id);
+            
+            const row = document.createElement('tr');
+            row.style.backgroundColor = isCleared ? '#f5f5f5' : '#fff3e0';
+            row.style.opacity = isCleared ? '0.6' : '1';
+            
+            // Checkbox cell - only for uncleared items
+            const checkboxTd = document.createElement('td');
+            checkboxTd.style.padding = '12px';
+            checkboxTd.style.textAlign = 'center';
+            const checkbox = document.createElement('input');
+            checkbox.type = 'checkbox';
+            checkbox.className = 'reset-checkbox';
+            checkbox.value = status.id;
+            checkbox.disabled = isCleared;
+            
+            if (!isCleared) {
+                checkbox.addEventListener('change', () => {
+                    if (checkbox.checked) {
+                        selectedResetIds.add(status.id);
+                    } else {
+                        selectedResetIds.delete(status.id);
+                    }
+                    updateMarkButtonState();
+                    updateSelectAllCheckbox();
+                });
+            } else {
+                checkbox.style.opacity = '0.5';
+            }
+            checkboxTd.appendChild(checkbox);
+            row.appendChild(checkboxTd);
+            
+            // Data cells
+            const wakeupTime = status.wakeupTime ? new Date(status.wakeupTime).toLocaleString() : 'N/A';
+            const dieTime = status.dieTime ? new Date(status.dieTime).toLocaleString() : 'N/A';
+            const duration = formatTimeString(status.downtimeMs);
+            const reason = status.message || 'Unknown';
+            const statusText = isCleared ? 'Cleared' : 'Active';
+            
+            const cells = [wakeupTime, dieTime, duration, reason, statusText];
+            
+            cells.forEach((cellText) => {
+                const td = document.createElement('td');
+                td.textContent = cellText;
+                td.style.padding = '12px';
+                td.style.borderBottom = '1px solid #ddd';
+                if (isCleared) {
+                    td.style.color = '#999';
+                }
+                row.appendChild(td);
+            });
+            
+            tbody.appendChild(row);
+        });
+        
+        const thead = tableContainer.querySelector('thead');
+        const headerRow = thead.querySelector('tr');
+        const firstTh = headerRow.querySelector('th');
+        const selectAllContainer = document.createElement('div');
+        selectAllContainer.style.display = 'flex';
+        selectAllContainer.style.alignItems = 'center';
+        selectAllContainer.style.gap = '5px';
+        
+        const selectAllCheckbox = document.createElement('input');
+        selectAllCheckbox.type = 'checkbox';
+        selectAllCheckbox.style.margin = '0';
+        
+        selectAllContainer.appendChild(selectAllCheckbox);
+        firstTh.innerHTML = '';
+        firstTh.appendChild(selectAllContainer);
+        
+        const updateSelectAllCheckbox = () => {
+            const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
+            const checkedCheckboxes = document.querySelectorAll('.reset-checkbox:checked:not([disabled])');
+            selectAllCheckbox.checked = checkboxes.length > 0 && checkedCheckboxes.length === checkboxes.length;
+            selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < checkboxes.length;
+        };
+        
+        selectAllCheckbox.addEventListener('change', () => {
+            const isChecked = selectAllCheckbox.checked;
+            const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
+            checkboxes.forEach(checkbox => {
+                checkbox.checked = isChecked;
+                if (isChecked) {
+                    selectedResetIds.add(checkbox.value);
+                } else {
+                    selectedResetIds.delete(checkbox.value);
+                }
+            });
+            updateMarkButtonState();
+        });
+        
+        container.appendChild(tableContainer);
+    };
+    
+    renderTable();
+    
+    // Filter dropdown handler
+    filterDropdown.addEventListener('change', () => {
+        const newFilter = filterDropdown.value;
+        if (typeof onRefresh === 'function') {
+            onRefresh(newFilter);
+        }
+    });
+    
+    // Mark as cleared button handler
+    markClearedBtn.addEventListener('click', async () => {
+        if (selectedResetIds.size === 0) return;
+        
+        if (confirm(`Are you sure you want to mark ${selectedResetIds.size} reset log(s) as cleared?`)) {
+            try {
+                const response = await fetch(`${API_BASE_URL}/reset-logs/mark-cleared`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        dispenserAddress: dispenserAddress,
+                        resetIds: Array.from(selectedResetIds)
+                    })
+                });
+                
+                if (!response.ok) throw new Error('Failed to mark resets as cleared');
+                const result = await response.json();
+                if (window.showNotification) {
+                    window.showNotification(result.message, 'success');
+                }
+                
+                if (typeof onRefresh === 'function') {
+                    onRefresh(filterDropdown.value);
+                }
+            } catch (error) {
+                console.error('Error marking resets as cleared:', error);
+                if (window.showNotification) {
+                    window.showNotification('Failed to mark resets as cleared', 'error');
+                }
+            }
+        }
+    });
+    
+    return container;
+}
+
+// Function to create error logs table view
+function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilterValue = 'uncleared') {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '15px';
+    
+    const actionBar = document.createElement('div');
+    actionBar.style.display = 'flex';
+    actionBar.style.justifyContent = 'space-between';
+    actionBar.style.alignItems = 'center';
+    actionBar.style.padding = '10px';
+    actionBar.style.backgroundColor = '#f8f9fa';
+    actionBar.style.borderRadius = '8px';
+    actionBar.style.border = '1px solid #e0e0e0';
+    
+    const filterDropdown = document.createElement('select');
+    filterDropdown.style.padding = '8px';
+    filterDropdown.style.border = '1px solid #ccc';
+    filterDropdown.style.borderRadius = '4px';
+    filterDropdown.style.width = '200px';
+    filterDropdown.style.marginBottom = '0';
+    
+    const allOption = document.createElement('option');
+    allOption.value = 'all';
     allOption.textContent = 'All Errors';
     filterDropdown.appendChild(allOption);
     
@@ -544,10 +708,8 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     unclearedOption.textContent = 'Uncleared Only';
     filterDropdown.appendChild(unclearedOption);
     
-    // Set the dropdown value based on currentFilter
     filterDropdown.value = currentFilterValue;
     
-    // Mark as cleared button
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
     markClearedBtn.disabled = true;
@@ -567,15 +729,12 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
     };
     
-    // Function to render the table
     const renderTable = (errors) => {
-        // Remove existing table
         const existingTable = container.querySelector('.error-table-container');
         if (existingTable) {
             existingTable.remove();
         }
         
-        // Check if no errors
         if (errors.length === 0) {
             const noDataMsg = createNoDataMessage(
                 filterDropdown.value === 'uncleared' 
@@ -588,7 +747,6 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             return;
         }
         
-        // Create table
         const headers = ['', 'Log Time', 'Error Code', 'Severity', 'File', 'Line', 'Function', 'Context', 'Status'];
         const { tableContainer, tbody } = createTable(headers);
         tableContainer.classList.add('error-table-container');
@@ -601,7 +759,6 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             row.style.backgroundColor = log.cleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
             row.style.opacity = log.cleared ? '0.6' : '1';
             
-            // Checkbox cell
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
@@ -626,7 +783,6 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             checkboxTd.appendChild(checkbox);
             row.appendChild(checkboxTd);
             
-            // Data cells
             const errorCode = log.error_code || log.Code || 'N/A';
             const severity = log.severity || log.Sev || 'N/A';
             const file = log.file || log.File || 'N/A';
@@ -657,7 +813,6 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             tbody.appendChild(row);
         });
         
-        // Select all checkbox in header
         const thead = tableContainer.querySelector('thead');
         const headerRow = thead.querySelector('tr');
         const firstTh = headerRow.querySelector('th');
@@ -699,10 +854,8 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         container.appendChild(tableContainer);
     };
     
-    // Initial render
     renderTable(errorLogs);
     
-    // Mark as cleared button click handler
     markClearedBtn.addEventListener('click', async () => {
         if (selectedErrorIds.size === 0) return;
         
@@ -716,234 +869,26 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
                 
                 if (!response.ok) throw new Error('Failed to mark errors as cleared');
                 const result = await response.json();
-                window.showNotification?.(result.message, 'success');
+                if (window.showNotification) {
+                    window.showNotification(result.message, 'success');
+                }
                 
                 if (typeof onRefresh === 'function') {
                     onRefresh(filterDropdown.value === 'all');
                 }
             } catch (error) {
                 console.error('Error marking errors as cleared:', error);
-                window.showNotification?.('Failed to mark errors as cleared', 'error');
+                if (window.showNotification) {
+                    window.showNotification('Failed to mark errors as cleared', 'error');
+                }
             }
         }
     });
     
-    // Filter dropdown handler
     filterDropdown.addEventListener('change', async () => {
         const showAll = filterDropdown.value === 'all';
         if (typeof onRefresh === 'function') {
             onRefresh(showAll);
-        }
-    });
-    
-    return container;
-}
-
-// Function to create reset logs table
-function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, currentClearedIds = new Set()) {
-    const container = document.createElement('div');
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '15px';
-    
-    // Action bar
-    const actionBar = document.createElement('div');
-    actionBar.style.display = 'flex';
-    actionBar.style.justifyContent = 'space-between';
-    actionBar.style.alignItems = 'center';
-    actionBar.style.padding = '10px';
-    actionBar.style.backgroundColor = '#f8f9fa';
-    actionBar.style.borderRadius = '8px';
-    actionBar.style.border = '1px solid #e0e0e0';
-    
-    // Stats display
-    const unclearedCount = powerStatuses.filter((p, idx) => !currentClearedIds.has(`${idx}`)).length;
-    const statsSpan = document.createElement('span');
-    statsSpan.textContent = `Total: ${powerStatuses.length} | Active: ${unclearedCount}`;
-    statsSpan.style.fontSize = '14px';
-    statsSpan.style.fontWeight = 'bold';
-    statsSpan.style.color = '#666';
-    
-    // Mark as cleared button
-    const markClearedBtn = createActionButton('#FF9800', '#F57C00');
-    markClearedBtn.textContent = '✓ Mark Selected as Cleared';
-    markClearedBtn.disabled = true;
-    markClearedBtn.style.opacity = '0.5';
-    markClearedBtn.style.cursor = 'not-allowed';
-    
-    actionBar.appendChild(statsSpan);
-    actionBar.appendChild(markClearedBtn);
-    container.appendChild(actionBar);
-    
-    let selectedResetIndices = new Set();
-    
-    const updateMarkButtonState = () => {
-        const hasSelected = selectedResetIndices.size > 0;
-        markClearedBtn.disabled = !hasSelected;
-        markClearedBtn.style.opacity = hasSelected ? '1' : '0.5';
-        markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
-    };
-    
-    // Function to render the table
-    const renderTable = () => {
-        // Remove existing table
-        const existingTable = container.querySelector('.reset-table-container');
-        if (existingTable) {
-            existingTable.remove();
-        }
-        
-        if (powerStatuses.length === 0) {
-            const noDataMsg = createNoDataMessage('No reset logs found');
-            noDataMsg.style.padding = '40px';
-            noDataMsg.classList.add('reset-table-container');
-            container.appendChild(noDataMsg);
-            return;
-        }
-        
-        // Sort by lastUpdated descending
-        const sortedStatuses = [...powerStatuses].sort((a, b) => 
-            new Date(b.lastUpdated) - new Date(a.lastUpdated)
-        );
-        
-        // Create table
-        const headers = ['', 'Wakeup Time', 'Die Time', 'Duration', 'Reason', 'Status'];
-        const { tableContainer, tbody } = createTable(headers);
-        tableContainer.classList.add('reset-table-container');
-        
-        selectedResetIndices.clear();
-        updateMarkButtonState();
-        
-        sortedStatuses.forEach((status, displayIndex) => {
-            // Find original index
-            const originalIndex = powerStatuses.findIndex((s, idx) => 
-                s.wakeupTime === status.wakeupTime && s.dieTime === status.dieTime
-            );
-            const isCleared = currentClearedIds.has(`${originalIndex}`);
-            
-            const row = document.createElement('tr');
-            row.style.backgroundColor = isCleared ? '#f5f5f5' : (displayIndex % 2 === 0 ? '#fff3e0' : '#fff8e1');
-            row.style.opacity = isCleared ? '0.6' : '1';
-            
-            // Checkbox cell
-            const checkboxTd = document.createElement('td');
-            checkboxTd.style.padding = '12px';
-            checkboxTd.style.textAlign = 'center';
-            const checkbox = document.createElement('input');
-            checkbox.type = 'checkbox';
-            checkbox.className = 'reset-checkbox';
-            checkbox.value = originalIndex;
-            checkbox.disabled = isCleared;
-            
-            if (!isCleared) {
-                checkbox.addEventListener('change', () => {
-                    if (checkbox.checked) {
-                        selectedResetIndices.add(originalIndex);
-                    } else {
-                        selectedResetIndices.delete(originalIndex);
-                    }
-                    updateMarkButtonState();
-                    updateSelectAllCheckbox();
-                });
-            } else {
-                checkbox.style.opacity = '0.5';
-            }
-            checkboxTd.appendChild(checkbox);
-            row.appendChild(checkboxTd);
-            
-            // Data cells
-            const wakeupTime = status.wakeupTime ? new Date(status.wakeupTime).toLocaleString() : 'N/A';
-            const dieTime = status.dieTime ? new Date(status.dieTime).toLocaleString() : 'N/A';
-            const duration = formatTimeString(status.downtimeMs);
-            const reason = status.message || 'Unknown';
-            const statusText = isCleared ? 'Cleared' : 'Active';
-            
-            const cells = [wakeupTime, dieTime, duration, reason, statusText];
-            
-            cells.forEach((cellText) => {
-                const td = document.createElement('td');
-                td.textContent = cellText;
-                td.style.padding = '12px';
-                td.style.borderBottom = '1px solid #ddd';
-                if (isCleared) {
-                    td.style.color = '#999';
-                }
-                row.appendChild(td);
-            });
-            
-            tbody.appendChild(row);
-        });
-        
-        // Select all checkbox in header
-        const thead = tableContainer.querySelector('thead');
-        const headerRow = thead.querySelector('tr');
-        const firstTh = headerRow.querySelector('th');
-        const selectAllContainer = document.createElement('div');
-        selectAllContainer.style.display = 'flex';
-        selectAllContainer.style.alignItems = 'center';
-        selectAllContainer.style.gap = '5px';
-        
-        const selectAllCheckbox = document.createElement('input');
-        selectAllCheckbox.type = 'checkbox';
-        selectAllCheckbox.style.margin = '0';
-        
-        selectAllContainer.appendChild(selectAllCheckbox);
-        firstTh.innerHTML = '';
-        firstTh.appendChild(selectAllContainer);
-        
-        const updateSelectAllCheckbox = () => {
-            const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
-            const checkedCheckboxes = document.querySelectorAll('.reset-checkbox:checked:not([disabled])');
-            selectAllCheckbox.checked = checkboxes.length > 0 && checkedCheckboxes.length === checkboxes.length;
-            selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < checkboxes.length;
-        };
-        
-        selectAllCheckbox.addEventListener('change', () => {
-            const isChecked = selectAllCheckbox.checked;
-            const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-                const idx = parseInt(checkbox.value);
-                if (isChecked) {
-                    selectedResetIndices.add(idx);
-                } else {
-                    selectedResetIndices.delete(idx);
-                }
-            });
-            updateMarkButtonState();
-        });
-        
-        container.appendChild(tableContainer);
-    };
-    
-    // Initial render
-    renderTable();
-    
-    // Mark as cleared button click handler
-    markClearedBtn.addEventListener('click', async () => {
-        if (selectedResetIndices.size === 0) return;
-        
-        if (confirm(`Are you sure you want to mark ${selectedResetIndices.size} reset log(s) as cleared?`)) {
-            try {
-                const response = await fetch(`${API_BASE_URL}/reset-logs/mark-cleared`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        dispenserAddress,
-                        resetIndices: Array.from(selectedResetIndices)
-                    })
-                });
-                
-                if (!response.ok) throw new Error('Failed to mark resets as cleared');
-                const result = await response.json();
-                window.showNotification?.(result.message, 'success');
-                
-                if (typeof onRefresh === 'function') {
-                    onRefresh();
-                }
-            } catch (error) {
-                console.error('Error marking resets as cleared:', error);
-                window.showNotification?.('Failed to mark resets as cleared', 'error');
-            }
         }
     });
     
@@ -966,7 +911,6 @@ function createModalHeader(address, overlay) {
 }
 
 function addDeviceInfoFooter(popupElement, deviceIdentifier) {
-    // Create footer container that sticks to bottom
     const footer = document.createElement('div');
     footer.style.cssText = `
         position: absolute;
@@ -982,9 +926,8 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         z-index: 1;
     `;
     
-    popupElement.style.paddingBottom = '40px'; // Make space for footer
+    popupElement.style.paddingBottom = '40px';
     
-    // Create 4 info items in one row
     const infoItems = [
         { id: 'temp', label: 'Device Temperature:' },
         { id: 'fw', label: 'Firmware Version:' },
@@ -992,7 +935,6 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         { id: 'mac', label: 'MAC Address:' }
     ];
     
-    // Store element references
     const infoElements = {};
     
     infoItems.forEach(item => {
@@ -1018,10 +960,8 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         infoElements[item.id] = valueSpan;
     });
     
-    // Add footer to popup
     popupElement.appendChild(footer);
     
-    // Fetch device info
     fetchDeviceInfo(deviceIdentifier, infoElements);
 }
 
@@ -1039,22 +979,38 @@ async function fetchDeviceInfo(deviceIdentifier, infoElements) {
             infoElements.fw.textContent = deviceInfo.firmware_version || 'N/A';
             infoElements.hw.textContent = deviceInfo.hardware_version || 'N/A';
             infoElements.mac.textContent = deviceInfo.mac_address || 'N/A';
-        } else {
-            // No data - already set to N/A by default
         }
     } catch (error) {
         console.error('Error fetching device info:', error);
-        // Keep N/A values
+    }
+}
+
+function formatTimeString(timeMs) {
+    if (timeMs < 1000) {
+        return 'Less than 1 second';
+    }
+    
+    const seconds = Math.floor(timeMs / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+        return `${days} day${days > 1 ? 's' : ''} ${hours % 24} hour${hours % 24 > 1 ? 's' : ''}`;
+    } else if (hours > 0) {
+        return `${hours} hour${hours > 1 ? 's' : ''} ${minutes % 60} minute${minutes % 60 > 1 ? 's' : ''}`;
+    } else if (minutes > 0) {
+        return `${minutes} minute${minutes > 1 ? 's' : ''} ${seconds % 60} second${seconds % 60 > 1 ? 's' : ''}`;
+    } else {
+        return `${seconds} second${seconds > 1 ? 's' : ''}`;
     }
 }
 
 // Main function to show device status popup
 async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
     try {
-        // Remove 'D' prefix for API calls
         const dispenserAddress = dispenserTopic.replace(/^D/, '');
         
-        // Fetch GSM, WiFi, MQTT, power status, error logs, and connection statuses
         const [gsmResponse, wifiResponse, mqttResponse, powerResponse, errorsResponse, gsmConnResponse, wifiConnResponse] = await Promise.allSettled([
             fetch(`${API_BASE_URL}/gsm-status/${dispenserTopic}`),
             fetch(`${API_BASE_URL}/wifi-status/${dispenserTopic}`),
@@ -1073,17 +1029,19 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         const gsmConnData  = gsmConnResponse.status === 'fulfilled' && gsmConnResponse.value.ok ? await gsmConnResponse.value.json() : null;
         const wifiConnData  = wifiConnResponse.status === 'fulfilled' && wifiConnResponse.value.ok ? await wifiConnResponse.value.json() : null;
 
+        // Ensure powerStatus is an array
+        if (!Array.isArray(powerStatus)) {
+            powerStatus = powerStatus ? [powerStatus] : [];
+        }
+
         const gsmStatuses = gsmConnData?.status || [];
         const wifiStatuses = wifiConnData?.status || [];
         
-        // Determine GSM/WiFi enabled state
         const gsmEnabled = gsmStatuses && gsmStatuses.length > 0 && gsmStatuses.some(status => status.message && status.message.includes('CONNECTED'));
         const wifiEnabled = wifiStatuses && wifiStatuses.length > 0 && wifiStatuses.some(status => status.message && status.message.includes('CONNECTED'));
         
-        // Create modal overlay
         const overlay = createModalOverlay();
         
-        // Create modal content
         const modal = document.createElement('div');
         modal.className = 'popup-modal';
         modal.style.width = '1200px';
@@ -1094,35 +1052,31 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         modal.style.flexDirection = 'column';
         dragPopup(overlay, modal);
         
-        // Create main content container
         const contentContainer = document.createElement('div');
         contentContainer.style.flex = '1';
         contentContainer.style.overflow = 'auto';
         contentContainer.style.padding = '10px';
         
-        // Create main tabs
         let activeTab = defaultTab;
         let currentContent = null;
+        let clearedResetIndices = new Set();
         
-        const { tabsContainer, connectivityTab, errorLogsTab } = createMainTabs((tab) => {
-            activeTab = tab === 'connectivity' ? 'connectivity' : 'errorLogs';
+        // Load cleared resets from server
+        try {
+            const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
+            if (clearedResponse.ok) {
+                const clearedData = await clearedResponse.json();
+                clearedResetIndices = new Set(clearedData.indices || []);
+            }
+        } catch (error) {
+            console.error('Error loading cleared resets:', error);
+        }
+        
+        const { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab } = createMainTabs((tab) => {
+            activeTab = tab === 'connectivity' ? 'connectivity' : (tab === 'errorLogs' ? 'errorLogs' : 'resetLogs');
             updateMainContent();
         });
         
-        // Function to refresh errors
-        const refreshErrors = async (showCleared = true) => {
-            const url = showCleared 
-                ? `${API_BASE_URL}/error-log/${dispenserAddress}`
-                : `${API_BASE_URL}/error-log/${dispenserAddress}?showCleared=false`;
-            const response = await fetch(url);
-            if (response.ok) {
-                const newErrors = await response.json();
-                return newErrors;
-            }
-            return [];
-        };
-        
-        // Function to update main content based on active tab
         const updateMainContent = () => {
             if (currentContent && contentContainer.contains(currentContent)) {
                 contentContainer.removeChild(currentContent);
@@ -1170,63 +1124,67 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 resetContainer.style.height = '100%';
                 resetContainer.style.overflow = 'auto';
                 
-                const loadResets = async () => {
+                const loadResets = async (filter = 'uncleared') => {
                     const response = await fetch(`${API_BASE_URL}/power-status/${dispenserTopic}`);
                     if (response.ok) {
-                        let powerStatuses = await response.json();
-                        if (!Array.isArray(powerStatuses)) {
-                            powerStatuses = powerStatuses ? [powerStatuses] : [];
+                        let freshPowerStatus = await response.json();
+                        if (!Array.isArray(freshPowerStatus)) {
+                            freshPowerStatus = freshPowerStatus ? [freshPowerStatus] : [];
                         }
                         
-                        // Get latest cleared status
                         const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
+                        let clearedIds = new Set();
                         if (clearedResponse.ok) {
                             const clearedData = await clearedResponse.json();
-                            clearedResetIndices = new Set(clearedData.indices || []);
+                            clearedIds = new Set(clearedData.ids || []);
                         }
                         
                         resetContainer.innerHTML = '';
-                        const table = createResetLogsTable(powerStatuses, dispenserAddress, () => {
-                            loadResets();
+                        const table = createResetLogsTable(freshPowerStatus, dispenserTopic, (newFilter) => {
+                            loadResets(newFilter);
                             if (typeof window.updateResetCount === 'function') {
                                 window.updateResetCount(dispenserAddress);
                             }
-                        }, clearedResetIndices);
+                        }, clearedIds, filter);
                         resetContainer.appendChild(table);
                     }
                 };
-                
-                loadResets();
+
+                loadResets('uncleared');
                 currentContent = resetContainer;
             }
             
             contentContainer.appendChild(currentContent);
         };
         
-        // Add header
         const header = createModalHeader(dispenserTopic, overlay);
         
         modal.appendChild(header);
         modal.appendChild(tabsContainer);
         modal.appendChild(contentContainer);
         
-        // Initialize with the default tab
         if (defaultTab === 'errorLogs') {
-            // Trigger error logs tab style
             connectivityTab.style.borderBottom = 'none';
             connectivityTab.style.fontWeight = 'normal';
             errorLogsTab.style.borderBottom = '3px solid #2e7d32';
             errorLogsTab.style.fontWeight = 'bold';
+            resetLogsTab.style.borderBottom = 'none';
+            resetLogsTab.style.fontWeight = 'normal';
+        } else if (defaultTab === 'resetLogs') {
+            connectivityTab.style.borderBottom = 'none';
+            connectivityTab.style.fontWeight = 'normal';
+            errorLogsTab.style.borderBottom = 'none';
+            errorLogsTab.style.fontWeight = 'normal';
+            resetLogsTab.style.borderBottom = '3px solid #2e7d32';
+            resetLogsTab.style.fontWeight = 'bold';
         }
         updateMainContent();
         
         overlay.appendChild(modal);
         document.body.appendChild(overlay);
         
-        // Add device info footer
         addDeviceInfoFooter(modal, dispenserTopic);
         
-        // Close on overlay click
         overlay.addEventListener('click', (e) => {
             if (e.target === overlay) {
                 document.body.removeChild(overlay);
@@ -1235,7 +1193,9 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         
     } catch (error) {
         console.error('Error showing device status:', error);
-        window.showNotification?.('Error loading device status', 'error');
+        if (window.showNotification) {
+            window.showNotification('Error loading device status', 'error');
+        }
     }
 }
 
