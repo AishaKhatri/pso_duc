@@ -204,6 +204,17 @@ async function updateDispenserCard(dispenser) {
         window.updateConnStatus(`D${dispenserAddr}`, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
     }
 
+    // Update error count
+    const dispenserTopic = `D${dispenser.address}`;
+    if (typeof window.updateErrorCount === 'function') {
+        await window.updateErrorCount(dispenserTopic);
+    }
+
+    // Update reset count
+    if (typeof window.updateResetCount === 'function') {
+        await window.updateResetCount(dispenserTopic);
+    }
+
     try {
         const nozzlesResponse = await fetch(
             `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`

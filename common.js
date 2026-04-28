@@ -469,6 +469,28 @@ async function fetchErrorCount(dispenserTopic) {
     }
 }
 
+async function updateErrorCount(dispenserTopic) {
+    const card = document.querySelector(`div[data-address="${dispenserTopic}"]`);
+    if (!card) return;
+    
+    const errorCountSpan = card.querySelector('.dispenser-error-count');
+    const errorIcon = card.querySelector('.dispenser-error-container img');
+    
+    if (errorCountSpan) {
+        const address = dispenserTopic.replace(/^D/, '');
+        const count = await fetchErrorCount(address);
+        errorCountSpan.textContent = count;
+        
+        if (count > 0) {
+            errorCountSpan.style.display = 'inline-block';
+            if (errorIcon) errorIcon.style.display = 'inline-block';
+        } else {
+            errorCountSpan.style.display = 'none';
+            if (errorIcon) errorIcon.style.display = 'none';
+        }
+    }
+}
+
 async function fetchResetCount(dispenserAddr) {
     try {
         const response = await fetch(`${API_BASE_URL}/power-status/${dispenserAddr}`);
