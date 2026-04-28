@@ -34,6 +34,8 @@ CREATE TABLE `dispensers` (
   `ir_lock_status` tinyint NOT NULL DEFAULT '0',
   `number_of_nozzles` int NOT NULL,
   `DispenserBrand` varchar(255) NOT NULL,
+  `imei1` varchar(50) DEFAULT NULL,
+  `imei2` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `customer_code` (`customer_code`,`dispenser_id`,`address`),
