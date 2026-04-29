@@ -3,7 +3,7 @@ async function showCommandDispenserPopup() {
 
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '500px';
+    popup.style.width = '600px';
     popup.style.maxHeight = '80vh';
     dragPopup(overlay, popup);
 
@@ -18,45 +18,50 @@ async function showCommandDispenserPopup() {
     header.appendChild(closeButton);
     popup.appendChild(header);
 
+    // Selectors container (side by side)
+    const selectorsContainer = document.createElement('div');
+    selectorsContainer.style.display = 'flex';
+    selectorsContainer.style.gap = '20px';
+    selectorsContainer.style.marginBottom = '20px';
+    selectorsContainer.style.width = '100%';
+
+    // Station selector
+    const stationContainer = document.createElement('div');
+    stationContainer.style.flex = '1';
+    
+    const stationLabel = document.createElement('label');
+    stationLabel.textContent = 'Select Station:';
+    stationLabel.style.display = 'block';
+    stationLabel.style.marginBottom = '8px';
+    stationLabel.style.fontWeight = 'bold';
+    stationContainer.appendChild(stationLabel);
+
+    const stationSelect = createDropdown('All Stations');
+    stationSelect.id = 'stationSelect';
+    stationSelect.style.width = '100%';
+    stationSelect.style.marginBottom = '0';
+    stationContainer.appendChild(stationSelect);
+
+    // Dispenser selector
+    const dispenserContainer = document.createElement('div');
+    dispenserContainer.style.flex = '1';
+    
     const dispenserLabel = document.createElement('label');
     dispenserLabel.textContent = 'Select Dispenser:';
     dispenserLabel.style.display = 'block';
     dispenserLabel.style.marginBottom = '8px';
     dispenserLabel.style.fontWeight = 'bold';
-    popup.appendChild(dispenserLabel);
+    dispenserContainer.appendChild(dispenserLabel);
 
     const dispenserSelect = createDropdown('Select dispenser');
     dispenserSelect.id = 'dispenserSelect';
+    dispenserSelect.style.width = '100%';
+    dispenserSelect.style.marginBottom = '0';
+    dispenserContainer.appendChild(dispenserSelect);
 
-    // Fetch dispensers from API
-    let validDispensers = [];
-    try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
-        if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
-        const dispensers = await dispensersResponse.json();
-
-        for (const dispenser of dispensers) {
-            const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
-            );
-            if (!nozzlesResponse.ok) continue;
-            const nozzles = await nozzlesResponse.json();
-            if (nozzles.length > 0) {
-                validDispensers.push({ ...dispenser, nozzles });
-            }
-        }
-
-        validDispensers.forEach((dispenser, index) => {
-            const option = document.createElement('option');
-            option.value = dispenser.address;
-            option.textContent = `Dispenser ${index + 1} (D${option.value})`;
-            dispenserSelect.appendChild(option);
-        });
-    } catch (error) {
-        showCommandStatusMessage(`Error fetching dispensers: ${error.message}`, 'error');
-    }
-
-    popup.appendChild(dispenserSelect);
+    selectorsContainer.appendChild(stationContainer);
+    selectorsContainer.appendChild(dispenserContainer);
+    popup.appendChild(selectorsContainer);
 
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'dispenserControls';
@@ -75,22 +80,140 @@ async function showCommandDispenserPopup() {
         showCommandStatusMessage('MQTT connection error: ' + err.message, 'error');
     });
 
+    // Store all dispensers and stations data
+    let allDispensers = [];
+    let stationsMap = new Map();
+
+    // Fetch stations and dispensers
+    try {
+        const stationsResponse = await fetch(`${API_BASE_URL}/stations`);
+        if (!stationsResponse.ok) throw new Error('Failed to fetch stations');
+        const stations = await stationsResponse.json();
+        
+        stations.forEach(station => {
+            stationsMap.set(station.customer_code, {
+                city: station.city || '',
+                station_id: station.station_id || '',
+                customer_code: station.customer_code,
+                dispensers: []
+            });
+        });
+
+        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
+        const dispensers = await dispensersResponse.json();
+
+        for (const dispenser of dispensers) {
+            const nozzlesResponse = await fetch(
+                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+            );
+            if (!nozzlesResponse.ok) continue;
+            const nozzles = await nozzlesResponse.json();
+            if (nozzles.length > 0) {
+                const dispenserWithNozzles = { ...dispenser, nozzles };
+                allDispensers.push(dispenserWithNozzles);
+                
+                if (stationsMap.has(dispenser.customer_code)) {
+                    stationsMap.get(dispenser.customer_code).dispensers.push(dispenserWithNozzles);
+                }
+            }
+        }
+
+        // Populate station dropdown
+        const allOption = document.createElement('option');
+        allOption.value = 'all';
+        allOption.textContent = 'All Stations';
+        stationSelect.appendChild(allOption);
+
+        for (const [customerCode, stationInfo] of stationsMap) {
+            if (stationInfo.dispensers.length > 0) {
+                const option = document.createElement('option');
+                option.value = customerCode;
+                const cityName = stationInfo.city ? stationInfo.city.split(' ').map(word => 
+                    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+                ).join(' ') : '';
+                option.textContent = `${customerCode}${cityName ? ` - ${cityName}` : ''} (${stationInfo.dispensers.length} dispensers)`;
+                stationSelect.appendChild(option);
+            }
+        }
+
+    } catch (error) {
+        showCommandStatusMessage(`Error fetching data: ${error.message}`, 'error');
+    }
+
+    function populateDispenserDropdown(selectedStation) {
+        dispenserSelect.innerHTML = '';
+        
+        const placeholderOption = document.createElement('option');
+        placeholderOption.value = '';
+        placeholderOption.textContent = 'Select dispenser';
+        placeholderOption.disabled = true;
+        placeholderOption.selected = true;
+        dispenserSelect.appendChild(placeholderOption);
+        
+        let dispensersToShow = [];
+        
+        if (selectedStation === 'all' || !selectedStation) {
+            dispensersToShow = allDispensers;
+        } else {
+            const stationInfo = stationsMap.get(selectedStation);
+            if (stationInfo) {
+                dispensersToShow = stationInfo.dispensers;
+            }
+        }
+        
+        dispensersToShow.forEach((dispenser, index) => {
+            const option = document.createElement('option');
+            option.value = dispenser.address;
+            option.textContent = `Dispenser ${index + 1} (D${dispenser.address})`;
+            option.dataset.customerCode = dispenser.customer_code;
+            option.dataset.city = stationsMap.get(dispenser.customer_code)?.city || '';
+            dispenserSelect.appendChild(option);
+        });
+        
+        if (dispensersToShow.length === 0) {
+            controlsContainer.innerHTML = '';
+            const noDispenserMsg = document.createElement('div');
+            noDispenserMsg.textContent = 'No dispensers available for this station';
+            noDispenserMsg.style.padding = '20px';
+            noDispenserMsg.style.textAlign = 'center';
+            noDispenserMsg.style.color = '#666';
+            controlsContainer.appendChild(noDispenserMsg);
+        } else {
+            controlsContainer.innerHTML = '';
+        }
+    }
+
+    stationSelect.addEventListener('change', () => {
+        const selectedStation = stationSelect.value;
+        populateDispenserDropdown(selectedStation);
+        controlsContainer.innerHTML = '';
+    });
+
     dispenserSelect.addEventListener('change', () => {
-        if (dispenserSelect.value) {
-            showDispenserControls(dispenserSelect.value, validDispensers);
+        const selectedAddress = dispenserSelect.value;
+        if (selectedAddress) {
+            const selectedOption = dispenserSelect.selectedOptions[0];
+            const customerCode = selectedOption?.dataset.customerCode;
+            const city = selectedOption?.dataset.city;
+            const dispenser = allDispensers.find(d => d.address === selectedAddress && d.customer_code === customerCode);
+            if (dispenser) {
+                showDispenserControls(dispenser, customerCode, city);
+            }
         } else {
             controlsContainer.innerHTML = '';
         }
     });
 
-    if (validDispensers.length === 1) {
-        dispenserSelect.value = validDispensers[0].address;
-        showDispenserControls(dispenserSelect.value, validDispensers);
+    if (allDispensers.length > 0) {
+        populateDispenserDropdown('all');
     }
 }
 
 function showCommandStatusMessage(message, type) {
     const statusContainer = document.getElementById('commandStatus');
+    if (!statusContainer) return;
+    
     statusContainer.innerHTML = '';
 
     const messageElement = document.createElement('div');
@@ -113,23 +236,18 @@ function showCommandStatusMessage(message, type) {
     statusContainer.appendChild(messageElement);
 }
 
-function showDispenserControls(dispenserAddr, dispensers) {
-    const dispenser = dispensers.find(d => d.address === dispenserAddr);
-    if (!dispenser) return;
-
+function showDispenserControls(dispenser, customerCode, city) {
     const controlsContainer = document.getElementById('dispenserControls');
+    if (!controlsContainer) return;
+    
     controlsContainer.innerHTML = '';
 
-    const dispenserTopic = `D${dispenserAddr}`;
+    const dispenserTopic = `D${dispenser.address}`;
 
-    // Create IR Control Section
-    createIRControlSection(dispenserTopic, controlsContainer);
-
-    // Create Nozzles Section
-    createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer);
+    createIRControlSection(dispenserTopic, controlsContainer, customerCode, city);
+    createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer, customerCode, city);
 }
 
-// Helper function to create control row with dropdown and confirm button
 function createControlRow(label, dropdownId, value, options, onConfirm) {
     const controlRow = document.createElement('div');
     controlRow.style.display = 'flex';
@@ -170,7 +288,7 @@ function createControlRow(label, dropdownId, value, options, onConfirm) {
     return { controlRow, dropdown, confirmButton };
 }
 
-function createIRControlSection(dispenserTopic, container) {
+function createIRControlSection(dispenserTopic, container, customerCode, city) {
     const irSection = document.createElement('div');
     irSection.style.marginBottom = '30px';
 
@@ -184,12 +302,12 @@ function createIRControlSection(dispenserTopic, container) {
     const { controlRow, dropdown, confirmButton } = createControlRow(
         'IR Control:',
         'irControl',
-        '0', // Default to Unlock
+        '0',
         [
             { value: '0', text: 'Unlock' },
             { value: '1', text: 'Lock' }
         ],
-        () => sendDispenserCommand(dispenserTopic, {
+        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
             dis_addr: dispenserTopic,
             req_type: 0,
             side: 'A',
@@ -203,7 +321,7 @@ function createIRControlSection(dispenserTopic, container) {
     container.appendChild(irSection);
 }
 
-function createNozzlesSection(dispenserTopic, nozzles, container) {
+function createNozzlesSection(dispenserTopic, nozzles, container, customerCode, city) {
     const nozzlesTitle = document.createElement('h3');
     nozzlesTitle.textContent = 'Nozzle Controls';
     nozzlesTitle.style.marginTop = '0';
@@ -218,15 +336,15 @@ function createNozzlesSection(dispenserTopic, nozzles, container) {
     nozzlesGrid.style.marginTop = '10px';
 
     nozzles.forEach(nozzle => {
-        const product = nozzle.product
-        const nozzleCard = createNozzleCard(dispenserTopic, nozzle, productColorConfig[product]);
+        const product = normalizeFuelType(nozzle.product);
+        const nozzleCard = createNozzleCard(dispenserTopic, nozzle, customerCode, city, productColorConfig[product]);
         nozzlesGrid.appendChild(nozzleCard);
     });
 
     container.appendChild(nozzlesGrid);
 }
 
-function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
+function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfig) {
     const nozzleCard = document.createElement('div');
     nozzleCard.style.position = 'relative';
     nozzleCard.style.borderRadius = '8px';
@@ -239,7 +357,6 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
     nozzleCard.style.border = nozzle.lock_unlock ? '2px solid #D32F2F' : '0.5px solid #dddddd';
     nozzleCard.style.width = '220px';
 
-    // Create header
     const header = document.createElement('div');
     header.style.background = colorConfig.header;
     header.style.color = '#111111';
@@ -272,16 +389,12 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
     header.appendChild(nozzleLeft);
     nozzleCard.appendChild(header);
 
-    // Create content with controls
     const content = document.createElement('div');
     content.style.padding = '12px';
 
-    // Parse nozzle ID for side and number
     const [_, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
-    // const sideValue = side === 'A' ? '0' : '1';
     const nozzleNum = parseInt(number);
 
-    // Nozzle Lock Control
     const { controlRow: nozzleLockRow, dropdown: nozzleLockDropdown, confirmButton: nozzleLockButton } = createControlRow(
         'Nozzle:',
         `nozzleLock-${nozzle.nozzle_id}`,
@@ -290,10 +403,9 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
             { value: '0', text: 'Unlock' },
             { value: '1', text: 'Lock' }
         ],
-        () => sendDispenserCommand(dispenserTopic, {
+        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
             dis_addr: dispenserTopic,
             req_type: 0,
-            // side: sideValue,
             side: side,
             noz_number: nozzleNum,
             msg_type: 4,
@@ -302,7 +414,6 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
     );
     content.appendChild(nozzleLockRow);
 
-    // Keypad Lock Control
     const { controlRow: keypadLockRow, dropdown: keypadLockDropdown, confirmButton: keypadLockButton } = createControlRow(
         'Keypad:',
         `keypadLock-${nozzle.nozzle_id}`,
@@ -311,10 +422,9 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
             { value: '0', text: 'Unlock' },
             { value: '1', text: 'Lock' }
         ],
-        () => sendDispenserCommand(dispenserTopic, {
+        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
             dis_addr: dispenserTopic,
             req_type: 0,
-            // side: sideValue,
             side: side,
             noz_number: nozzleNum,
             msg_type: 5,
@@ -327,21 +437,37 @@ function createNozzleCard(dispenserTopic, nozzle, colorConfig) {
     return nozzleCard;
 }
 
-// Common function to send any dispenser command
-async function sendDispenserCommand(topic, message, button, commandName = 'Command') {
+function normalizeFuelType(product) {
+    const productMap = {
+        'pmg': 'PMG',
+        'hsd': 'HSD',
+        'hobc': 'HOBC',
+        'pmg 95': 'PMG',
+        'high speed diesel': 'HSD',
+        'hoc': 'HOBC'
+    };
+    return productMap[product?.toLowerCase()] || 'HOBC';
+}
+
+async function sendDispenserCommand(topic, customerCode, city, message, button, commandName = 'Command') {
     const originalText = button.textContent;
     
     button.disabled = true;
     button.textContent = 'Sending...';
     
     try {
+        const address = topic.replace(/^D/, '');
+        const publishTopic = `pso/${city}/${customerCode}/duc/d${address}`;
+        
         console.group(`Sending ${commandName}`);
-        console.log('Topic:', topic);
+        console.log('Publish Topic:', publishTopic);
+        console.log('Customer Code:', customerCode);
+        console.log('City:', city);
         console.log('Message:', message);
         console.log('Timestamp:', new Date().toISOString());
 
         const result = await new Promise((resolve) => {
-            publishMessage(topic, JSON.stringify(message), (err) => {
+            publishMessage(publishTopic, JSON.stringify(message), (err) => {
                 console.log(err ? 'Publish error:' : 'Publish successful:', err || 'OK');
                 resolve({ success: !err, error: err });
             });
