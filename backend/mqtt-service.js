@@ -1282,7 +1282,7 @@ mqttClient.on('message', async (receivedTopic, message) => {
         } else {
             // Convert Sxxxxx topic to xxxxx address for database query
             // dbAddress = receivedTopic.replace(/^S/, ''); // Remove 'S' prefix
-            dbAddress = dispenserAddr.replace(/^D/, ''); // Remove 'S' prefix
+            dbAddress = dispenserAddr.replace(/^D/, ''); // Remove 'D' prefix
         }
         
         // Find the corresponding dispenser in the database
@@ -1345,8 +1345,8 @@ mqttClient.on('message', async (receivedTopic, message) => {
                     break;
                 case 7: // Transaction data (T, A, V)
                     const [dispenserInfo] = await pool.query(
-                        'SELECT customer_code FROM dispensers WHERE dispenser_id = ?',
-                        [dispenser_id]
+                        'SELECT customer_code FROM dispensers WHERE address = ?',
+                        [dbAddress]
                     );
                     if (dispenserInfo.length > 0) {
                         const customer_code = dispenserInfo[0].customer_code;
