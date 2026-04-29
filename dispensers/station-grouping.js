@@ -112,8 +112,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     locationContainer.style.gap = '6px';
     locationContainer.style.flex = '1';
     
-    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '14px');
-    locationIcon.style.opacity = '0.7';
+    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '20px');
     
     const locationText = document.createElement('span');
     let cityName = stationInfo.city || '';
@@ -125,7 +124,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     
     let locationString = '';
     if (cityName && stationInfo.station_id) {
-        locationString = `${cityName} / ${stationInfo.station_id}`;
+        locationString = `${cityName} - ${stationInfo.station_id}`;
     } else if (cityName) {
         locationString = cityName;
     } else if (stationInfo.station_id) {
@@ -134,8 +133,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         locationString = 'Location not available';
     }
     locationText.textContent = locationString;
-    locationText.style.fontSize = '13px';
-    locationText.style.color = '#6c757d';
+    locationText.style.fontSize = '18px';
     locationText.style.fontWeight = '500';
     
     locationContainer.appendChild(locationIcon);
