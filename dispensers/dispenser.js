@@ -13,7 +13,7 @@ async function renderDispenser() {
     }
 
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        const dispensersResponse = await authFetch(`${API_BASE_URL}/dispensers`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
@@ -85,7 +85,7 @@ async function renderDispenser() {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
-                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+                    const updatedDispensersResponse = await authFetch(`${API_BASE_URL}/dispensers`);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 
@@ -106,7 +106,7 @@ async function renderDispenser() {
 async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const layoutType = params.layoutType || window.NOZZLE_LAYOUTS.FULL;
     
-    const nozzlesResponse = await fetch(
+    const nozzlesResponse = await authFetch(
         `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
     );
     if (!nozzlesResponse.ok) return;
@@ -216,7 +216,7 @@ async function updateDispenserCard(dispenser) {
     }
 
     try {
-        const nozzlesResponse = await fetch(
+        const nozzlesResponse = await authFetch(
             `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
         );
         if (!nozzlesResponse.ok) return;

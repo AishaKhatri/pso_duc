@@ -13,8 +13,8 @@
 <body>
     <!-- Check if user is signed in -->
     <script>
-        if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
-        window.location.href = 'signin.html';
+        if (!window.StationAuth || !StationAuth.isAuthenticated()) {
+            window.location.href = 'signin.html';
         }
     </script>
     <div id="app"></div>

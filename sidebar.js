@@ -19,6 +19,7 @@ function renderSidebar() {
     const items = [
         { page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' },
         { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' },
+        { page: 'user-management', label: 'User Management', icon: 'user-icon.png', url: 'user-management.html' },
     ];
 
     // Determine current page based on window location
@@ -27,6 +28,7 @@ function renderSidebar() {
         'index': 'overview',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
+        'user-management': 'user-management',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

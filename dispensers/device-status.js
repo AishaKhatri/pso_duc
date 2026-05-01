@@ -645,7 +645,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
         
         if (confirm(`Are you sure you want to mark ${selectedResetIds.size} reset log(s) as cleared?`)) {
             try {
-                const response = await fetch(`${API_BASE_URL}/reset-logs/mark-cleared`, {
+                const response = await authFetch(`${API_BASE_URL}/reset-logs/mark-cleared`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
@@ -883,7 +883,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         
         if (confirm(`Are you sure you want to mark ${selectedErrorIds.size} error(s) as cleared?`)) {
             try {
-                const response = await fetch(`${API_BASE_URL}/error-log/mark-cleared`, {
+                const response = await authFetch(`${API_BASE_URL}/error-log/mark-cleared`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ errorIds: Array.from(selectedErrorIds) })
@@ -982,7 +982,7 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
 
 async function fetchDeviceInfo(deviceIdentifier, infoElements) {
     try {
-        const response = await fetch(`${API_BASE_URL}/device-info/${deviceIdentifier}`);
+        const response = await authFetch(`${API_BASE_URL}/device-info/${deviceIdentifier}`);
         if (!response.ok) {
             throw new Error('Failed to fetch device info');
         }
@@ -1078,7 +1078,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         
         // Load cleared resets from server
         try {
-            const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
+            const clearedResponse = await authFetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
             if (clearedResponse.ok) {
                 const clearedData = await clearedResponse.json();
                 clearedResetIndices = new Set(clearedData.indices || []);
@@ -1117,7 +1117,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 
                 const loadErrors = async (showAll = false) => {
                     currentFilterValue = showAll ? 'all' : 'uncleared';
-                    const response = await fetch(`${API_BASE_URL}/error-log/${dispenserAddress}`);
+                    const response = await authFetch(`${API_BASE_URL}/error-log/${dispenserAddress}`);
                     if (response.ok) {
                         const allErrors = await response.json();
                         errorContainer.innerHTML = '';
@@ -1137,14 +1137,14 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 resetContainer.style.overflow = 'auto';
                 
                 const loadResets = async (filter = 'uncleared') => {
-                    const response = await fetch(`${API_BASE_URL}/power-status/${dispenserTopic}`);
+                    const response = await authFetch(`${API_BASE_URL}/power-status/${dispenserTopic}`);
                     if (response.ok) {
                         let freshPowerStatus = await response.json();
                         if (!Array.isArray(freshPowerStatus)) {
                             freshPowerStatus = freshPowerStatus ? [freshPowerStatus] : [];
                         }
                         
-                        const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
+                        const clearedResponse = await authFetch(`${API_BASE_URL}/cleared-resets/${dispenserTopic}`);
                         let clearedIds = new Set();
                         if (clearedResponse.ok) {
                             const clearedData = await clearedResponse.json();

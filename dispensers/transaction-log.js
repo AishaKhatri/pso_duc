@@ -3,7 +3,7 @@
 async function showTransactionLogPopup(nozzle_id) {
     try {
         // Fetch transaction data
-        let transactions = await fetchTransactions(nozzle_id);
+        let transactions = await authFetchTransactions(nozzle_id);
         
         // Create modal overlay
         const overlay = createModalOverlay();      
@@ -395,7 +395,7 @@ function updateSummary(transactions) {
 
 async function fetchTransactions(nozzle_id) {
     try {
-        const response = await fetch(
+        const response = await authFetch(
             `${API_BASE_URL}/transactions/by-nozzle?nozzle_id=${encodeURIComponent(nozzle_id)}`
         );
         

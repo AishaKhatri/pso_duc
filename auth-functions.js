@@ -1,53 +1,42 @@
 // Station Authentication Helper
 const StationAuth = {
+  API_BASE_URL: API_BASE_URL,
+  
   async signIn(username, password) {
     try {
+      console.log('Attempting sign in for:', username);
+      
       const response = await fetch(`${API_BASE_URL}/auth/signin`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
       });
 
       const data = await response.json();
+      console.log('Sign in response:', data);
       
       if (data.success) {
-        // Store authentication data
-        localStorage.setItem('stationToken', data.token);
-        localStorage.setItem('stationUser', JSON.stringify(data.user));
-        localStorage.setItem('stationPermissions', JSON.stringify(data.permissions || {}));
-        
-        return {
-          success: true,
-          user: data.user,
-          permissions: data.permissions
-        };
+        localStorage.setItem('token', data.token);
+        localStorage.setItem('user', JSON.stringify(data.user));
+        return { success: true, user: data.user };
       } else {
-        return {
-          success: false,
-          message: data.message
-        };
+        // Return error message without redirecting
+        return { success: false, message: data.message || 'Invalid username or password' };
       }
     } catch (error) {
       console.error('Sign in error:', error);
-      return {
-        success: false,
-        message: 'Network error. Please try again.'
-      };
+      // Return error message without redirecting
+      return { success: false, message: 'Network error. Please try again.' };
     }
   },
 
-  // Sign out
   async signOut() {
     try {
       const token = this.getToken();
       if (token) {
-        await fetch(`${this.API_BASE_URL}/auth/signout`, {
+        await fetch(`${API_BASE_URL}/auth/signout`, {
           method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${token}`
-          }
+          headers: { 'Authorization': `Bearer ${token}` }
         });
       }
     } catch (error) {
@@ -58,76 +47,64 @@ const StationAuth = {
     }
   },
 
-  // Get authentication token
   getToken() {
-    return localStorage.getItem('stationToken');
+    return localStorage.getItem('token');
   },
 
-  // Get current station user
   getCurrentUser() {
-    const userStr = localStorage.getItem('stationUser');
+    const userStr = localStorage.getItem('user');
     return userStr ? JSON.parse(userStr) : null;
   },
 
-  // Get station permissions/config
-  getPermissions() {
-    const permsStr = localStorage.getItem('stationPermissions');
-    return permsStr ? JSON.parse(permsStr) : {};
-  },
-
-  // Check if authenticated
   isAuthenticated() {
-    return !!this.getToken();
+    const token = this.getToken();
+    if (!token) return false;
+    
+    // Check if token is expired
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      const expired = payload.exp * 1000 < Date.now();
+      if (expired) {
+        this.clearAuth();
+        return false;
+      }
+      return true;
+    } catch (e) {
+      return false;
+    }
   },
 
-  // Clear all authentication data
   clearAuth() {
-    localStorage.removeItem('stationToken');
-    localStorage.removeItem('stationUser');
-    localStorage.removeItem('stationPermissions');
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
   },
 
-//   // Verify token with server
-//   async verifyToken() {
-//     try {
-//       const token = this.getToken();
-//       if (!token) return { valid: false, user: null };
+  getAuthHeaders() {
+    const token = this.getToken();
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': token ? `Bearer ${token}` : ''
+    };
+  },
 
-//       const response = await fetch(`${this.API_BASE_URL}/auth/verify`, {
-//         headers: {
-//           'Authorization': `Bearer ${token}`
-//         }
-//       });
+  hasPermission(requiredRole) {
+    const user = this.getCurrentUser();
+    if (!user) return false;
+    
+    const roleHierarchy = { 'admin': 3, 'operator': 2, 'viewer': 1 };
+    const userLevel = roleHierarchy[user.role] || 0;
+    const requiredLevel = roleHierarchy[requiredRole] || 0;
+    
+    return userLevel >= requiredLevel;
+  },
 
-//       const data = await response.json();
-      
-//       if (data.success) {
-//         // Update stored user data if needed
-//         localStorage.setItem('stationUser', JSON.stringify(data.user));
-//         return { valid: true, user: data.user };
-//       } else {
-//         this.clearAuth();
-//         return { valid: false, user: null };
-//       }
-//     } catch (error) {
-//       console.error('Token verification error:', error);
-//       this.clearAuth();
-//       return { valid: false, user: null };
-//     }
-//   },
-
-//   // Protected route middleware
-//   requireAuth(redirectTo = 'signin.html') {
-//     if (!this.isAuthenticated()) {
-//       window.location.href = redirectTo;
-//       return false;
-//     }
-//     return true;
-//   },
-
-//   // Check if user has specific permission
-//   hasPermission(permissionKey) {
-//     const permissions = this.getPermissions();
-//     return permissions[permissionKey] === true;
-//   }
+  canAccessStation(customerCode) {
+    const user = this.getCurrentUser();
+    if (!user) return false;
+    if (user.role === 'admin') return true;
+    return user.customer_code === customerCode;
+  }
 };
+
+// Make available globally
+window.StationAuth = StationAuth;

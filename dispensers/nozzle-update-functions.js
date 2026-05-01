@@ -3,7 +3,7 @@ const nozzleLayoutType = new Map();
 
 async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}&customer_code=${customer_code}`);
+        const response = await authFetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}&customer_code=${customer_code}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
         return nozzles.find(n => n.nozzle_id === nozzle_id);
@@ -41,7 +41,7 @@ async function getNozzleDataFromTopic(nozzleId) {
     const dispenserId = dispenserCard.id.split('-')[1];
     const customerCode = dispenserCard.querySelector('.card-title')?.textContent.split(': ')[1];
 
-    const nozzle = await fetchNozzleData(customerCode, dispenserId, nozzleId);
+    const nozzle = await authFetchNozzleData(customerCode, dispenserId, nozzleId);
     if (!nozzle) {
         console.warn(`No nozzle data found for ${nozzleId}`);
         return null;
@@ -172,7 +172,7 @@ async function sendGetCommandsForDispenser(dispenser) {
     const DELAY_BETWEEN_MESSAGES = 500; // 500ms delay
 
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`);
+        const response = await authFetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
 

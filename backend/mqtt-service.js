@@ -26,8 +26,8 @@ const lastStatusMessage = new Map();
 // const mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 
 // const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
-// const mqttClient = mqtt.connect('tcp://localhost:1883', {
-const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
+const mqttClient = mqtt.connect('tcp://localhost:1883', {
+// const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
     clientId: `server_local`,
     // clientId: `server`,
     keepalive: 0.5 * 60,  // 30 seconds

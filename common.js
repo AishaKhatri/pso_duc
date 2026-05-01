@@ -16,6 +16,29 @@ const productColorConfig = {
       'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
     };
 
+async function authFetch(url, options = {}) {
+  const token = localStorage.getItem('token');
+  const headers = {
+    'Content-Type': 'application/json',
+    ...options.headers
+  };
+  
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  const response = await fetch(url, { ...options, headers });
+  
+  // Only redirect if we're not already on signin page
+  if (response.status === 401 && !window.location.pathname.includes('signin.html')) {
+    StationAuth.clearAuth();
+    window.location.href = 'signin.html';
+    throw new Error('Session expired. Please login again.');
+  }
+  
+  return response;
+}
+
 function renderApp() {
     const app = document.getElementById('app');
     app.innerHTML = `
@@ -377,7 +400,7 @@ async function createCard(address, customer_code) {
     errorCountSpan.style.borderRadius = '12px';
     errorCountSpan.style.display = 'none';
     
-    const count = await fetchErrorCount(address);
+    const count = await authFetchErrorCount(address);
     errorCountSpan.textContent = count;
 
     if (count > 0) {
@@ -417,7 +440,7 @@ async function createCard(address, customer_code) {
 
     // Fetch reset count
     (async () => {
-        const count = await fetchResetCount(address);
+        const count = await authFetchResetCount(address);
         resetCountSpan.textContent = count;
         if (count > 0) {
             resetIcon.style.display = 'inline-block';
@@ -451,7 +474,7 @@ async function createCard(address, customer_code) {
 async function fetchErrorCount(dispenserTopic) {
     try {
         const address = dispenserTopic.replace(/^D/, '');
-        const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
+        const response = await authFetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
         if (response.ok) {
             const errors = await response.json();
             return errors.length;
@@ -472,7 +495,7 @@ async function updateErrorCount(dispenserTopic) {
     
     if (errorCountSpan) {
         const address = dispenserTopic.replace(/^D/, '');
-        const count = await fetchErrorCount(address);
+        const count = await authFetchErrorCount(address);
         errorCountSpan.textContent = count;
         
         if (count > 0) {
@@ -487,11 +510,11 @@ async function updateErrorCount(dispenserTopic) {
 
 async function fetchResetCount(dispenserAddr) {
     try {
-        const response = await fetch(`${API_BASE_URL}/power-status/${dispenserAddr}`);
+        const response = await authFetch(`${API_BASE_URL}/power-status/${dispenserAddr}`);
         if (response.ok) {
             const powerStatuses = await response.json();
             if (Array.isArray(powerStatuses) && powerStatuses.length > 0) {
-                const clearedResponse = await fetch(`${API_BASE_URL}/cleared-resets/${dispenserAddr}`);
+                const clearedResponse = await authFetch(`${API_BASE_URL}/cleared-resets/${dispenserAddr}`);
                 let clearedIds = new Set();
                 if (clearedResponse.ok) {
                     const clearedData = await clearedResponse.json();
@@ -516,7 +539,7 @@ async function updateResetCount(dispenserAddr) {
     const resetIcon = card.querySelector('.dispenser-reset-container img');
     
     if (resetCountSpan) {
-        const count = await fetchResetCount(dispenserAddr);
+        const count = await authFetchResetCount(dispenserAddr);
         resetCountSpan.textContent = count;
         
         if (count > 0) {
@@ -645,7 +668,7 @@ function createEditButton(titleText) {
 
 async function deleteFromDB(url) {
     try {
-    const response = await fetch(
+    const response = await authFetch(
       url, 
       {
         method: 'DELETE'

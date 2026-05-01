@@ -169,12 +169,12 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
     const nozzlesToUpdate = [];
 
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        const dispensersResponse = await authFetch(`${API_BASE_URL}/dispensers`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
         for (const dispenser of dispensers) {
-            const nozzlesResponse = await fetch(
+            const nozzlesResponse = await authFetch(
                 `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
             );
             if (!nozzlesResponse.ok) continue;

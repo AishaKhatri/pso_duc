@@ -10,7 +10,7 @@ let stationsList = [];
 // Function to load stations from database
 async function loadStationsFromDB() {
   try {
-    const response = await fetch(`${API_BASE_URL}/stations`);
+    const response = await authFetch(`${API_BASE_URL}/stations`);
     if (!response.ok) {
       throw new Error('Failed to load stations');
     }
@@ -40,7 +40,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     
     const method = isUpdate ? 'PUT' : 'POST';
 
-    const dispenserResponse = await fetch(dispenserEndpoint, {
+    const dispenserResponse = await authFetch(dispenserEndpoint, {
       method,
       headers: {
         'Content-Type': 'application/json',
@@ -57,7 +57,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
-      const existingNozzlesResponse = await fetch(
+      const existingNozzlesResponse = await authFetch(
         `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
       );
       let existingNozzles = [];
@@ -113,7 +113,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
           total_amount: nozzle.total_amount
         };
 
-        const nozzleResponse = await fetch(
+        const nozzleResponse = await authFetch(
           `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
           {
             method: 'PUT',
@@ -146,7 +146,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
           total_amount: nozzle.total_amount
         };
 
-        const nozzleResponse = await fetch(`${API_BASE_URL}/nozzles`, {
+        const nozzleResponse = await authFetch(`${API_BASE_URL}/nozzles`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -163,7 +163,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
 
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
-        await fetch(
+        await authFetch(
           `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
           {
             method: 'DELETE',
@@ -186,7 +186,7 @@ async function loadDispensersFromDB() {
   try {
     const productOptions = ['PMG', 'HSD', 'HOBC'];
 
-    const dispenserResponse = await fetch(
+    const dispenserResponse = await authFetch(
       `${API_BASE_URL}/dispensers`
     );
     
@@ -197,7 +197,7 @@ async function loadDispensersFromDB() {
     const dbDispensers = await dispenserResponse.json();
     
     const dispensersWithNozzles = await Promise.all(dbDispensers.map(async dbDispenser => {
-      const nozzleResponse = await fetch(
+      const nozzleResponse = await authFetch(
         `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dbDispenser.customer_code}`
       );
       
@@ -637,7 +637,7 @@ async function renderConfigDispensers() {
 
             // Fetch next dispenser_id for new dispensers (per customer)
             if (!dispenser_id) {
-                const response = await fetch(
+                const response = await authFetch(
                     `${API_BASE_URL}/dispensers/next-id?customer_code=${customerCode}`
                 );
                 if (!response.ok) {

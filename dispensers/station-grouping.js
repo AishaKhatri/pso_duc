@@ -337,7 +337,7 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
         let stationInfo = {};
         
         try {
-            const stationResponse = await fetch(`${API_BASE_URL}/stations/${stationCode}`);
+            const stationResponse = await authFetch(`${API_BASE_URL}/stations/${stationCode}`);
             if (stationResponse.ok) {
                 const stationData = await stationResponse.json();
                 stationInfo = {
@@ -382,7 +382,7 @@ async function updateStationDispenserCard(dispenser, updateCardFunction) {
 // Re-render all dispensers maintaining station grouping
 async function refreshAllDispensers(gridContainer, createCardFunction, updateCardFunction, additionalParams = {}) {
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        const dispensersResponse = await authFetch(`${API_BASE_URL}/dispensers`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
         
