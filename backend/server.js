@@ -74,76 +74,24 @@ app.use((err, req, res, next) => {
 
 app.get('/api/auth/verify', async (req, res) => {
   try {
-    const token = req.headers.authorization?.split(' ')[1];
-    
-    if (!token) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'No token provided' 
-      });
-    }
-
-    // Verify JWT
-    const decoded = jwt.verify(token, JWT_SECRET);
-    
-    // Check if session exists in database and is not expired
-    const [sessions] = await pool.query(
-      `SELECT s.*, st.username, st.customer_code, st.station_id, 
-              st.city
-       FROM sessions s
-       JOIN stations st ON s.user_id = st.id
-       WHERE s.session_token = ? AND s.expires_at > NOW()`,
-      [token]
+    const [users] = await pool.query(
+      'SELECT id, username, role, customer_code FROM users WHERE id = ?',
+      [req.user.userId]
     );
 
-    if (sessions.length === 0) {
+    if (users.length === 0) {
       return res.status(401).json({ 
         success: false, 
-        message: 'Session expired or invalid' 
+        message: 'User not found' 
       });
     }
-
-    const session = sessions[0];
-    
-    // Remove sensitive data
-    const { password, ...stationData } = session;
 
     res.json({
       success: true,
-      user: {
-        id: stationData.user_id,
-        username: stationData.username,
-        customerCode: stationData.customer_code,
-        stationId: stationData.station_id,
-        city: stationData.city
-      }
+      user: users[0]
     });
-
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid token' 
-      });
-    }
-    
-    if (error.name === 'TokenExpiredError') {
-      // Clean up expired session
-      const token = req.headers.authorization?.split(' ')[1];
-      if (token) {
-        await pool.query(
-          'DELETE FROM sessions WHERE session_token = ?',
-          [token]
-        );
-      }
-      
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Token expired' 
-      });
-    }
-    
-    console.error('Token verification error:', error);
+    console.error('Verify error:', error);
     res.status(500).json({ 
       success: false, 
       message: 'Server error' 
@@ -559,26 +507,26 @@ app.post('/api/auth/signin', async (req, res) => {
     }
 
     // Find station/user in database
-    const [stations] = await pool.query(
-      `SELECT id, username, password, customer_code, station_id, 
-              city, created_at 
-       FROM stations 
-       WHERE username = ? OR customer_code = ?`,
-      [username, username] // Allow login with either username or customer_code
+    const [users] = await pool.query(
+      `SELECT id, username, password, role, customer_code, is_active, 
+              last_login, created_at 
+       FROM users 
+       WHERE username = ?`,
+      [username]
     );
 
-    if (stations.length === 0) {
+    if (users.length === 0) {
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid username or password' 
       });
     }
 
-    const station = stations[0];
+    const user = users[0];
 
     // Verify password (plain text comparison as per your table structure)
     // Note: In production, you should hash passwords!
-    if (password !== station.password) {
+    if (password !== user.password) {
       return res.status(401).json({ 
         success: false, 
         message: 'Invalid username or password' 
@@ -588,10 +536,10 @@ app.post('/api/auth/signin', async (req, res) => {
     // Generate JWT token
     const token = jwt.sign(
       { 
-        userId: station.id,
-        username: station.username,
-        customerCode: station.customer_code,
-        stationId: station.station_id,
+        userId: user.id,
+        username: user.username,
+        role: user.role,
+        customerCode: user.customer_code
       },
       JWT_SECRET,
       { expiresIn: '24h' }
@@ -603,18 +551,18 @@ app.post('/api/auth/signin', async (req, res) => {
     
     await pool.query(
       'INSERT INTO sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)',
-      [station.id, sessionToken, expiresAt]
+      [user.id, sessionToken, expiresAt]
     );
 
     // Remove password from response
-    const { password: _, ...stationData } = station;
+    const { password: _, ...userData } = user;
 
     // Return success response
     res.json({
       success: true,
       message: 'Login successful',
       token,
-      user: stationData
+      user: userData
     });
 
   } catch (error) {

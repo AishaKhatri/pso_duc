@@ -15,11 +15,20 @@ function renderSidebar() {
         <img src="assets/graphics/sidebar-icon.png" alt="Toggle Sidebar" class="toggle-icon">
     `;
     
-    // Sidebar items array (keeping comments for reference)
+    // Get current user from localStorage
+    const currentUser = StationAuth.getCurrentUser();
+    const isAdmin = currentUser?.role === 'admin';
+    
+    // Sidebar items based on user role
     const items = [
         { page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' },
         { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' },
     ];
+    
+    // Only add User Management for admin users
+    if (isAdmin) {
+        items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
+    }
 
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
@@ -27,6 +36,7 @@ function renderSidebar() {
         'index': 'overview',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
+        'user-management': 'users',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

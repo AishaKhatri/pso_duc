@@ -130,6 +130,9 @@ document.addEventListener('DOMContentLoaded', () => {
   };
   form.appendChild(submitButton);
 
+  container.appendChild(form);
+  document.body.appendChild(container);
+
   // Handle password visibility toggle
   let isPasswordVisible = false;
   toggleButton.addEventListener('click', () => {
@@ -139,8 +142,8 @@ document.addEventListener('DOMContentLoaded', () => {
     toggleIcon.alt = isPasswordVisible ? 'Hide Password' : 'Show Password';
   });
 
-  // Handle form submission - Validate against hardcoded user
-  submitButton.addEventListener('click', async () => {
+  // Function to handle sign in
+  async function handleSignIn() {
     const enteredUsername = usernameInput.value.trim();
     const enteredPassword = passwordInput.value.trim();
 
@@ -148,7 +151,21 @@ document.addEventListener('DOMContentLoaded', () => {
     errorMessage.style.display = 'none';
     errorMessage.textContent = '';
     
+    if (!enteredUsername || !enteredPassword) {
+      errorMessage.textContent = 'Please enter username and password';
+      errorMessage.style.display = 'block';
+      return;
+    }
+    
+    // Disable button to prevent multiple submissions
+    submitButton.disabled = true;
+    submitButton.textContent = 'Signing In...';
+    
     const result = await StationAuth.signIn(enteredUsername, enteredPassword);
+    
+    // Re-enable button
+    submitButton.disabled = false;
+    submitButton.textContent = 'Sign In';
     
     if (result.success) {
       // Redirect to dashboard
@@ -156,12 +173,27 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem('currentUser', enteredUsername);
       window.location.href = 'index.html';
     } else {
-      // Show error
       errorMessage.textContent = result.message;
       errorMessage.style.display = 'block';
+      errorMessage.style.color = '#c62828';
+    }
+  }
+
+  // Handle form submission on button click
+  submitButton.addEventListener('click', handleSignIn);
+
+  // Handle Enter key press on username and password inputs
+  usernameInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSignIn();
     }
   });
 
-  container.appendChild(form);
-  document.body.appendChild(container);
+  passwordInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSignIn();
+    }
+  });
 });
