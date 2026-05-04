@@ -7,22 +7,6 @@ const PRODUCT_NAME_MAPPING = {
 // Global variable to store stations list
 let stationsList = [];
 
-// Function to load stations from database
-async function loadStationsFromDB() {
-  try {
-    const response = await fetch(`${API_BASE_URL}/stations`);
-    if (!response.ok) {
-      throw new Error('Failed to load stations');
-    }
-    const stations = await response.json();
-    stationsList = stations;
-    return stations;
-  } catch (error) {
-    console.error('Load stations error:', error);
-    return [];
-  }
-}
-
 async function saveDispenserToDB(dispenser, isUpdate = false) {
   try {
     const dbDispenser = {
@@ -244,7 +228,7 @@ async function renderConfigDispensers() {
     let productOptions = [];
     try {
         // Load stations first
-        await loadStationsFromDB();
+        stationsList = await loadStationsFromDB();
         const data = await loadDispensersFromDB();
         window.dispensers = data.dispensers;
         productOptions = data.products;
@@ -296,13 +280,10 @@ async function renderConfigDispensers() {
         customerCodeLabel.textContent = 'Customer Code:';
         customerCodeLabel.style.width = '100px';
         
-        const customerCodeSelect = document.createElement('select');
+        // const customerCodeSelect = document.createElement('select');
+        const customerCodeSelect = createDropdown('Select Customer Code');
         customerCodeSelect.name = 'customer_code';
         customerCodeSelect.required = true;
-        customerCodeSelect.style.padding = '8px';
-        customerCodeSelect.style.border = '1px solid #ddd';
-        customerCodeSelect.style.borderRadius = '4px';
-        customerCodeSelect.style.width = '100%';
         
         // Populate customer codes from stationsList
         if (stationsList.length === 0) {
