@@ -15,14 +15,32 @@ CREATE TABLE `stations` (
   UNIQUE KEY `customer_code` (`customer_code`)
 ) ENGINE=InnoDB;
 
+CREATE TABLE `users` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `username` varchar(255) NOT NULL,
+  `password` varchar(255) NOT NULL,
+  `role` enum('admin','operator','viewer') NOT NULL DEFAULT 'viewer',
+  `customer_code` varchar(8) DEFAULT NULL,
+  `is_active` tinyint NOT NULL DEFAULT '1',
+  `last_login` timestamp NULL DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `username` (`username`),
+  KEY `idx_users_customer_code` (`customer_code`),
+  CONSTRAINT `users_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE SET NULL
+) ENGINE=InnoDB;
+
 CREATE TABLE IF NOT EXISTS `sessions` (
-  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
+  `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
-  `session_token` varchar(255) UNIQUE NOT NULL,
+  `session_token` varchar(255) NOT NULL,
   `expires_at` timestamp NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
-  FOREIGN KEY (`user_id`) REFERENCES `stations`(`id`) ON DELETE CASCADE
-);
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `session_token` (`session_token`),
+  KEY `idx_user_id` (`user_id`),
+  CONSTRAINT `sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
 
 CREATE TABLE `dispensers` (
   `id` int NOT NULL AUTO_INCREMENT,
