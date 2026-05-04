@@ -134,6 +134,37 @@ app.get('/api/auth/station/:id', async (req, res) => {
   }
 });
 
+app.get('/api/users', async (req, res) => {
+    try {
+        const [users] = await pool.query(
+            'SELECT id, username, role, customer_code, last_login, created_at FROM users'
+        );
+        res.json(users);
+    } catch (error) {
+        console.error('Get users error:', error);
+        res.status(500).json({ error: 'Failed to fetch users' });
+    }
+});
+
+app.get('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const [users] = await pool.query(
+            'SELECT id, username, role, customer_code, is_active, last_login, created_at FROM users WHERE id = ?',
+            [id]
+        );
+        
+        if (users.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        res.json(users[0]);
+    } catch (error) {
+        console.error('Error fetching user:', error);
+        res.status(500).json({ error: 'Failed to fetch user' });
+    }
+});
+
 // Get all stations
 app.get('/api/stations', async (req, res) => {
     try {
@@ -600,6 +631,49 @@ app.post('/api/auth/signout', async (req, res) => {
   }
 });
 
+app.post('/api/users', async (req, res) => {
+    try {
+        const { username, password, role, customer_code } = req.body;
+        
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password are required' });
+        }
+        
+        // Check if username exists
+        const [existing] = await pool.query('SELECT id FROM users WHERE username = ?', [username]);
+        if (existing.length > 0) {
+            return res.status(400).json({ error: 'Username already exists' });
+        }
+        
+        // For operator role, customer_code is required
+        if (role === 'operator' && !customer_code) {
+            return res.status(400).json({ error: 'Customer code is required for operator role' });
+        }
+        
+        // Verify customer_code exists in stations table for operator
+        if (role === 'operator' && customer_code) {
+            const [station] = await pool.query('SELECT customer_code FROM stations WHERE customer_code = ?', [customer_code]);
+            if (station.length === 0) {
+                return res.status(400).json({ error: 'Invalid customer code' });
+            }
+        }
+        
+        const [result] = await pool.query(
+            'INSERT INTO users (username, password, role, customer_code, is_active) VALUES (?, ?, ?, ?, ?)',
+            [username, password, role || 'viewer', customer_code || null, 1]
+        );
+        
+        res.status(201).json({ 
+            success: true, 
+            id: result.insertId,
+            message: 'User created successfully'
+        });
+    } catch (error) {
+        console.error('Error creating user:', error);
+        res.status(500).json({ error: 'Failed to create user' });
+    }
+});
+
 app.post('/api/stations', async (req, res) => {
     try {
         const { username, password, customer_code, station_id, city } = req.body;
@@ -797,6 +871,56 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to delete nozzles' });
+    }
+});
+
+app.put('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { username, role, customer_code, is_active, password } = req.body;
+        
+        // Check if user exists
+        const [existing] = await pool.query('SELECT id FROM users WHERE id = ?', [id]);
+        if (existing.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        const updates = [];
+        const values = [];
+        
+        if (username) {
+            updates.push('username = ?');
+            values.push(username);
+        }
+        if (role) {
+            updates.push('role = ?');
+            values.push(role);
+        }
+        if (customer_code !== undefined) {
+            updates.push('customer_code = ?');
+            values.push(customer_code);
+        }
+        if (is_active !== undefined) {
+            updates.push('is_active = ?');
+            values.push(is_active);
+        }
+        if (password) {
+            updates.push('password = ?');
+            values.push(password);
+        }
+        
+        if (updates.length === 0) {
+            return res.status(400).json({ error: 'No fields to update' });
+        }
+        
+        values.push(id);
+        
+        await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
+        
+        res.json({ success: true, message: 'User updated successfully' });
+    } catch (error) {
+        console.error('Error updating user:', error);
+        res.status(500).json({ error: 'Failed to update user' });
     }
 });
 
@@ -1083,7 +1207,31 @@ app.put('/api/error-log/mark-cleared', async (req, res) => {
     }
 });
 
-
+app.delete('/api/users/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        
+        // Don't allow deleting the last admin
+        const [admins] = await pool.query('SELECT id FROM users WHERE role = "admin"');
+        if (admins.length === 1) {
+            const [user] = await pool.query('SELECT role FROM users WHERE id = ?', [id]);
+            if (user[0]?.role === 'admin') {
+                return res.status(400).json({ error: 'Cannot delete the last admin user' });
+            }
+        }
+        
+        const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+        
+        res.json({ success: true, message: 'User deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting user:', error);
+        res.status(500).json({ error: 'Failed to delete user' });
+    }
+});
 
 app.delete('/api/dispensers/:id', async (req, res) => {
     const connection = await pool.getConnection();

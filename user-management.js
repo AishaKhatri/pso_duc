@@ -1,28 +1,33 @@
 // user-management.js
-const columns = ['ID', 'Username', 'Station ID', 'Station Name', 'City', 'Created At', 'Actions'];
+let stationsList = [];
+let usersList = [];
+
+const columns = ['ID', 'Username', 'Role', 'Customer Code', 'Last Login', 'Created At', 'Actions'];
 
 async function renderUserManagement() {
-    const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Add New User');
+    const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Create User');
 
-    // Create table for users
     const { tableContainer, tbody } = createTable(columns);
     content.appendChild(tableContainer);
 
-    // Add button event listener
+    try {
+        stationsList = await loadStationsFromDB();
+        usersList = await loadUsersFromDB();
+    } catch (error) {
+        console.error('Load error:', error);
+        content.innerHTML = '<div class="error">Failed to load stations</div>';
+        return;
+    }
+
+    renderUsersTable(usersList);
+
     addButton.addEventListener('click', () => {
         showUserFormPopup();
     });
-
-    // Load users data
-    await loadUsers();
 }
 
-async function loadUsers() {
+async function renderUsersTable(users) {
     try {
-        const response = await fetch(`${API_BASE_URL}/stations`);
-        if (!response.ok) throw new Error('Failed to fetch users');
-        
-        const users = await response.json();
         const tbody = document.getElementById('dispenser-table-body');
         tbody.innerHTML = '';
 
@@ -37,23 +42,55 @@ async function loadUsers() {
         }
 
         users.forEach(user => {
-            const row = createRowInTableBody();
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid #ddd';
+            
+            const idTd = document.createElement('td');
+            idTd.style.padding = '12px';
+            idTd.textContent = user.id;
+            tr.appendChild(idTd);
 
-            createCellInTableBody(row, user.id);
-            createCellInTableBody(row, user.username);
-            createCellInTableBody(row, user.customer_code);
-            createCellInTableBody(row, user.station_id); 
-            createCellInTableBody(row, user.city);
-            createCellInTableBody(row, (new Date(user.created_at).toLocaleString()));
+            const usernameTd = document.createElement('td');
+            usernameTd.style.padding = '12px';
+            usernameTd.textContent = user.username;
+            tr.appendChild(usernameTd);
 
-            createActionCellInTableBody(row, {
-                editText: 'Edit User',
-                deleteText: 'Delete User',
-                onEdit: () => showUserFormPopup(user),
-                onDelete: () => showDeleteUserConfirmation(user),
+            const roleTd = document.createElement('td');
+            roleTd.style.padding = '12px';
+            roleTd.textContent = user.role || '-';
+            tr.appendChild(roleTd);
+
+            const customerCodeTd = document.createElement('td');
+            customerCodeTd.style.padding = '12px';
+            customerCodeTd.textContent = user.customer_code || '-';
+            tr.appendChild(customerCodeTd);
+
+            const lastLoginTd = document.createElement('td');
+            lastLoginTd.style.padding = '12px';
+            lastLoginTd.textContent = user.last_login ? new Date(user.last_login).toLocaleString() : '-';
+            tr.appendChild(lastLoginTd);
+
+            const createdAtTd = document.createElement('td');
+            createdAtTd.style.padding = '12px';
+            createdAtTd.textContent = new Date(user.created_at).toLocaleString() || '-';
+            tr.appendChild(createdAtTd);
+
+            const actionTd = document.createElement('td');
+            actionTd.style.padding = '12px';
+            
+            const editBtn = createEditButton('Edit user');
+            editBtn.addEventListener('click', () => {
+                alert('Edit functionality coming soon');
             });
+            
+            const deleteBtn = createDeleteButton('Delete user');
+            deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
 
-            tbody.appendChild(row);
+            actionTd.appendChild(editBtn);
+            actionTd.appendChild(deleteBtn);
+            
+            tr.appendChild(actionTd);
+            tbody.appendChild(tr);
         });
     } catch (error) {
         console.error('Error loading users:', error);
@@ -75,7 +112,7 @@ function showUserFormPopup(user = null) {
     const overlay = createModalOverlay();
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '500px';
+    popup.style.width = '400px';
     popup.style.maxWidth = '90vw';
 
     const header = createHeader();
@@ -89,27 +126,156 @@ function showUserFormPopup(user = null) {
     header.appendChild(closeButton);
     popup.appendChild(header);
 
-    // Create form
     const form = document.createElement('form');
     form.style.display = 'flex';
     form.style.flexDirection = 'column';
     form.style.gap = '15px';
 
-    const username = createField('Username *', user ? user.username : '', true);
-    const password = createField('Password *', user ? user.password : '', true);
-    const customerCode = createField('Customer Code *', user ? user.customer_code : '', true);
-    const stationId = createField('Station ID *', user ? user.station_id : '', true);
-    const city = createField('City *', user ? user.city : '', true);
+    // Username field
+    const usernameContainer = document.createElement('div');
+    usernameContainer.style.display = 'flex';
+    usernameContainer.style.flexDirection = 'column';
+    usernameContainer.style.gap = '5px';
+    
+    const usernameLabel = document.createElement('label');
+    usernameLabel.textContent = 'Username *';
+    usernameLabel.style.fontWeight = 'bold';
+    
+    const usernameInput = document.createElement('input');
+    usernameInput.type = 'text';
+    usernameInput.value = user ? user.username : '';
+    usernameInput.required = true;
+    usernameInput.style.padding = '8px';
+    usernameInput.style.border = '1px solid #ccc';
+    usernameInput.style.borderRadius = '4px';
+    
+    usernameContainer.appendChild(usernameLabel);
+    usernameContainer.appendChild(usernameInput);
+    form.appendChild(usernameContainer);
 
-    form.appendChild(username);
-    form.appendChild(password);
-    form.appendChild(customerCode);
-    form.appendChild(stationId);
-    form.appendChild(city);
+    // Password field (only for new users)
+    let passwordInput = null;
+    if (!user) {
+        const passwordContainer = document.createElement('div');
+        passwordContainer.style.display = 'flex';
+        passwordContainer.style.flexDirection = 'column';
+        passwordContainer.style.gap = '5px';
+        
+        const passwordLabel = document.createElement('label');
+        passwordLabel.textContent = 'Password *';
+        passwordLabel.style.fontWeight = 'bold';
+        
+        passwordInput = document.createElement('input');
+        passwordInput.type = 'password';
+        passwordInput.required = true;
+        passwordInput.style.padding = '8px';
+        passwordInput.style.border = '1px solid #ccc';
+        passwordInput.style.borderRadius = '4px';
+        
+        passwordContainer.appendChild(passwordLabel);
+        passwordContainer.appendChild(passwordInput);
+        form.appendChild(passwordContainer);
+    }
+
+    // Role dropdown
+    const roleContainer = document.createElement('div');
+    roleContainer.style.display = 'flex';
+    roleContainer.style.flexDirection = 'column';
+    roleContainer.style.gap = '5px';
+    
+    const roleLabel = document.createElement('label');
+    roleLabel.textContent = 'Role *';
+    roleLabel.style.fontWeight = 'bold';
+    
+    const roleSelect = createDropdown('Select Role');
+    roleSelect.required = true;
+    roleSelect.style.width = '100%';
+    
+    const roleOptions = [
+        { value: 'admin', label: 'Admin' },
+        { value: 'operator', label: 'Operator' },
+        { value: 'viewer', label: 'Viewer' }
+    ];
+    
+    roleOptions.forEach(roleOption => {
+        const option = document.createElement('option');
+        option.value = roleOption.value;
+        option.textContent = roleOption.label;
+        if (user && user.role && user.role.toLowerCase() === roleOption.value) {
+            option.selected = true;
+        }
+        roleSelect.appendChild(option);
+    });
+    
+    roleContainer.appendChild(roleLabel);
+    roleContainer.appendChild(roleSelect);
+    form.appendChild(roleContainer);
+
+    // Customer code dropdown
+    const customerCodeContainer = document.createElement('div');
+    customerCodeContainer.style.display = 'flex';
+    customerCodeContainer.style.flexDirection = 'column';
+    customerCodeContainer.style.gap = '5px';
+    customerCodeContainer.style.marginTop = '5px';
+    
+    const customerCodeLabel = document.createElement('label');
+    customerCodeLabel.textContent = 'Customer Code';
+    customerCodeLabel.style.fontWeight = 'bold';
+    
+    const customerCodeSelect = createDropdown('Select Customer Code');
+    customerCodeSelect.name = 'customer_code';
+    customerCodeSelect.style.width = '100%';
+    customerCodeSelect.style.padding = '8px';
+    customerCodeSelect.style.border = '1px solid #ccc';
+    customerCodeSelect.style.borderRadius = '4px';
+    
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Select Customer Code';
+    defaultOption.disabled = true;
+    defaultOption.selected = true;
+    customerCodeSelect.appendChild(defaultOption);
+    
+    if (stationsList && stationsList.length > 0) {
+        stationsList.forEach(station => {
+            const option = document.createElement('option');
+            option.value = station.customer_code;
+            option.textContent = `${station.customer_code} - ${station.station_id || station.city || 'Unknown'}`;
+            if (user && user.customer_code === station.customer_code) {
+                option.selected = true;
+            }
+            customerCodeSelect.appendChild(option);
+        });
+    } else {
+        const noStationOption = document.createElement('option');
+        noStationOption.value = '';
+        noStationOption.textContent = 'No stations available';
+        noStationOption.disabled = true;
+        customerCodeSelect.appendChild(noStationOption);
+    }
+    
+    customerCodeContainer.appendChild(customerCodeLabel);
+    customerCodeContainer.appendChild(customerCodeSelect);
+    form.appendChild(customerCodeContainer);
+
+    const updateCustomerCodeState = () => {
+        if (roleSelect.value === 'operator') {
+            customerCodeSelect.disabled = false;
+            customerCodeSelect.style.opacity = '1';
+            customerCodeSelect.style.backgroundColor = '#fff';
+        } else {
+            customerCodeSelect.disabled = true;
+            customerCodeSelect.style.opacity = '0.6';
+            customerCodeSelect.style.backgroundColor = '#f5f5f5';
+        }
+    };
+    
+    updateCustomerCodeState();
+    
+    roleSelect.addEventListener('change', updateCustomerCodeState);
 
     popup.appendChild(form);
 
-    // Buttons
     const buttonContainer = document.createElement('div');
     buttonContainer.style.display = 'flex';
     buttonContainer.style.justifyContent = 'flex-end';
@@ -125,33 +291,38 @@ function showUserFormPopup(user = null) {
 
     const submitButton = createActionButton('#004D64', '#00324C');
     submitButton.textContent = user ? 'Update User' : 'Add User';
-    submitButton.type = 'submit';
-
+    submitButton.type = 'button';
+    
     buttonContainer.appendChild(cancelButton);
     buttonContainer.appendChild(submitButton);
     popup.appendChild(buttonContainer);
 
-    // Form submission
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
+    submitButton.addEventListener('click', async () => {
+        const userData = {
+            username: usernameInput.value.trim(),
+            role: roleSelect.value,
+        };
         
-        try {
-            const userData = {
-                username: usernameInput.value.trim(),
-                customerCode: customerCodeInput.value.trim(),
-                station_id: stationIdInput.value.trim(),
-                city: cityInput.value.trim(),
-            };
-
-            // Add password for new users
-            if (!user) {
-                const passwordInput = form.querySelector('input[type="password"]');
-                userData.password = passwordInput.value;
+        if (roleSelect.value === 'operator') {
+            if (!customerCodeSelect.value) {
+                alert('Please select a customer code for operator role');
+                return;
             }
+            userData.customer_code = customerCodeSelect.value;
+        }
+        
+        if (!user && passwordInput) {
+            if (!passwordInput.value) {
+                alert('Missing or invalid entry in required fields');
+                return;
+            }
+            userData.password = passwordInput.value;
+        }
 
-            const url = user ? `${API_BASE_URL}/users/${user.id}` : `${API_BASE_URL}/users`;
-            const method = user ? 'PUT' : 'POST';
+        const url = user ? `${API_BASE_URL}/users/${user.id}` : `${API_BASE_URL}/users`;
+        const method = user ? 'PUT' : 'POST';
 
+        try {
             const response = await fetch(url, {
                 method: method,
                 headers: {
@@ -162,11 +333,13 @@ function showUserFormPopup(user = null) {
 
             if (!response.ok) {
                 const errorData = await response.json();
-                throw new Error(errorData.message || 'Failed to save user');
+                throw new Error(errorData.message || errorData.error || 'Failed to save user');
             }
 
+            alert('User saved successfully!');
             document.body.removeChild(overlay);
-            await loadUsers(); // Refresh the list
+            usersList = await loadUsersFromDB();
+            renderUsersTable(usersList);
             
         } catch (error) {
             console.error('Error saving user:', error);
@@ -179,17 +352,31 @@ function showUserFormPopup(user = null) {
 
 function showDeleteUserConfirmation(user) {
     const { overlay, confirmButton } = createDeletePopup(
-        `Are you sure you want to delete user "${user.username}" (${user.customer_code})? This action cannot be undone.`
+        `Are you sure you want to delete user "${user.username}"? This action cannot be undone.`
     );
 
     confirmButton.addEventListener('click', async () => {
         try {
-            await deleteFromDB(`${API_BASE_URL}/users/${user.id}`);
+            const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (!response.ok) {
+                const error = await response.json();
+                throw new Error(error.error || 'Failed to delete user');
+            }
+            
             document.body.removeChild(overlay);
-            await loadUsers(); // Refresh the list
+            usersList = await loadUsersFromDB();
+            renderUsersTable(usersList);
         } catch (error) {
             console.error('Error deleting user:', error);
-            alert('Failed to delete user. Please try again.');
+            alert(`Error: ${error.message}`);
         }
     });
 }
+
+window.renderUserManagement = renderUserManagement;

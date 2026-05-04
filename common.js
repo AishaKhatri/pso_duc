@@ -5,6 +5,8 @@ const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};
 
+const userRoles = ['admin', 'operator', 'viewer'];
+
 const NOZZLE_LAYOUTS = {
     FULL: 'full',      // Full layout with all metrics (for main page)
     SUMMARY: 'summary'  // Summary layout with limited info (for overview page)
@@ -25,6 +27,28 @@ function renderApp() {
     `;
     renderTopbar();
     renderSidebar();
+}
+
+async function loadStationsFromDB() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/stations`);
+        if (!response.ok) throw new Error('Failed to fetch stations');
+        return await response.json();
+    } catch (error) {
+        console.error('Error loading stations:', error);
+        return [];
+    }
+}
+
+async function loadUsersFromDB() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/users`);
+        if (!response.ok) throw new Error('Failed to fetch users');
+        return await response.json();
+    } catch (error) {
+        console.error('Error loading users:', error);
+        return [];
+    }
 }
 
 function createCloseButton(overlay) {
