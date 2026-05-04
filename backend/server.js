@@ -467,7 +467,7 @@ app.get('/api/error-log/:address', async (req, res) => {
             query += ' AND cleared = 0';
         }
         
-        query += ' ORDER BY created_at DESC LIMIT 100';
+        query += ' ORDER BY created_at DESC LIMIT 1000';
 
         const [errors] = await pool.query(query, queryParams);
         
