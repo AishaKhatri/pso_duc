@@ -1233,6 +1233,23 @@ app.delete('/api/users/:id', async (req, res) => {
     }
 });
 
+app.delete('/api/stations/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+               
+        const [result] = await pool.query('DELETE FROM stations WHERE id = ?', [id]);
+        
+        if (result.affectedRows === 0) {
+            return res.status(404).json({ error: 'Station not found' });
+        }
+        
+        res.json({ success: true, message: 'Station deleted successfully' });
+    } catch (error) {
+        console.error('Error deleting station:', error);
+        res.status(500).json({ error: 'Failed to delete station' });
+    }
+});
+
 app.delete('/api/dispensers/:id', async (req, res) => {
     const connection = await pool.getConnection();
     try {

@@ -28,6 +28,7 @@ function renderSidebar() {
     // Only add User Management for admin users
     if (isAdmin) {
         items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
+        items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
     }
 
     // Determine current page based on window location
@@ -37,6 +38,7 @@ function renderSidebar() {
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
         'user-management': 'users',
+        'site-management': 'sites',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 
