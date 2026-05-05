@@ -41,7 +41,10 @@
     <script src="dispensers/command-dispenser.js"></script>
     <script src="dispensers/price-update.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            const isAuthenticated = await checkAuthentication();
+            if (!isAuthenticated) return;
+            
             renderApp()
             if (typeof window.renderDispenser === 'function') {
                 window.renderDispenser();
