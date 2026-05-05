@@ -22,6 +22,7 @@ const {
     NotificationService,
     NotificationWebSocketServer } = require('./backend-services');
 const { log } = require('console');
+const console = require('console');
 
 const app = express();
 app.use(cors());
@@ -73,29 +74,83 @@ app.use((err, req, res, next) => {
 });
 
 app.get('/api/auth/verify', async (req, res) => {
+  console.log('Received token verification request');
+  
   try {
+    const token = req.headers.authorization?.split(' ')[1];
+    
+    if (!token) {
+      console.log('No token provided');
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+
+    // Verify JWT
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+      console.log('Decoded token:', decoded);
+    } catch (jwtError) {
+      console.log('JWT verification failed:', jwtError.message);
+      return res.status(401).json({ success: false, message: 'Invalid token' });
+    }
+    
+    // Get user ID from token - check both possible field names
+    const userId = decoded.userId || decoded.id || decoded.user_id;
+    
+    if (!userId) {
+      console.log('No user ID found in token. Decoded token keys:', Object.keys(decoded));
+      return res.status(401).json({ success: false, message: 'Invalid token format' });
+    }
+    
+    console.log('Looking for user with ID:', userId);
+    
+    // Check session in database
+    const [sessions] = await pool.query(
+      'SELECT * FROM sessions WHERE session_token = ? AND expires_at > NOW()',
+      [token]
+    );
+
+    if (sessions.length === 0) {
+      console.log('No valid session found for token');
+      return res.status(401).json({ success: false, message: 'Session expired' });
+    }
+    
+    console.log('Session found');
+
+    // Get user from database
     const [users] = await pool.query(
-      'SELECT id, username, role, customer_code FROM users WHERE id = ?',
-      [req.user.userId]
+      'SELECT id, username, role, customer_code, is_active FROM users WHERE id = ?',
+      [userId]
     );
 
     if (users.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'User not found' 
-      });
+      console.log('User not found in database for ID:', userId);
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+
+    const user = users[0];
+    console.log('User found:', user.username);
+    
+    if (user.is_active === 0) {
+      console.log('Account is disabled');
+      return res.status(401).json({ success: false, message: 'Account disabled' });
     }
 
     res.json({
       success: true,
-      user: users[0]
+      user: {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        customer_code: user.customer_code
+      }
     });
+
+    console.log(`Verified token for user: ${user.username} (ID: ${user.id})`);
+
   } catch (error) {
     console.error('Verify error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
-    });
+    res.status(500).json({ success: false, message: 'Server error' });
   }
 });
 
@@ -529,7 +584,6 @@ app.post('/api/auth/signin', async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Validate input
     if (!username || !password) {
       return res.status(400).json({ 
         success: false, 
@@ -537,7 +591,6 @@ app.post('/api/auth/signin', async (req, res) => {
       });
     }
 
-    // Find station/user in database
     const [users] = await pool.query(
       `SELECT id, username, password, role, customer_code, is_active, 
               last_login, created_at 
@@ -555,8 +608,6 @@ app.post('/api/auth/signin', async (req, res) => {
 
     const user = users[0];
 
-    // Verify password (plain text comparison as per your table structure)
-    // Note: In production, you should hash passwords!
     if (password !== user.password) {
       return res.status(401).json({ 
         success: false, 
@@ -576,19 +627,20 @@ app.post('/api/auth/signin', async (req, res) => {
       { expiresIn: '24h' }
     );
 
-    // Create session in database
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
-    const sessionToken = require('crypto').randomBytes(64).toString('hex');
+    // Store the JWT token as the session_token (not a random one)
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
     
+    // Delete any existing sessions for this user
+    await pool.query('DELETE FROM sessions WHERE user_id = ?', [user.id]);
+    
+    // Insert new session with the JWT token
     await pool.query(
       'INSERT INTO sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)',
-      [user.id, sessionToken, expiresAt]
+      [user.id, token, expiresAt]
     );
 
-    // Remove password from response
     const { password: _, ...userData } = user;
 
-    // Return success response
     res.json({
       success: true,
       message: 'Login successful',
@@ -610,18 +662,13 @@ app.post('/api/auth/signout', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     
     if (token) {
-      // Delete session from database
-      await pool.query(
-        'DELETE FROM sessions WHERE session_token = ?',
-        [token]
-      );
+      await pool.query('DELETE FROM sessions WHERE session_token = ?', [token]);
     }
     
     res.json({ 
       success: true, 
       message: 'Signed out successfully' 
     });
-    
   } catch (error) {
     console.error('Sign out error:', error);
     res.status(500).json({ 

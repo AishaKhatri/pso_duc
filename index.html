@@ -11,12 +11,6 @@
     <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
 </head>
 <body>
-    <!-- Check if user is signed in -->
-    <script>
-        if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
-        window.location.href = 'signin.html';
-        }
-    </script>
     <div id="app"></div>
     <div class="container">
         <div id="sidebar"></div>
@@ -36,7 +30,10 @@
     <script src="dispensers/nozzle-update-functions.js"></script>
     <script src="overview.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            const isAuthenticated = await checkAuthentication();
+            if (!isAuthenticated) return;
+            
             renderApp()
             if (typeof window.renderOverview === 'function') {
                 window.renderOverview();

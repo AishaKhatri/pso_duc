@@ -169,8 +169,6 @@ document.addEventListener('DOMContentLoaded', () => {
     
     if (result.success) {
       // Redirect to dashboard
-      localStorage.setItem('signedIn', 'true');
-      localStorage.setItem('currentUser', enteredUsername);
       window.location.href = 'index.html';
     } else {
       errorMessage.textContent = result.message;
