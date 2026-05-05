@@ -11,12 +11,6 @@
     <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
 </head>
 <body>
-    <!-- Check if user is signed in -->
-    <script>
-        if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
-        window.location.href = 'signin.html';
-        }
-    </script>
     <div id="app"></div>
     <div class="container">
         <div id="sidebar"></div>
@@ -41,7 +35,11 @@
     <script src="dispensers/command-dispenser.js"></script>
     <script src="dispensers/price-update.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check authentication before anything else
+            const isAuthenticated = await checkAuth();
+            if (!isAuthenticated) return;
+
             renderApp()
             if (typeof window.renderDispenser === 'function') {
                 window.renderDispenser();

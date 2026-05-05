@@ -24,9 +24,12 @@
     <script src="sidebar.js"></script>
     <script src="auth-functions.js"></script>
     <script src="dispensers/config-dispensers.js"></script>
-
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check authentication before anything else
+            const isAuthenticated = await checkAuth();
+            if (!isAuthenticated) return;
+
             renderApp()
             if (typeof window.renderConfigDispensers === 'function') {
                 window.renderConfigDispensers();

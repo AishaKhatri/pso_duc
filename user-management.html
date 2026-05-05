@@ -22,9 +22,17 @@
     <script src="auth-functions.js"></script>
     <script src="user-management.js"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
+            // Check authentication before anything else
+            const isAuthenticated = await checkAuth();
+            if (!isAuthenticated) return;
+
             renderApp()
-            renderUserManagement();
+            if (typeof window.renderUserManagement === 'function') {
+                window.renderUserManagement();
+            } else {
+                console.error('renderUserManagement function is not defined');
+            }
         });
     </script>
 </body>
