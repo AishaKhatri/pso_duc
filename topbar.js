@@ -18,7 +18,8 @@ function renderTopbar() {
     topbar.appendChild(titleDiv);
     
     // User section
-    const currentUser = localStorage.getItem('currentUser') || 'User';
+    const currentUser = StationAuth.getCurrentUser() || 'User';
+    const userInfo = StationAuth.getUserInfo();
     const userInitial = currentUser.charAt(0).toUpperCase();
     
     const userContainer = document.createElement('div');
@@ -30,51 +31,83 @@ function renderTopbar() {
     // User initial circle
     const userCircle = document.createElement('div');
     userCircle.textContent = userInitial;
+    userCircle.title = 'Sign out';
     userCircle.style.cssText = `
         width: 32px;
         height: 32px;
-        border: 2px solid rgb(7, 82, 6);
+        border: 2px solid #00324C;
         border-radius: 50%;
-        background-color: #2e7d32;
+        background-color: #fff;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        color: white;
+        color: #00324C;
+        font-size: 20px;
     `;
     
-    // Username
+    // Username and role
+    const userTextContainer = document.createElement('div');
+    userTextContainer.style.display = 'flex';
+    userTextContainer.style.flexDirection = 'column';
+    userTextContainer.style.alignItems = 'flex-start';
+    
     const username = document.createElement('span');
     username.textContent = currentUser;
     username.style.color = '#fff';
+    username.style.fontSize = '14px';
+    username.style.fontWeight = '500';
+    
+    const userRole = document.createElement('span');
+    userRole.textContent = userInfo?.role || 'User';
+    userRole.style.color = '#ccc';
+    userRole.style.fontSize = '12px';
+    
+    userTextContainer.appendChild(username);
+    userTextContainer.appendChild(userRole);
     
     // Dropdown (initially hidden)
     const dropdown = document.createElement('div');
     dropdown.style.cssText = `
         position: absolute;
-        top: 40px;
+        top: 45px;
         right: 0;
         background: white;
         border: 1px solid #ddd;
-        border-radius: 4px;
+        border-radius: 6px;
         box-shadow: 0 2px 8px rgba(0,0,0,0.1);
         display: none;
         flex-direction: column;
-        min-width: 80px;
+        min-width: 120px;
         z-index: 1000;
     `;
+    
+    // User info in dropdown
+    const userInfoItem = document.createElement('div');
+    userInfoItem.style.cssText = `
+        padding: 10px 16px;
+        border-bottom: 1px solid #eee;
+        font-size: 12px;
+        color: #666;
+    `;
+    userInfoItem.innerHTML = `
+        <div style="font-weight: bold; color: #333;">${currentUser}</div>
+        <div>Role: ${userInfo?.role || 'User'}</div>
+    `;
+    dropdown.appendChild(userInfoItem);
     
     // Sign out button
     const signOutBtn = document.createElement('button');
     signOutBtn.textContent = 'Sign Out';
     signOutBtn.style.cssText = `
-        padding: 8px 16px;
+        padding: 10px 16px;
         background: none;
         border: none;
         text-align: left;
         cursor: pointer;
-        color: #111;
+        color: #d32f2f;
         font-size: 14px;
+        width: 100%;
     `;
     
     signOutBtn.onmouseover = () => {
@@ -85,15 +118,14 @@ function renderTopbar() {
         signOutBtn.style.backgroundColor = 'transparent';
     };
     
-    signOutBtn.onclick = () => {
-        localStorage.setItem('signedIn', 'false');
-        localStorage.removeItem('currentUser');
-        window.location.href = 'signin.html';
+    signOutBtn.onclick = async () => {
+        await StationAuth.signOut();
     };
     
     dropdown.appendChild(signOutBtn);
+       
     userContainer.appendChild(userCircle);
-    userContainer.appendChild(username);
+    userContainer.appendChild(userTextContainer);
     userContainer.appendChild(dropdown);
     topbar.appendChild(userContainer);
     

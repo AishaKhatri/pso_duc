@@ -74,8 +74,6 @@ app.use((err, req, res, next) => {
 });
 
 app.get('/api/auth/verify', async (req, res) => {
-  console.log('Received token verification request');
-  
   try {
     const token = req.headers.authorization?.split(' ')[1];
     
@@ -84,38 +82,46 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(401).json({ success: false, message: 'No token provided' });
     }
 
-    // Verify JWT
+    // Verify JWT (automatically checks expiration)
     let decoded;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
       console.log('Decoded token:', decoded);
     } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        console.log('Token has expired');
+        // Update session to signed_in = 0 if expired
+        await pool.query(
+          'UPDATE sessions SET signed_in = 0 WHERE session_token = ?',
+          [token]
+        );
+        return res.status(401).json({ success: false, message: 'Token expired' });
+      }
       console.log('JWT verification failed:', jwtError.message);
       return res.status(401).json({ success: false, message: 'Invalid token' });
     }
     
-    // Get user ID from token - check both possible field names
     const userId = decoded.userId || decoded.id || decoded.user_id;
     
     if (!userId) {
-      console.log('No user ID found in token. Decoded token keys:', Object.keys(decoded));
+      console.log('No user ID found in token');
       return res.status(401).json({ success: false, message: 'Invalid token format' });
     }
     
     console.log('Looking for user with ID:', userId);
     
-    // Check session in database
+    // Check if session exists and is signed in
     const [sessions] = await pool.query(
-      'SELECT * FROM sessions WHERE session_token = ? AND expires_at > NOW()',
+      'SELECT * FROM sessions WHERE session_token = ? AND signed_in = 1',
       [token]
     );
 
     if (sessions.length === 0) {
-      console.log('No valid session found for token');
-      return res.status(401).json({ success: false, message: 'Session expired' });
+      console.log('No active session found for token');
+      return res.status(401).json({ success: false, message: 'Session not active' });
     }
     
-    console.log('Session found');
+    console.log('Active session found');
 
     // Get user from database
     const [users] = await pool.query(
@@ -133,6 +139,11 @@ app.get('/api/auth/verify', async (req, res) => {
     
     if (user.is_active === 0) {
       console.log('Account is disabled');
+      // Update session to signed_in = 0
+      await pool.query(
+        'UPDATE sessions SET signed_in = 0 WHERE session_token = ?',
+        [token]
+      );
       return res.status(401).json({ success: false, message: 'Account disabled' });
     }
 
@@ -615,7 +626,7 @@ app.post('/api/auth/signin', async (req, res) => {
       });
     }
 
-    // Generate JWT token
+    // Generate JWT token with 4 hours expiration
     const token = jwt.sign(
       { 
         userId: user.id,
@@ -624,19 +635,15 @@ app.post('/api/auth/signin', async (req, res) => {
         customerCode: user.customer_code
       },
       JWT_SECRET,
-      { expiresIn: '24h' }
+      { expiresIn: '4h' }
     );
 
-    // Store the JWT token as the session_token (not a random one)
-    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+    const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000); // 4 hours
     
-    // Delete any existing sessions for this user
-    await pool.query('DELETE FROM sessions WHERE user_id = ?', [user.id]);
-    
-    // Insert new session with the JWT token
+    // Insert new session with signed_in = 1
     await pool.query(
-      'INSERT INTO sessions (user_id, session_token, expires_at) VALUES (?, ?, ?)',
-      [user.id, token, expiresAt]
+      'INSERT INTO sessions (user_id, session_token, expires_at, signed_in) VALUES (?, ?, ?, ?)',
+      [user.id, token, expiresAt, 1]
     );
 
     const { password: _, ...userData } = user;
@@ -662,7 +669,10 @@ app.post('/api/auth/signout', async (req, res) => {
     const token = req.headers.authorization?.split(' ')[1];
     
     if (token) {
-      await pool.query('DELETE FROM sessions WHERE session_token = ?', [token]);
+        await pool.query(
+            'UPDATE sessions SET signed_in = 0 WHERE session_token = ?',
+            [token]
+      );
     }
     
     res.json({ 

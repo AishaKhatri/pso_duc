@@ -34,11 +34,13 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
   `session_token` varchar(255) NOT NULL,
+  `signed_in` tinyint NOT NULL DEFAULT '1', 
   `expires_at` timestamp NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `session_token` (`session_token`),
   KEY `idx_user_id` (`user_id`),
+  KEY `idx_signed_in` (`signed_in`),
   CONSTRAINT `sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
 

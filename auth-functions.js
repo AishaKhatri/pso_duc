@@ -27,17 +27,22 @@ const StationAuth = {
   },
 
   async signOut() {
-    const token = localStorage.getItem('authToken');
-    if (token) {
-      try {
+    try {
+      const token = this.getToken();
+      if (token) {
         await fetch(`${API_BASE_URL}/auth/signout`, {
           method: 'POST',
-          headers: { 'Authorization': `Bearer ${token}` }
+          headers: {
+            'Authorization': `Bearer ${token}`
+          }
         });
-      } catch (e) {}
+      }
+    } catch (error) {
+      console.error('Sign out error:', error);
+    } finally {
+      this.clearAuth();
+      window.location.href = 'signin.html';
     }
-    localStorage.clear();
-    window.location.href = 'signin.html';
   },
 
   getToken() {
@@ -51,10 +56,6 @@ const StationAuth = {
   getUserInfo() {
     const userStr = localStorage.getItem('currentUserInfo');
     return userStr ? JSON.parse(userStr) : null;
-  },
-
-  isAuthenticated() {
-    return localStorage.getItem('signedIn') === 'true' && !!this.getToken();
   },
 
   clearAuth() {
