@@ -181,13 +181,17 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
         if (typeof window.setNozzleLayoutType === 'function') {
             window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
         }
-        
-        // Let updateNozzleUI handle the rendering and error count fetching
-        const nozzleData = window.NozzleData(nozzle);
-        if (typeof window.updateNozzleUI === 'function') {
-            window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
-        }
     });
+
+    // Small delay to ensure DOM is updated, then update UI
+    setTimeout(() => {
+        nozzles.forEach(nozzle => {
+            const nozzleData = window.NozzleData(nozzle);
+            if (typeof window.updateNozzleUI === 'function') {
+                window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
+            }
+        });
+    }, 100);
 }
 
 async function updateDispenserCard(dispenser) {

@@ -16,7 +16,7 @@ function renderSidebar() {
     `;
     
     // Get current user from localStorage
-    const currentUser = StationAuth.getCurrentUser();
+    const currentUser = StationAuth.getUserInfo();
     const isAdmin = currentUser?.role === 'admin';
     
     // Sidebar items based on user role
