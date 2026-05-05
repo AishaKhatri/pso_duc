@@ -2,6 +2,7 @@
 
 // Store all dispensers for filtering
 let allGroupedDispensers = {};
+let allStationsData = [];
 
 // Group dispensers by station
 function groupDispensersByStation(dispensers) {
@@ -21,8 +22,28 @@ function groupDispensersByStation(dispensers) {
     return grouped;
 }
 
-// Create station filter dropdown
-function createStationFilterDropdown(stations, onFilterChange) {
+// Get unique cities from stations
+async function getUniqueCities() {
+    try {
+        const response = await fetch(`${API_BASE_URL}/stations`);
+        if (!response.ok) throw new Error('Failed to fetch stations');
+        allStationsData = await response.json();
+        const cities = [...new Set(allStationsData.map(s => s.city).filter(c => c))];
+        return cities.sort();
+    } catch (error) {
+        console.error('Error fetching cities:', error);
+        return [];
+    }
+}
+
+// Get city for a station
+function getStationCity(customerCode) {
+    const station = allStationsData.find(s => s.customer_code === customerCode);
+    return station ? station.city : '';
+}
+
+// Create filter container with both city and station dropdowns
+async function createFilterContainer(stations, onFilterChange) {
     const filterContainer = document.createElement('div');
     filterContainer.style.display = 'flex';
     filterContainer.style.alignItems = 'center';
@@ -35,41 +56,116 @@ function createStationFilterDropdown(stations, onFilterChange) {
     filterContainer.style.border = '1px solid #e0e0e0';
     filterContainer.style.width = '100%';
     
-    const filterLabel = document.createElement('label');
-    filterLabel.textContent = 'Filter by Station:';
-    filterLabel.style.fontWeight = 'bold';
-    filterLabel.style.color = '#333';
-    filterLabel.style.fontSize = '14px';
+    // City Filter
+    const cityLabel = document.createElement('label');
+    cityLabel.textContent = 'City:';
+    cityLabel.style.fontWeight = 'bold';
+    cityLabel.style.color = '#333';
+    cityLabel.style.fontSize = '14px';
     
-    const filterDropdown = createDropdown('All Stations');
-    filterDropdown.id = 'station-filter-dropdown';
-    filterDropdown.style.width = '250px';
-    filterDropdown.style.marginBottom = '0';
+    const cityDropdown = createDropdown('All Cities');
+    cityDropdown.id = 'city-filter-dropdown';
+    cityDropdown.style.width = '180px';
+    cityDropdown.style.marginBottom = '0';
     
-    // Add "All Stations" option
-    const allOption = document.createElement('option');
-    allOption.value = 'all';
-    allOption.textContent = 'All Stations';
-    filterDropdown.appendChild(allOption);
+    const allCitiesOption = document.createElement('option');
+    allCitiesOption.value = 'all';
+    allCitiesOption.textContent = 'All Cities';
+    cityDropdown.appendChild(allCitiesOption);
     
-    // Add each station option
-    const sortedStations = Object.keys(stations).sort();
-    sortedStations.forEach(stationCode => {
+    const cities = await getUniqueCities();
+    cities.forEach(city => {
         const option = document.createElement('option');
-        option.value = stationCode;
-        option.textContent = `${stationCode} (${stations[stationCode].dispensers.length} dispensers)`;
-        filterDropdown.appendChild(option);
+        option.value = city;
+        option.textContent = city.charAt(0).toUpperCase() + city.slice(1).toLowerCase();
+        cityDropdown.appendChild(option);
     });
     
-    filterDropdown.addEventListener('change', (e) => {
-        const selectedStation = e.target.value;
+    // Station Filter
+    const stationLabel = document.createElement('label');
+    stationLabel.textContent = 'Station:';
+    stationLabel.style.fontWeight = 'bold';
+    stationLabel.style.color = '#333';
+    stationLabel.style.fontSize = '14px';
+    
+    const stationDropdown = createDropdown('All Stations');
+    stationDropdown.id = 'station-filter-dropdown';
+    stationDropdown.style.width = '250px';
+    stationDropdown.style.marginBottom = '0';
+    
+    const allStationsOption = document.createElement('option');
+    allStationsOption.value = 'all';
+    allStationsOption.textContent = 'All Stations';
+    stationDropdown.appendChild(allStationsOption);
+    
+    // Store all stations for reference
+    const allStationCodes = Object.keys(stations).sort();
+    
+    // Function to add station options
+    const addStationOptions = (stationList) => {
+        stationList.forEach(stationCode => {
+            const option = document.createElement('option');
+            option.value = stationCode;
+            option.textContent = `${stationCode} (${stations[stationCode].dispensers.length} dispensers)`;
+            stationDropdown.appendChild(option);
+        });
+    };
+    
+    // Initial population of all stations
+    addStationOptions(allStationCodes);
+    
+    // Function to update station dropdown based on selected city
+    const updateStationDropdown = (selectedCity) => {
+        // Clear existing options except "All Stations"
+        while (stationDropdown.options.length > 1) {
+            stationDropdown.remove(1);
+        }
+        
+        if (selectedCity === 'all') {
+            // Show all stations
+            addStationOptions(allStationCodes);
+        } else {
+            // Show only stations in selected city
+            const filteredStations = allStationCodes.filter(stationCode => {
+                const stationCity = getStationCity(stationCode);
+                return stationCity === selectedCity;
+            });
+            
+            if (filteredStations.length === 0) {
+                const noOption = document.createElement('option');
+                noOption.value = '';
+                noOption.textContent = 'No stations in this city';
+                noOption.disabled = true;
+                stationDropdown.appendChild(noOption);
+            } else {
+                addStationOptions(filteredStations);
+            }
+        }
+        
+        // Reset station dropdown to "All Stations"
+        stationDropdown.value = 'all';
+    };
+    
+    cityDropdown.addEventListener('change', (e) => {
+        const selectedCity = e.target.value;
+        updateStationDropdown(selectedCity);
         if (typeof onFilterChange === 'function') {
-            onFilterChange(selectedStation);
+            onFilterChange('all', selectedCity);
         }
     });
     
-    filterContainer.appendChild(filterLabel);
-    filterContainer.appendChild(filterDropdown);
+    stationDropdown.addEventListener('change', (e) => {
+        const selectedStation = e.target.value;
+        const selectedCity = cityDropdown.value;
+        if (typeof onFilterChange === 'function') {
+            onFilterChange(selectedStation, selectedCity);
+        }
+    });
+    
+    filterContainer.appendChild(cityLabel);
+    filterContainer.appendChild(cityDropdown);
+    filterContainer.appendChild(stationLabel);
+    filterContainer.appendChild(stationDropdown);
     
     return filterContainer;
 }
@@ -79,13 +175,14 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     const stationSection = document.createElement('div');
     stationSection.className = 'station-section';
     stationSection.setAttribute('data-station-code', stationCode);
+    stationSection.setAttribute('data-city', stationInfo.city || '');
     stationSection.style.marginBottom = '5px';
     stationSection.style.backgroundColor = '#fff';
     stationSection.style.borderRadius = '10px';
     stationSection.style.padding = '15px';
     stationSection.style.border = '1px solid #ddd';
     stationSection.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
-    stationSection.style.overflowX = 'hidden'; // Prevent page-level horizontal scroll
+    stationSection.style.overflowX = 'hidden';
     
     // Station header
     const stationHeader = document.createElement('div');
@@ -168,9 +265,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     scrollContainer.style.padding = '10px 0';
     scrollContainer.style.scrollBehavior = 'smooth';
     scrollContainer.style.flex = '1';
-    scrollContainer.style.minWidth = '0'; // Important for flex overflow
-    
-    // Hide default scrollbar
+    scrollContainer.style.minWidth = '0';
     scrollContainer.style.scrollbarWidth = 'thin';
     
     // Left scroll button
@@ -256,7 +351,6 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     
     // Function to check overflow and show/hide buttons
     const checkOverflow = () => {
-        // Use requestAnimationFrame to ensure DOM is ready
         requestAnimationFrame(() => {
             if (scrollContainer && scrollContainer.parentElement) {
                 const isOverflowing = scrollContainer.scrollWidth > scrollContainer.clientWidth;
@@ -294,9 +388,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         setTimeout(checkOverflow, 100);
     });
     
-    // Also check when scrollContainer is scrolled (for dynamic content)
+    // Also check when scrollContainer is scrolled
     scrollContainer.addEventListener('scroll', () => {
-        // Optional: update button states based on scroll position
         requestAnimationFrame(() => {
             const atStart = scrollContainer.scrollLeft <= 10;
             const atEnd = scrollContainer.scrollLeft + scrollContainer.clientWidth >= scrollContainer.scrollWidth - 10;
@@ -336,13 +429,16 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
     window.stationCheckOverflow = window.stationCheckOverflow || {};
     window.stationSections = window.stationSections || {};
     
-    // Create filter dropdown
+    // Create filter container with both city and station dropdowns
     let filterContainer = null;
-    if (sortedStations.length > 1) {
-        filterContainer = createStationFilterDropdown(groupedDispensers, (selectedStation) => {
-            // Show/hide station sections based on filter
+    if (sortedStations.length > 0) {
+        filterContainer = await createFilterContainer(groupedDispensers, (selectedStation, selectedCity) => {
             for (const [stationCode, stationSection] of Object.entries(window.stationSections)) {
-                if (selectedStation === 'all' || stationCode === selectedStation) {
+                const stationCity = stationSection.getAttribute('data-city');
+                const cityMatch = selectedCity === 'all' || stationCity === selectedCity;
+                const stationMatch = selectedStation === 'all' || stationCode === selectedStation;
+                
+                if (cityMatch && stationMatch) {
                     stationSection.style.display = 'block';
                 } else {
                     stationSection.style.display = 'none';
@@ -352,25 +448,26 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
         gridContainer.appendChild(filterContainer);
     }
     
+    // Fetch station info for all stations first
+    const stationInfoMap = new Map();
     for (const stationCode of sortedStations) {
-        const stationData = groupedDispensers[stationCode];
-        
-        // Get station info from the first dispenser (or fetch from API)
-        const firstDispenser = stationData.dispensers[0];
-        let stationInfo = {};
-        
         try {
             const stationResponse = await fetch(`${API_BASE_URL}/stations/${stationCode}`);
             if (stationResponse.ok) {
                 const stationData = await stationResponse.json();
-                stationInfo = {
+                stationInfoMap.set(stationCode, {
                     city: stationData.station?.city || '',
                     station_id: stationData.station?.station_id || ''
-                };
+                });
             }
         } catch (error) {
             console.error('Error fetching station info:', error);
         }
+    }
+    
+    for (const stationCode of sortedStations) {
+        const stationData = groupedDispensers[stationCode];
+        const stationInfo = stationInfoMap.get(stationCode) || {};
         
         const { stationSection, stationGrid, scrollContainer, checkOverflow } = createStationContainer(
             stationCode, 
@@ -433,7 +530,7 @@ function getDispensersByStation() {
 
 // Make functions globally available
 window.groupDispensersByStation = groupDispensersByStation;
-window.createStationFilterDropdown = createStationFilterDropdown;
+window.createFilterContainer = createFilterContainer;
 window.createStationContainer = createStationContainer;
 window.renderStationWiseDispensers = renderStationWiseDispensers;
 window.updateStationDispenserCard = updateStationDispenserCard;
