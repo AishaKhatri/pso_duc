@@ -13,8 +13,16 @@ async function renderOverview() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        const {headerContainer, optionsContainer, gridContainer} = renderPageHeader('DUC - Overview')    
-        content.appendChild(headerContainer);
+        const heading = document.createElement('h1');
+        heading.textContent = 'DUC - Overview';
+        heading.style.margin = '0 0 16px 0';
+        content.appendChild(heading);
+
+        const gridContainer = document.createElement('div');
+        gridContainer.style.display = 'flex';
+        gridContainer.style.flexWrap = 'wrap';
+        gridContainer.style.gap = '15px';
+        gridContainer.style.justifyContent = 'flex-start';
 
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');

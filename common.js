@@ -350,7 +350,7 @@ async function createCard(address, customer_code) {
         flexDirection: 'column',
         minWidth: 'fit-content',
         width: 'fit-content',
-        padding: '15px'
+        padding: '11px'
     });
 
     const titleContainer = document.createElement('div');
@@ -364,6 +364,8 @@ async function createCard(address, customer_code) {
 
     const titleText = document.createElement('h2');
     titleText.textContent = address;
+    titleText.style.fontSize = '17px';
+    titleText.style.margin = '0';
 
     const statusText = createLink();
     statusText.className = 'conn-status';

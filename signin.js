@@ -31,6 +31,12 @@ document.addEventListener('DOMContentLoaded', () => {
   logo.alt = 'Logo';
   logo.style.width = '60px';
   logo.style.height = '60px';
+  logo.style.background = '#ffffff';
+  logo.style.padding = '4px';
+  logo.style.borderRadius = '50%';
+  logo.style.boxSizing = 'border-box';
+  logo.style.objectFit = 'cover';
+  logo.style.boxShadow = '0 2px 6px rgba(0,0,0,0.18)';
   headerContainer.appendChild(logo);
 
   const heading = document.createElement('h1');

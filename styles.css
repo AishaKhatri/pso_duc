@@ -51,6 +51,9 @@
     /* Nozzle metric */
     --metric-value-bg: linear-gradient(to bottom, #f8f8f8, rgb(241, 241, 241));
     --metric-value-text: #014421;
+    --metric-highlight-bg: linear-gradient(to bottom, #fff4d6, #ffe8a8);
+    --metric-highlight-text: #b25d00;
+    --metric-highlight-border: #f0c674;
 
     /* Disabled / locked overlay */
     --disabled-overlay: rgba(255, 255, 255, 0.7);
@@ -111,6 +114,9 @@
 
     --metric-value-bg: linear-gradient(to bottom, #20272f, #1a2128);
     --metric-value-text: #81c784;
+    --metric-highlight-bg: linear-gradient(to bottom, #2d2418, #1f1812);
+    --metric-highlight-text: #ffb74d;
+    --metric-highlight-border: #6b4a1a;
 
     --disabled-overlay: rgba(0, 0, 0, 0.55);
 
@@ -177,6 +183,23 @@ body {
     filter: invert(0.85) hue-rotate(180deg);
 }
 
+/* Black-on-transparent icons need inverting in dark mode so they are visible.
+   nozzle-icon is intentionally excluded — it sits on a colored fuel header where black is fine. */
+[data-theme="dark"] img[src*="location-icon"],
+[data-theme="dark"] img[src*="keypad-icon"],
+[data-theme="dark"] img[src*="ir-control-icon"],
+[data-theme="dark"] img[src*="alert-icon"],
+[data-theme="dark"] img[src*="reset-icon"],
+[data-theme="dark"] img[src*="refresh-icon"],
+[data-theme="dark"] img[src*="dispenser-icon"],
+[data-theme="dark"] img[src*="tank-icon"],
+[data-theme="dark"] img[src*="edit-icon"],
+[data-theme="dark"] img[src*="delete-icon"],
+[data-theme="dark"] img[src*="notification-icon"],
+[data-theme="dark"] img[src*="notif-icon"] {
+    filter: invert(0.85) hue-rotate(180deg);
+}
+
 .sidebar-item {
     padding: 15px 15px;
     cursor: pointer;
@@ -210,18 +233,24 @@ body {
 
 .sidebar-logo {
     width: 65px;
-    height: auto;
+    height: 65px;
+    object-fit: cover;
     position: absolute;
     bottom: 100px;
     left: 20px;
     margin-top: auto;
-    transition: left 0.3s ease, width 0.3s ease;
+    background: #ffffff;
+    padding: 4px;
+    border-radius: 50%;
+    box-sizing: border-box;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.18);
+    transition: left 0.3s ease, width 0.3s ease, height 0.3s ease;
 }
 
 .sidebar.collapsed .sidebar-logo {
     left: 8px;
     width: 40px;
-    transition: left 0.3s ease, width 0.3s ease;
+    height: 40px;
 }
 
 .content-wrapper {
@@ -496,62 +525,113 @@ td {
 }
 
 /* ===== Dashboard ===== */
-.dashboard-stats {
+.dashboard-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+.dashboard-title h1 { margin: 0; }
+.dashboard-title .updated {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+/* KPI strip — single horizontal row of compact stats */
+.kpi-strip {
     display: grid;
-    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(360px, 2fr);
-    gap: 15px;
-    margin-bottom: 20px;
-}
-@media (max-width: 900px) {
-    .dashboard-stats {
-        grid-template-columns: 1fr 1fr;
-    }
-    .stat-card.chart-card {
-        grid-column: span 2;
-    }
-}
-.stat-card {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 8px;
+    margin-bottom: 12px;
     background: var(--bg-surface);
-    color: var(--text-primary);
     border: 1px solid var(--border);
     border-radius: 10px;
-    padding: 16px 18px;
     box-shadow: var(--shadow-card);
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
-.stat-card .stat-label {
-    font-size: 13px;
-    color: var(--text-secondary);
-    font-weight: 500;
-    text-transform: uppercase;
-    letter-spacing: 0.4px;
-}
-.stat-card .stat-value {
-    font-size: 30px;
-    font-weight: 700;
-    color: var(--text-heading);
-}
-.stat-card.online .stat-value { color: var(--status-online); }
-.stat-card.partial .stat-value { color: var(--status-partial); }
-.stat-card.offline .stat-value { color: var(--status-offline); }
-.stat-card.no-duc .stat-value { color: var(--status-no-duc); }
-
-.stat-card.chart-card {
-    min-height: 130px;
+    padding: 10px 12px;
     overflow: hidden;
 }
-.stat-card.chart-card .chart-container {
+@media (max-width: 1100px) {
+    .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+@media (max-width: 600px) {
+    .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.kpi {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 4px 10px;
+    border-right: 1px solid var(--border-soft);
+    min-width: 0;
+}
+.kpi:last-child { border-right: none; }
+.kpi-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-value {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text-primary);
+    line-height: 1.1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.kpi-sub {
+    font-size: 11px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.kpi.online .kpi-value  { color: var(--status-online); }
+.kpi.partial .kpi-value { color: var(--status-partial); }
+.kpi.offline .kpi-value { color: var(--status-offline); }
+.kpi.no-duc .kpi-value  { color: var(--status-no-duc); }
+.kpi.accent .kpi-value  { color: var(--text-heading); }
+
+/* Side-panel chart */
+.chart-card-mini {
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+}
+.chart-card-mini .chart-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 8px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.chart-card-mini .chart-card-header .peak {
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+.chart-card-mini .chart-container {
     display: flex;
     align-items: flex-end;
     gap: 2px;
-    height: 70px;
-    margin-top: 6px;
-    max-width: 360px;
+    height: 56px;
+    width: 100%;
 }
 .chart-bar {
-    flex: 0 0 9px;
+    flex: 1 1 0;
     background: var(--chart-bar-empty);
     border-radius: 2px 2px 0 0;
     min-height: 2px;
@@ -572,7 +652,7 @@ td {
     font-size: 10px;
     color: var(--text-secondary);
     margin-top: 4px;
-    max-width: 360px;
+    width: 100%;
 }
 .chart-tooltip {
     position: absolute;
@@ -602,8 +682,8 @@ td {
 /* Map + side panel layout */
 .dashboard-main {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 320px;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1fr) 300px;
+    gap: 12px;
     margin-bottom: 20px;
     align-items: start;
 }
@@ -615,52 +695,65 @@ td {
 .dashboard-side {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 12px;
 }
 .side-panel {
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 14px 16px;
+    padding: 12px 14px;
 }
 .side-panel h4 {
-    margin: 0 0 10px 0;
-    font-size: 13px;
+    margin: 0 0 8px 0;
+    font-size: 11px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
     font-weight: 600;
 }
-.side-stat-row {
-    display: flex;
-    justify-content: space-between;
+
+/* Stacked network breakdown bars */
+.network-bars { display: flex; flex-direction: column; gap: 6px; }
+.network-bar-row {
+    display: grid;
+    grid-template-columns: 110px 1fr 38px;
     align-items: center;
-    padding: 6px 0;
-    border-bottom: 1px solid var(--border-soft);
-    font-size: 13px;
+    gap: 8px;
+    font-size: 12px;
 }
-.side-stat-row:last-child { border-bottom: none; }
-.side-stat-row .label { color: var(--text-secondary); }
-.side-stat-row .value {
-    font-weight: 600;
+.network-bar-row .nb-label { color: var(--text-primary); }
+.network-bar-row .nb-track {
+    height: 8px;
+    background: var(--bg-surface-2);
+    border-radius: 4px;
+    overflow: hidden;
+}
+.network-bar-row .nb-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.25s ease;
+}
+.network-bar-row .nb-count {
+    text-align: right;
+    font-weight: 700;
     color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
 }
-.side-stat-row .value.online  { color: var(--status-online); }
-.side-stat-row .value.partial { color: var(--status-partial); }
-.side-stat-row .value.offline { color: var(--status-offline); }
-.side-stat-row .value.no-duc  { color: var(--status-no-duc); }
+.network-bar-row.online   .nb-fill { background: var(--status-online); }
+.network-bar-row.partial  .nb-fill { background: var(--status-partial); }
+.network-bar-row.offline  .nb-fill { background: var(--status-offline); }
+.network-bar-row.no-duc   .nb-fill { background: var(--status-no-duc); }
 
 /* Donut chart */
 .donut-wrapper {
     display: flex;
-    flex-direction: column;
     align-items: center;
-    gap: 10px;
+    gap: 12px;
 }
 .donut-svg {
-    width: 160px;
-    height: 160px;
+    width: 110px;
+    height: 110px;
     flex-shrink: 0;
 }
 .donut-center {
@@ -714,11 +807,11 @@ td {
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 12px 14px;
-    margin-bottom: 14px;
+    padding: 8px 12px;
+    margin-bottom: 12px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 6px;
 }
 .filter-row {
     display: flex;
@@ -738,9 +831,9 @@ td {
     background: var(--chip-bg);
     color: var(--chip-text);
     border: 1px solid var(--chip-border);
-    border-radius: 16px;
-    padding: 5px 12px;
-    font-size: 13px;
+    border-radius: 14px;
+    padding: 3px 10px;
+    font-size: 12px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
     user-select: none;
@@ -773,17 +866,93 @@ td {
 .filter-chip.status-offline::before { background: var(--status-offline); }
 .filter-chip.status-no-duc::before { background: var(--status-no-duc); }
 
+/* ===== Station detail header (dispensers.html?customer_code=...) ===== */
+.station-header {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 18px 22px;
+    margin-bottom: 20px;
+}
+.station-header-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+}
+.station-header-left { flex: 1; min-width: 280px; }
+.station-header-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.station-header-title {
+    font-size: 26px;
+    margin: 0 0 6px 0;
+    color: var(--text-heading);
+}
+.station-header-meta {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+.station-header-meta-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+}
+.station-header-meta-item img {
+    width: 14px;
+    height: 14px;
+}
+.station-header-meta-item b { color: var(--text-primary); font-weight: 600; }
+.station-header-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 10px;
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+}
+.station-header-stat {
+    background: var(--bg-surface-2);
+    border-radius: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border-soft);
+}
+.station-header-stat-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+.station-header-stat-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+.station-header-stat.online .station-header-stat-value  { color: var(--status-online); }
+.station-header-stat.offline .station-header-stat-value { color: var(--status-offline); }
+
 /* Map */
 .map-wrapper {
     background: var(--bg-surface);
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 12px;
+    padding: 10px;
     margin-bottom: 0;
 }
 #station-map {
-    height: 560px;
+    height: 480px;
     width: 100%;
     border-radius: 6px;
 }

@@ -11,6 +11,12 @@ const STATUS_CHIP_CLASS = {
     all_offline: 'status-offline',
     no_duc:      'status-no-duc'
 };
+const STATUS_BAR_CLASS = {
+    all_online:  'online',
+    partial:     'partial',
+    all_offline: 'offline',
+    no_duc:      'no-duc'
+};
 const PRODUCT_COLORS = {
     'PMG':  '#FF7043',
     'HSD':  '#FFB300',
@@ -48,39 +54,69 @@ function formatCurrency(value) {
 function formatCurrencyFull(value) {
     return 'Rs ' + (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
+function formatVolume(value) {
+    const num = Number(value) || 0;
+    if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M L';
+    if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k L';
+    return num.toFixed(0) + ' L';
+}
 function formatCount(value) {
     return (Number(value) || 0).toLocaleString();
 }
 
-function buildStatsBlock(today, hourly) {
-    const wrap = document.createElement('div');
-    wrap.className = 'dashboard-stats';
+function buildKpiStrip(stations, today) {
+    const counts = { total: stations.length, with_duc: 0 };
+    let totalDucs = 0;
+    let onlineDucs = 0;
+    for (const s of stations) {
+        if (s.duc_count > 0) counts.with_duc += 1;
+        totalDucs += s.duc_count;
+        onlineDucs += s.online_count;
+    }
+    const offlineDucs = totalDucs - onlineDucs;
+    const onlinePct = totalDucs > 0 ? Math.round((onlineDucs / totalDucs) * 100) : 0;
+    const txCount = Number(today.tx_count) || 0;
+    const totalAmount = Number(today.total_amount) || 0;
+    const totalVolume = Number(today.total_volume) || 0;
+    const avgTx = txCount > 0 ? totalAmount / txCount : 0;
 
-    const txCard = document.createElement('div');
-    txCard.className = 'stat-card';
-    txCard.innerHTML = `
-        <div class="stat-label">Transactions Today</div>
-        <div class="stat-value">${formatCount(today.tx_count)}</div>
-    `;
-    wrap.appendChild(txCard);
+    const kpis = [
+        { label: 'Sites',         value: formatCount(counts.total),    sub: `${counts.with_duc} with DUC`,                cls: 'accent' },
+        { label: 'DUCs Online',   value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
+        { label: 'DUCs Offline',  value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '' },
+        { label: 'Tx Today',      value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
+        { label: 'Sales Today',   value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
+        { label: 'Volume Today',  value: formatVolume(totalVolume),     sub: '',                                            cls: '' },
+        { label: 'Avg Sale',      value: formatCurrency(avgTx),         sub: '',                                            cls: '' },
+        { label: 'Districts',     value: formatCount(new Set(stations.map(s => s.city).filter(Boolean)).size), sub: '',     cls: '' }
+    ];
 
-    const salesCard = document.createElement('div');
-    salesCard.className = 'stat-card online';
-    salesCard.innerHTML = `
-        <div class="stat-label">Sales Today</div>
-        <div class="stat-value">${formatCurrencyFull(today.total_amount)}</div>
-    `;
-    wrap.appendChild(salesCard);
+    const strip = document.createElement('div');
+    strip.className = 'kpi-strip';
+    kpis.forEach(k => {
+        const cell = document.createElement('div');
+        cell.className = `kpi ${k.cls || ''}`.trim();
+        cell.innerHTML = `
+            <div class="kpi-label">${k.label}</div>
+            <div class="kpi-value">${k.value}</div>
+            ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
+        `;
+        strip.appendChild(cell);
+    });
+    return strip;
+}
 
-    const chartCard = document.createElement('div');
-    chartCard.className = 'stat-card chart-card';
+function buildHourlyChartPanel(hourly) {
+    const panel = document.createElement('div');
+    panel.className = 'side-panel chart-card-mini';
+
     const peak = hourly.reduce((m, h) => Math.max(m, Number(h.amount) || 0), 0);
     const safePeak = peak > 0 ? peak : 1;
 
-    const label = document.createElement('div');
-    label.className = 'stat-label';
-    label.textContent = `Hourly Sales (peak: ${formatCurrencyFull(peak)})`;
-    chartCard.appendChild(label);
+    const header = document.createElement('div');
+    header.className = 'chart-card-header';
+    header.innerHTML = `<span>Hourly Sales</span><span class="peak">peak ${formatCurrency(peak)}</span>`;
+    panel.appendChild(header);
 
     const container = document.createElement('div');
     container.className = 'chart-container';
@@ -92,19 +128,16 @@ function buildStatsBlock(today, hourly) {
         bar.className = amount > 0 ? 'chart-bar has-data' : 'chart-bar';
         bar.style.height = heightPct.toFixed(1) + '%';
         const hourLabel = String(h.hour).padStart(2, '0') + ':00';
-        bar.dataset.tooltip = `${hourLabel} • ${txCount} tx • ${formatCurrencyFull(amount)}`;
 
         let tip = null;
         const showTip = () => {
             if (tip) return;
             tip = document.createElement('div');
             tip.className = 'chart-tooltip';
-            tip.innerHTML = `<b>${hourLabel}</b><br>${txCount} transactions<br>${formatCurrencyFull(amount)}`;
+            tip.innerHTML = `<b>${hourLabel}</b><br>${txCount} tx · ${formatCurrencyFull(amount)}`;
             bar.appendChild(tip);
         };
-        const hideTip = () => {
-            if (tip) { tip.remove(); tip = null; }
-        };
+        const hideTip = () => { if (tip) { tip.remove(); tip = null; } };
         bar.addEventListener('mouseenter', showTip);
         bar.addEventListener('mouseleave', hideTip);
         bar.addEventListener('click', (e) => {
@@ -113,16 +146,14 @@ function buildStatsBlock(today, hourly) {
         });
         container.appendChild(bar);
     });
-    chartCard.appendChild(container);
+    panel.appendChild(container);
 
     const axis = document.createElement('div');
     axis.className = 'chart-axis-row';
     axis.innerHTML = '<span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>';
-    chartCard.appendChild(axis);
+    panel.appendChild(axis);
 
-    wrap.appendChild(chartCard);
-
-    return wrap;
+    return panel;
 }
 
 function buildLegend() {
@@ -272,48 +303,34 @@ function buildFilterBar() {
     return bar;
 }
 
-function buildNetworkSummaryPanel(stations) {
-    const counts = {
-        total: stations.length,
-        with_duc: 0,
-        all_online: 0,
-        partial: 0,
-        all_offline: 0,
-        no_duc: 0
-    };
-    let totalDucs = 0;
-    let onlineDucs = 0;
+function buildNetworkBreakdownPanel(stations) {
+    const counts = { all_online: 0, partial: 0, all_offline: 0, no_duc: 0 };
     for (const s of stations) {
-        if (s.duc_count > 0) counts.with_duc += 1;
         counts[s.status] = (counts[s.status] || 0) + 1;
-        totalDucs += s.duc_count;
-        onlineDucs += s.online_count;
     }
-    const offlineDucs = totalDucs - onlineDucs;
+    const total = stations.length || 1;
 
     const panel = document.createElement('div');
     panel.className = 'side-panel';
-    panel.innerHTML = `<h4>Network Summary</h4>`;
+    panel.innerHTML = `<h4>Network Status</h4>`;
 
-    const rows = [
-        { label: 'Total Sites',      value: formatCount(counts.total),                    cls: '' },
-        { label: 'Sites w/ DUC',     value: formatCount(counts.with_duc),                 cls: '' },
-        { label: 'All Online',       value: formatCount(counts.all_online),               cls: 'online' },
-        { label: 'Partial',          value: formatCount(counts.partial),                  cls: 'partial' },
-        { label: 'All Offline',      value: formatCount(counts.all_offline),              cls: 'offline' },
-        { label: 'No DUC',           value: formatCount(counts.no_duc),                   cls: 'no-duc' },
-        { label: 'Total DUCs',       value: formatCount(totalDucs),                       cls: '' },
-        { label: 'DUCs Online',      value: `${formatCount(onlineDucs)} / ${formatCount(totalDucs)}`, cls: 'online' },
-        { label: 'DUCs Offline',     value: formatCount(offlineDucs),                     cls: 'offline' }
-    ];
+    const bars = document.createElement('div');
+    bars.className = 'network-bars';
 
-    rows.forEach(r => {
+    STATUS_KEYS.forEach(key => {
+        const c = counts[key] || 0;
+        const pct = (c / total) * 100;
         const row = document.createElement('div');
-        row.className = 'side-stat-row';
-        row.innerHTML = `<span class="label">${r.label}</span><span class="value ${r.cls}">${r.value}</span>`;
-        panel.appendChild(row);
+        row.className = `network-bar-row ${STATUS_BAR_CLASS[key]}`;
+        row.innerHTML = `
+            <span class="nb-label">${STATUS_LABELS[key]}</span>
+            <span class="nb-track"><span class="nb-fill" style="width:${pct.toFixed(1)}%"></span></span>
+            <span class="nb-count">${c}</span>
+        `;
+        bars.appendChild(row);
     });
 
+    panel.appendChild(bars);
     return panel;
 }
 
@@ -321,7 +338,7 @@ function productColor(name, fallbackIdx) {
     return PRODUCT_COLORS[name?.toUpperCase?.()] || FALLBACK_PRODUCT_COLORS[fallbackIdx % FALLBACK_PRODUCT_COLORS.length];
 }
 
-function buildProductDonutPanel(products, totalAmount) {
+function buildProductDonutPanel(products) {
     const panel = document.createElement('div');
     panel.className = 'side-panel';
     panel.innerHTML = `<h4>Sales by Product Today</h4>`;
@@ -392,7 +409,7 @@ function buildProductDonutPanel(products, totalAmount) {
         row.innerHTML = `
             <span class="swatch" style="background:${productColor(p.product, idx)}"></span>
             <span class="name">${p.product}</span>
-            <span class="amt">${formatCurrency(p.amount)} · ${pct.toFixed(1)}%</span>
+            <span class="amt">${pct.toFixed(1)}%</span>
         `;
         legend.appendChild(row);
     });
@@ -428,8 +445,16 @@ async function renderDashboard() {
     if (!content) return;
     content.innerHTML = '';
 
-    const { headerContainer } = renderPageHeader('Network Dashboard');
-    content.appendChild(headerContainer);
+    const titleRow = document.createElement('div');
+    titleRow.className = 'dashboard-title';
+    const heading = document.createElement('h1');
+    heading.textContent = 'Network Dashboard';
+    const updated = document.createElement('span');
+    updated.className = 'updated';
+    updated.textContent = 'Updated ' + new Date().toLocaleTimeString();
+    titleRow.appendChild(heading);
+    titleRow.appendChild(updated);
+    content.appendChild(titleRow);
 
     const loading = document.createElement('div');
     loading.textContent = 'Loading dashboard…';
@@ -453,7 +478,7 @@ async function renderDashboard() {
     dashboardState.stations = stations;
     dashboardState.stats = stats;
 
-    content.appendChild(buildStatsBlock(stats.today, stats.hourly));
+    content.appendChild(buildKpiStrip(stations, stats.today));
     content.appendChild(buildFilterBar());
 
     const main = document.createElement('div');
@@ -469,8 +494,9 @@ async function renderDashboard() {
 
     const side = document.createElement('div');
     side.className = 'dashboard-side';
-    side.appendChild(buildNetworkSummaryPanel(stations));
-    side.appendChild(buildProductDonutPanel(stats.products || [], stats.today.total_amount));
+    side.appendChild(buildHourlyChartPanel(stats.hourly));
+    side.appendChild(buildProductDonutPanel(stats.products || []));
+    side.appendChild(buildNetworkBreakdownPanel(stations));
     main.appendChild(side);
 
     content.appendChild(main);

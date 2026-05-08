@@ -116,13 +116,18 @@ app.get('/api/station-locations', async (req, res) => {
 
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
+        const customerCode = (req.query.customer_code || '').trim();
+        const filterClause = customerCode ? 'AND customer_code = ?' : '';
+        const filterParams = customerCode ? [customerCode] : [];
+
         const [totalsRows] = await pool.query(
             `SELECT
                 COUNT(*) AS total_count,
                 COALESCE(SUM(amount), 0) AS total_amount,
                 COALESCE(SUM(volume), 0) AS total_volume
              FROM transactions
-             WHERE DATE(time) = CURDATE()`
+             WHERE DATE(time) = CURDATE() ${filterClause}`,
+            filterParams
         );
 
         const [hourlyRows] = await pool.query(
@@ -132,8 +137,9 @@ app.get('/api/dashboard-stats', async (req, res) => {
                 COALESCE(SUM(amount), 0) AS amount,
                 COALESCE(SUM(volume), 0) AS volume
              FROM transactions
-             WHERE DATE(time) = CURDATE()
-             GROUP BY HOUR(time)`
+             WHERE DATE(time) = CURDATE() ${filterClause}
+             GROUP BY HOUR(time)`,
+            filterParams
         );
 
         const hourly = Array.from({ length: 24 }, (_, h) => ({
@@ -151,6 +157,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
             }
         }
 
+        const productFilterClause = customerCode ? 'AND t.customer_code = ?' : '';
         const [productRows] = await pool.query(
             `SELECT
                 COALESCE(n.product, 'Unknown') AS product,
@@ -162,8 +169,9 @@ app.get('/api/dashboard-stats', async (req, res) => {
                ON n.customer_code = t.customer_code
               AND n.dispenser_id  = t.dispenser_id
               AND n.nozzle_id     = t.nozzle_id
-             WHERE DATE(t.time) = CURDATE()
-             GROUP BY n.product`
+             WHERE DATE(t.time) = CURDATE() ${productFilterClause}
+             GROUP BY n.product`,
+            filterParams
         );
 
         const products = productRows.map(r => ({

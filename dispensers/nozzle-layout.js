@@ -1,19 +1,19 @@
 // Common configuration for both layouts
 const LAYOUT_CONFIG = {
     [NOZZLE_LAYOUTS.FULL]: {
-        width: '220px',
-        minWidth: '220px',
-        maxWidth: '220px',
-        iconSize: '40px',
-        fontSize: '36px',
+        width: '190px',
+        minWidth: '190px',
+        maxWidth: '190px',
+        iconSize: '32px',
+        fontSize: '28px',
         showKeypad: true,
         showLockStatus: true,
         showMetrics: true,
         showTotals: true,
         showLastUpdated: true,
-        headerPadding: '4px 8px 4px',
-        sectionPadding: '10px 15px',
-        statusFontSize: '14px'
+        headerPadding: '3px 7px 3px',
+        sectionPadding: '8px 12px',
+        statusFontSize: '12px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
         width: '140px',
@@ -95,13 +95,13 @@ function createStatusSection(data, layoutType) {
         keypadBox.style.alignItems = 'center';
         keypadBox.style.justifyContent = 'center';
 
-        const keypadIcon = createIconFromImage('assets/graphics/keypad-icon.png', 'Keypad Icon', '20px');
+        const keypadIcon = createIconFromImage('assets/graphics/keypad-icon.png', 'Keypad Icon', '16px');
         keypadBox.appendChild(keypadIcon);
 
         const lockIcon = document.createElement('img');
         lockIcon.src = data.keypadStatus === 'Locked' ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
         lockIcon.alt = data.keypadStatus === 'Locked' ? 'Locked' : 'Unlocked';
-        lockIcon.style.height = '25px';
+        lockIcon.style.height = '20px';
 
         keypadContainer.appendChild(keypadBox);
         keypadContainer.appendChild(lockIcon);
@@ -129,43 +129,43 @@ function createMetricsSection(data) {
     const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
     
     const section = document.createElement('div');
-    section.style.padding = '0 15px';
-    
-    const metricBox = (label, value) => {
+    section.style.padding = '0 12px';
+
+    const metricBox = (label, value, opts = {}) => {
         const div = document.createElement('div');
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
-        div.style.marginBottom = '10px';
-        
+        div.style.marginBottom = '7px';
+
         const labelDiv = document.createElement('div');
-        labelDiv.style.fontSize = '14px';
+        labelDiv.style.fontSize = '12px';
         labelDiv.style.color = 'var(--text-primary)';
         labelDiv.style.fontWeight = '500';
         labelDiv.textContent = label;
 
         const valueDiv = document.createElement('div');
-        valueDiv.style.fontSize = '16px';
-        valueDiv.style.fontWeight = '600';
-        valueDiv.style.color = 'var(--metric-value-text)';
-        valueDiv.style.background = 'var(--metric-value-bg)';
-        valueDiv.style.border = '1px solid var(--border)';
+        valueDiv.style.fontSize = '13px';
+        valueDiv.style.fontWeight = '700';
+        valueDiv.style.color = opts.highlight ? 'var(--metric-highlight-text)' : 'var(--metric-value-text)';
+        valueDiv.style.background = opts.highlight ? 'var(--metric-highlight-bg)' : 'var(--metric-value-bg)';
+        valueDiv.style.border = opts.highlight ? '1px solid var(--metric-highlight-border)' : '1px solid var(--border)';
         valueDiv.style.borderRadius = '2px';
-        valueDiv.style.padding = '3px 6px';
-        valueDiv.style.minWidth = '75px';
+        valueDiv.style.padding = '2px 5px';
+        valueDiv.style.minWidth = '60px';
         valueDiv.style.textAlign = 'right';
         valueDiv.style.boxShadow = 'inset 1px 1px 2px rgba(0,0,0,0.2)';
         valueDiv.style.fontFamily = "'Segoe UI', 'Arial', sans-serif";
         valueDiv.textContent = value;
-        
+
         div.appendChild(labelDiv);
         div.appendChild(valueDiv);
         return div;
     };
-    
+
     section.appendChild(metricBox("Price (PKR)", `${safeNumber(data.price).toFixed(2)}`));
     section.appendChild(metricBox("Quantity (Ltr)", `${safeNumber(data.quantity).toFixed(2)}`));
-    section.appendChild(metricBox("Price/Ltr (PKR)", `${safeNumber(data.pricePerLitre).toFixed(2)}`));
+    section.appendChild(metricBox("Price/Ltr (PKR)", `${safeNumber(data.pricePerLitre).toFixed(2)}`, { highlight: true }));
     
     return section;
 }
@@ -175,11 +175,11 @@ function createTotalsFooter(data) {
     const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
     
     const footer = document.createElement('div');
-    footer.style.padding = '8px 20px 8px';
+    footer.style.padding = '7px 14px';
     footer.style.borderTop = '1px solid var(--border)';
     footer.style.background = 'var(--bg-surface-2)';
     footer.style.color = 'var(--text-primary)';
-    footer.style.fontSize = '14px';
+    footer.style.fontSize = '12px';
 
     const totalQuantityDiv = document.createElement('div');
     totalQuantityDiv.style.marginBottom = '0px';
@@ -191,7 +191,7 @@ function createTotalsFooter(data) {
     const salesTodayDiv = document.createElement('div');
     salesTodayDiv.innerHTML = `
         <div>Sales Today:</div>
-        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 28px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 22px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
     `;
     
     footer.appendChild(totalQuantityDiv);
