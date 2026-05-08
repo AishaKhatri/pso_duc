@@ -21,7 +21,8 @@ const {
 const { 
     startMidnightResetService,
     NotificationService,
-    NotificationWebSocketServer } = require('./backend-services');
+    NotificationWebSocketServer,
+    fetchStationSheetRows } = require('./backend-services');
 const { log } = require('console');
 const console = require('console');
 
@@ -72,6 +73,45 @@ initializeServer().then(() => {
 app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).json({ error: 'Something went wrong!' });
+});
+
+app.get('/api/station-locations', async (req, res) => {
+    try {
+        const stations = await fetchStationSheetRows();
+
+        const [dispenserRows] = await pool.query(
+            'SELECT customer_code, conn_status FROM dispensers'
+        );
+        const dispenserStats = new Map();
+        for (const d of dispenserRows) {
+            const stats = dispenserStats.get(d.customer_code) || { total: 0, online: 0 };
+            stats.total += 1;
+            if (d.conn_status) stats.online += 1;
+            dispenserStats.set(d.customer_code, stats);
+        }
+
+        const result = stations.map(s => {
+            const stats = dispenserStats.get(s.customer_code) || { total: 0, online: 0 };
+            const offline = stats.total - stats.online;
+            let status;
+            if (stats.total === 0) status = 'no_duc';
+            else if (stats.online === 0) status = 'all_offline';
+            else if (offline === 0) status = 'all_online';
+            else status = 'partial';
+            return {
+                ...s,
+                duc_count: stats.total,
+                online_count: stats.online,
+                offline_count: offline,
+                status
+            };
+        });
+
+        res.json(result);
+    } catch (error) {
+        console.error('Error building station locations:', error);
+        res.status(500).json({ error: error.message || 'Failed to fetch station locations' });
+    }
 });
 
 app.get('/api/auth/verify', async (req, res) => {
@@ -703,10 +743,10 @@ app.post('/api/users', async (req, res) => {
             return res.status(400).json({ error: 'Username already exists' });
         }
         
-        // For operator role, customer_code is required
-        if (role === 'operator' && !customer_code) {
-            return res.status(400).json({ error: 'Customer code is required for operator role' });
-        }
+        // // For operator role, customer_code is required
+        // if (role === 'operator' && !customer_code) {
+        //     return res.status(400).json({ error: 'Customer code is required for operator role' });
+        // }
         
         // Verify customer_code exists in stations table for operator
         if (role === 'operator' && customer_code) {

@@ -12,12 +12,29 @@ async function renderDispenser() {
         clearInterval(updateInterval);
     }
 
+    // Optional ?customer_code=... filter scopes the page to a single station
+    const params = new URLSearchParams(window.location.search);
+    const customerCodeFilter = (params.get('customer_code') || '').trim();
+
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        const dispenserUrl = customerCodeFilter
+            ? `${API_BASE_URL}/dispensers?customer_code=${encodeURIComponent(customerCodeFilter)}`
+            : `${API_BASE_URL}/dispensers`;
+        const dispensersResponse = await fetch(dispenserUrl);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        const {headerContainer, optionsContainer, gridContainer} = renderPageHeader('Dispenser Unit Control - DUC')
+        const pageTitle = customerCodeFilter
+            ? `Station ${customerCodeFilter} — Dispensers`
+            : 'Dispenser Unit Control - DUC';
+        const {headerContainer, optionsContainer, gridContainer} = renderPageHeader(pageTitle);
+
+        if (customerCodeFilter) {
+            const backBtn = createMainButton();
+            backBtn.textContent = '← Back to Map';
+            backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+            optionsContainer.appendChild(backBtn);
+        }
 
         // Viewers cannot command or configure dispensers
         const role = window.StationAuth?.getUserInfo?.()?.role;
@@ -72,7 +89,7 @@ async function renderDispenser() {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
-                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+                    const updatedDispensersResponse = await fetch(dispenserUrl);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 

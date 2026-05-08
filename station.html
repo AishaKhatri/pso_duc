@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Server - Overview</title>
+    <link rel="stylesheet" href="../styles.css">
+    <!-- Set base href to the parent directory to resolve image paths correctly -->
+    <base href="../" />
+    <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
+</head>
+<body>
+    <div id="app"></div>
+    <div class="container">
+        <div id="sidebar"></div>
+        <div class="main">
+            <div id="topbar"></div>
+            <div id="content"></div>
+        </div>
+    </div>
+    <script src="common.js"></script>
+    <script src="topbar.js"></script>
+    <script src="sidebar.js"></script>
+    <script src="auth-functions.js"></script>
+    <script src="dispensers/station-grouping.js"></script>
+    <script src="dispensers/transaction-log.js"></script>
+    <script src="dispensers/device-status.js"></script>
+    <script src="dispensers/nozzle-layout.js"></script>
+    <script src="dispensers/nozzle-update-functions.js"></script>
+    <script src="station.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const isAuthenticated = await checkAuthentication();
+            if (!isAuthenticated) return;
+
+            // Operators do not have access to the overview page
+            const userInfo = StationAuth.getUserInfo();
+            if (userInfo?.role === 'operator') {
+                window.location.href = 'dispensers.html';
+                return;
+            }
+
+            renderApp()
+            if (typeof window.renderStation === 'function') {
+                window.renderStation();
+            } else {
+                console.error('renderStation function is not defined');
+            }
+        });
+    </script>
+</body>
+</html>

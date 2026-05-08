@@ -8,6 +8,12 @@ const { v4: uuidv4 } = require('uuid');
 const PING_LOG_FILE_PATH = path.join(__dirname, '../logs/ping.log');
 const LOG_FILE_PATH = path.join(__dirname, '../logs/all_messages.log');
 
+// Station map data: combines the Google Sheet station roster (lat/lng/city)
+// with live DUC status from the dispensers table.
+const STATION_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1XaqQ10uhq9ciOnE4JQm2If9JSb-zC9Kq/export?format=csv&gid=1496142417';
+const STATION_SHEET_TTL_MS = 5 * 60 * 1000;
+let stationSheetCache = { fetchedAt: 0, rows: null };
+
 async function logPing(message) {
     try {
         await fs.appendFile(PING_LOG_FILE_PATH, message + '\n', 'utf8');
@@ -280,6 +286,73 @@ class NotificationService {
     }
 }
 
+function parseCsvRow(line) {
+    const out = [];
+    let cur = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+        const ch = line[i];
+        if (inQuotes) {
+            if (ch === '"' && line[i + 1] === '"') { cur += '"'; i++; }
+            else if (ch === '"') { inQuotes = false; }
+            else { cur += ch; }
+        } else {
+            if (ch === '"') inQuotes = true;
+            else if (ch === ',') { out.push(cur); cur = ''; }
+            else cur += ch;
+        }
+    }
+    out.push(cur);
+    return out;
+}
+
+async function fetchStationSheetRows() {
+    const now = Date.now();
+    if (stationSheetCache.rows && now - stationSheetCache.fetchedAt < STATION_SHEET_TTL_MS) {
+        return stationSheetCache.rows;
+    }
+    const response = await fetch(STATION_SHEET_CSV_URL, { redirect: 'follow' });
+    if (!response.ok) {
+        throw new Error(`Sheet fetch failed: ${response.status}`);
+    }
+    const text = await response.text();
+    const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+    if (lines.length < 2) return [];
+    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+    const idx = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+    const colStation = idx('Station Name');
+    const colCustomer = idx('Customer Code');
+    const colCity = idx('City');
+    const colLocation = idx('Location');
+    const colLat = idx('lat');
+    const colLng = idx('lon');
+    const colTotal = idx('Total no of Dus');
+    const colVersion = idx('Version');
+    const colPhase = idx('Phase');
+
+    const rows = [];
+    for (let i = 1; i < lines.length; i++) {
+        const cols = parseCsvRow(lines[i]);
+        const customer_code = (cols[colCustomer] || '').trim();
+        const lat = parseFloat(cols[colLat]);
+        const lng = parseFloat(cols[colLng]);
+        if (!customer_code || isNaN(lat) || isNaN(lng)) continue;
+        rows.push({
+            station_name: (cols[colStation] || '').trim(),
+            customer_code,
+            city: (cols[colCity] || '').trim(),
+            location: colLocation >= 0 ? (cols[colLocation] || '').trim() : '',
+            lat,
+            lng,
+            total_dus: parseInt(cols[colTotal]) || 0,
+            version: colVersion >= 0 ? (cols[colVersion] || '').trim() : '',
+            phase: colPhase >= 0 ? (cols[colPhase] || '').trim() : ''
+        });
+    }
+    stationSheetCache = { fetchedAt: now, rows };
+    return rows;
+}
+
 module.exports = {
     logPing,
     writeToLogFile,
@@ -290,5 +363,6 @@ module.exports = {
     startMidnightResetService,
     resetDailyTotals,
     NotificationWebSocketServer,
-    NotificationService
+    NotificationService,
+    fetchStationSheetRows
 };

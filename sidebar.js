@@ -24,19 +24,25 @@ function renderSidebar() {
     // Sidebar items based on user role
     const items = [];
 
-    // Overview is hidden from operators
+    // Dashboard and Overview are network-wide; operators are scoped to their own station
     if (!isOperator) {
-        items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' });
+        items.push({ page: 'dashboard', label: 'Dashboard', icon: 'dashboard-icon.png', url: 'index.html' });
+        items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'overview.html' });
     }
 
     items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' });
-    items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
-    items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
+
+    // User & Site Management are admin-only (the pages themselves also redirect non-admin away)
+    if (isAdmin) {
+        items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
+        items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
+    }
 
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
     const pageMap = {
-        'index': 'overview',
+        'index': 'dashboard',
+        'overview': 'overview',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
         'user-management': 'users',
