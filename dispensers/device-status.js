@@ -159,7 +159,10 @@ function createMainTabs(onTabChange) {
     tabsContainer.style.display = 'flex';
     tabsContainer.style.marginBottom = '20px';
     tabsContainer.style.borderBottom = '2px solid #ddd';
-    
+
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    const showErrorsAndResets = role !== 'operator';
+
     const connectivityTab = document.createElement('button');
     connectivityTab.textContent = 'Connectivity Status';
     connectivityTab.style.padding = '10px 20px';
@@ -170,7 +173,7 @@ function createMainTabs(onTabChange) {
     connectivityTab.style.color = '#2e7d32';
     connectivityTab.style.cursor = 'pointer';
     connectivityTab.style.fontSize = '16px';
-    
+
     const errorLogsTab = document.createElement('button');
     errorLogsTab.textContent = 'Error Logs';
     errorLogsTab.style.padding = '10px 20px';
@@ -180,7 +183,7 @@ function createMainTabs(onTabChange) {
     errorLogsTab.style.color = '#2e7d32';
     errorLogsTab.style.cursor = 'pointer';
     errorLogsTab.style.fontSize = '16px';
-    
+
     const resetLogsTab = document.createElement('button');
     resetLogsTab.textContent = 'Reset Logs';
     resetLogsTab.style.padding = '10px 20px';
@@ -232,10 +235,12 @@ function createMainTabs(onTabChange) {
     });
     
     tabsContainer.appendChild(connectivityTab);
-    tabsContainer.appendChild(errorLogsTab);
-    tabsContainer.appendChild(resetLogsTab);
-    
-    return { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab };
+    if (showErrorsAndResets) {
+        tabsContainer.appendChild(errorLogsTab);
+        tabsContainer.appendChild(resetLogsTab);
+    }
+
+    return { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab, showErrorsAndResets };
 }
 
 // Function to create wireless connectivity section
@@ -476,18 +481,23 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     statsSpan.style.fontWeight = 'bold';
     statsSpan.style.color = '#666';
     
-    // Mark as cleared button
+    // Mark as cleared button (admin-only)
+    const resetMarkRole = window.StationAuth?.getUserInfo?.()?.role;
+    const canMarkResetCleared = resetMarkRole === 'admin';
+
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
     markClearedBtn.disabled = true;
     markClearedBtn.style.opacity = '0.5';
     markClearedBtn.style.cursor = 'not-allowed';
-    
+
     actionBar.appendChild(filterDropdown);
     actionBar.appendChild(statsSpan);
-    actionBar.appendChild(markClearedBtn);
+    if (canMarkResetCleared) {
+        actionBar.appendChild(markClearedBtn);
+    }
     container.appendChild(actionBar);
-    
+
     let selectedResetIds = new Set();
     
     const updateMarkButtonState = () => {
@@ -544,13 +554,16 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
+            checkboxTd.style.borderBottom = '1px solid #ddd';
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.className = 'reset-checkbox';
             checkbox.value = status.id;
-            checkbox.disabled = isCleared;
-            
-            if (!isCleared) {
+            checkbox.disabled = isCleared || !canMarkResetCleared;
+
+            if (!canMarkResetCleared) {
+                checkbox.style.visibility = 'hidden';
+            } else if (!isCleared) {
                 checkbox.addEventListener('change', () => {
                     if (checkbox.checked) {
                         selectedResetIds.add(status.id);
@@ -600,37 +613,43 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
         const selectAllCheckbox = document.createElement('input');
         selectAllCheckbox.type = 'checkbox';
         selectAllCheckbox.style.margin = '0';
-        
+        if (!canMarkResetCleared) {
+            selectAllCheckbox.style.visibility = 'hidden';
+            selectAllCheckbox.disabled = true;
+        }
+
         selectAllContainer.appendChild(selectAllCheckbox);
         firstTh.innerHTML = '';
         firstTh.appendChild(selectAllContainer);
-        
+
         const updateSelectAllCheckbox = () => {
             const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
             const checkedCheckboxes = document.querySelectorAll('.reset-checkbox:checked:not([disabled])');
             selectAllCheckbox.checked = checkboxes.length > 0 && checkedCheckboxes.length === checkboxes.length;
             selectAllCheckbox.indeterminate = checkedCheckboxes.length > 0 && checkedCheckboxes.length < checkboxes.length;
         };
-        
-        selectAllCheckbox.addEventListener('change', () => {
-            const isChecked = selectAllCheckbox.checked;
-            const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-                if (isChecked) {
-                    selectedResetIds.add(checkbox.value);
-                } else {
-                    selectedResetIds.delete(checkbox.value);
-                }
+
+        if (canMarkResetCleared) {
+            selectAllCheckbox.addEventListener('change', () => {
+                const isChecked = selectAllCheckbox.checked;
+                const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                    if (isChecked) {
+                        selectedResetIds.add(checkbox.value);
+                    } else {
+                        selectedResetIds.delete(checkbox.value);
+                    }
+                });
+                updateMarkButtonState();
             });
-            updateMarkButtonState();
-        });
-        
+        }
+
         container.appendChild(tableContainer);
     };
-    
+
     renderTable();
-    
+
     // Filter dropdown handler
     filterDropdown.addEventListener('change', () => {
         const newFilter = filterDropdown.value;
@@ -718,17 +737,23 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     statsSpan.style.fontWeight = 'bold';
     statsSpan.style.color = '#666';
     
+    // Mark as cleared button (admin-only)
+    const errorMarkRole = window.StationAuth?.getUserInfo?.()?.role;
+    const canMarkErrorCleared = errorMarkRole === 'admin';
+
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
     markClearedBtn.disabled = true;
     markClearedBtn.style.opacity = '0.5';
     markClearedBtn.style.cursor = 'not-allowed';
-    
+
     actionBar.appendChild(filterDropdown);
     actionBar.appendChild(statsSpan);
-    actionBar.appendChild(markClearedBtn);
+    if (canMarkErrorCleared) {
+        actionBar.appendChild(markClearedBtn);
+    }
     container.appendChild(actionBar);
-    
+
     let selectedErrorIds = new Set();
     
     const updateMarkButtonState = () => {
@@ -777,12 +802,15 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
+            checkboxTd.style.borderBottom = '1px solid #ddd';
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.className = 'error-checkbox';
             checkbox.value = log.id;
-            checkbox.disabled = log.cleared === 1;
-            if (log.cleared === 0) {
+            checkbox.disabled = log.cleared === 1 || !canMarkErrorCleared;
+            if (!canMarkErrorCleared) {
+                checkbox.style.visibility = 'hidden';
+            } else if (log.cleared === 0) {
                 checkbox.addEventListener('change', () => {
                     if (checkbox.checked) {
                         selectedErrorIds.add(log.id);
@@ -839,33 +867,39 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         const selectAllCheckbox = document.createElement('input');
         selectAllCheckbox.type = 'checkbox';
         selectAllCheckbox.style.margin = '0';
-        
+        if (!canMarkErrorCleared) {
+            selectAllCheckbox.style.visibility = 'hidden';
+            selectAllCheckbox.disabled = true;
+        }
+
         selectAllContainer.appendChild(selectAllCheckbox);
         firstTh.innerHTML = '';
         firstTh.appendChild(selectAllContainer);
-        
+
         const updateSelectAllCheckbox = () => {
             const checkboxes = document.querySelectorAll('.error-checkbox');
             const checkedCount = document.querySelectorAll('.error-checkbox:checked').length;
             selectAllCheckbox.checked = checkboxes.length > 0 && checkedCount === checkboxes.length;
             selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < checkboxes.length;
         };
-        
-        selectAllCheckbox.addEventListener('change', () => {
-            const isChecked = selectAllCheckbox.checked;
-            const checkboxes = document.querySelectorAll('.error-checkbox');
-            checkboxes.forEach(checkbox => {
-                checkbox.checked = isChecked;
-                const errorId = parseInt(checkbox.value);
-                if (isChecked) {
-                    selectedErrorIds.add(errorId);
-                } else {
-                    selectedErrorIds.delete(errorId);
-                }
+
+        if (canMarkErrorCleared) {
+            selectAllCheckbox.addEventListener('change', () => {
+                const isChecked = selectAllCheckbox.checked;
+                const checkboxes = document.querySelectorAll('.error-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.checked = isChecked;
+                    const errorId = parseInt(checkbox.value);
+                    if (isChecked) {
+                        selectedErrorIds.add(errorId);
+                    } else {
+                        selectedErrorIds.delete(errorId);
+                    }
+                });
+                updateMarkButtonState();
             });
-            updateMarkButtonState();
-        });
-        
+        }
+
         container.appendChild(tableContainer);
     };
     
@@ -1024,6 +1058,11 @@ function formatTimeString(timeMs) {
 // Main function to show device status popup
 async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
     try {
+        // Operators cannot view error/reset logs
+        const popupRole = window.StationAuth?.getUserInfo?.()?.role;
+        if (popupRole === 'operator' && (defaultTab === 'errorLogs' || defaultTab === 'resetLogs')) {
+            defaultTab = 'connectivity';
+        }
         const dispenserAddress = dispenserTopic.replace(/^D/, '');
         
         const [gsmResponse, wifiResponse, mqttResponse, powerResponse, errorsResponse, gsmConnResponse, wifiConnResponse] = await Promise.allSettled([

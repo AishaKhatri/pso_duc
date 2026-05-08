@@ -379,93 +379,108 @@ async function createCard(address, customer_code) {
     nextContainer.style.alignItems = 'center';
     nextContainer.style.marginLeft = '5px';
     nextContainer.style.marginRight = '5px';
-    nextContainer.style.position = 'relative';
 
-    const errorContainer = document.createElement('div');
-    errorContainer.className = 'dispenser-error-container';
-    errorContainer.style.display = 'flex';
-    errorContainer.style.alignItems = 'center';
-    errorContainer.style.gap = '8px';
-    errorContainer.style.cursor = 'pointer';
-    
-    const errorIcon = createIconFromImage('assets/graphics/alert-icon.png', 'Errors', '18px');
-    errorIcon.style.display = 'none';
-    
-    const errorCountSpan = document.createElement('span');
-    errorCountSpan.className = 'dispenser-error-count';
-    errorCountSpan.style.fontSize = '13px';
-    errorCountSpan.style.fontWeight = 'bold';
-    errorCountSpan.style.color = '#d32f2f';
-    errorCountSpan.style.backgroundColor = '#ffebee';
-    errorCountSpan.style.padding = '2px 8px';
-    errorCountSpan.style.borderRadius = '12px';
-    errorCountSpan.style.display = 'none';
-    
-    const count = await fetchErrorCount(address);
-    errorCountSpan.textContent = count;
+    // Errors and resets are hidden from operators
+    const cardUserRole = window.StationAuth?.getUserInfo?.()?.role;
+    const showErrorsAndResets = cardUserRole !== 'operator';
 
-    if (count > 0) {
-        errorIcon.style.display = 'inline-block';
-        errorCountSpan.style.display = 'inline-block';
-    }
-    
-    errorContainer.appendChild(errorIcon);
-    errorContainer.appendChild(errorCountSpan);
-    
-    errorContainer.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof window.showDevStatusPopup === 'function') {
-            window.showDevStatusPopup(address, 'errorLogs');
-        }
-    });
+    // Left side container for errors and resets
+    const leftContainer = document.createElement('div');
+    leftContainer.style.display = 'flex';
+    leftContainer.style.alignItems = 'center';
+    leftContainer.style.gap = '15px';
 
-    const resetContainer = document.createElement('div');
-    resetContainer.className = 'dispenser-reset-container';
-    resetContainer.style.display = 'flex';
-    resetContainer.style.alignItems = 'center';
-    resetContainer.style.gap = '8px';
-    resetContainer.style.cursor = 'pointer';
+    if (showErrorsAndResets) {
+        const errorContainer = document.createElement('div');
+        errorContainer.className = 'dispenser-error-container';
+        errorContainer.style.display = 'flex';
+        errorContainer.style.alignItems = 'center';
+        errorContainer.style.gap = '8px';
+        errorContainer.style.cursor = 'pointer';
 
-    const resetIcon = createIconFromImage('assets/graphics/reset-icon.png', 'Resets', '18px');
-    resetIcon.style.display = 'none';
+        const errorIcon = createIconFromImage('assets/graphics/alert-icon.png', 'Errors', '18px');
+        errorIcon.style.display = 'none';
 
-    const resetCountSpan = document.createElement('span');
-    resetCountSpan.className = 'dispenser-reset-count';
-    resetCountSpan.style.fontSize = '13px';
-    resetCountSpan.style.fontWeight = 'bold';
-    resetCountSpan.style.color = '#f57c00';
-    resetCountSpan.style.backgroundColor = '#fff3e0';
-    resetCountSpan.style.padding = '2px 8px';
-    resetCountSpan.style.borderRadius = '12px';
-    resetCountSpan.style.display = 'none';
+        const errorCountSpan = document.createElement('span');
+        errorCountSpan.className = 'dispenser-error-count';
+        errorCountSpan.style.fontSize = '13px';
+        errorCountSpan.style.fontWeight = 'bold';
+        errorCountSpan.style.color = '#d32f2f';
+        errorCountSpan.style.backgroundColor = '#ffebee';
+        errorCountSpan.style.padding = '2px 8px';
+        errorCountSpan.style.borderRadius = '12px';
+        errorCountSpan.style.display = 'none';
 
-    // Fetch reset count
-    (async () => {
-        const count = await fetchResetCount(address);
-        resetCountSpan.textContent = count;
+        const count = await fetchErrorCount(address);
+        errorCountSpan.textContent = count;
+
         if (count > 0) {
-            resetIcon.style.display = 'inline-block';
-            resetCountSpan.style.display = 'inline-block';
+            errorIcon.style.display = 'inline-block';
+            errorCountSpan.style.display = 'inline-block';
         }
-    })();
 
-    resetContainer.appendChild(resetIcon);
-    resetContainer.appendChild(resetCountSpan);
+        errorContainer.appendChild(errorIcon);
+        errorContainer.appendChild(errorCountSpan);
 
-    resetContainer.addEventListener('click', (e) => {
-        e.stopPropagation();
-        if (typeof window.showDevStatusPopup === 'function') {
-            window.showDevStatusPopup(address, 'resetLogs');
-        }
-    });
+        errorContainer.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.showDevStatusPopup === 'function') {
+                window.showDevStatusPopup(address, 'errorLogs');
+            }
+        });
 
+        const resetContainer = document.createElement('div');
+        resetContainer.className = 'dispenser-reset-container';
+        resetContainer.style.display = 'flex';
+        resetContainer.style.alignItems = 'center';
+        resetContainer.style.gap = '8px';
+        resetContainer.style.cursor = 'pointer';
+
+        const resetIcon = createIconFromImage('assets/graphics/reset-icon.png', 'Resets', '18px');
+        resetIcon.style.display = 'none';
+
+        const resetCountSpan = document.createElement('span');
+        resetCountSpan.className = 'dispenser-reset-count';
+        resetCountSpan.style.fontSize = '13px';
+        resetCountSpan.style.fontWeight = 'bold';
+        resetCountSpan.style.color = '#f57c00';
+        resetCountSpan.style.backgroundColor = '#fff3e0';
+        resetCountSpan.style.padding = '2px 8px';
+        resetCountSpan.style.borderRadius = '12px';
+        resetCountSpan.style.display = 'none';
+
+        // Fetch reset count
+        (async () => {
+            const resetCount = await fetchResetCount(address);
+            resetCountSpan.textContent = resetCount;
+            if (resetCount > 0) {
+                resetIcon.style.display = 'inline-block';
+                resetCountSpan.style.display = 'inline-block';
+            }
+        })();
+
+        resetContainer.appendChild(resetIcon);
+        resetContainer.appendChild(resetCountSpan);
+
+        resetContainer.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof window.showDevStatusPopup === 'function') {
+                window.showDevStatusPopup(address, 'resetLogs');
+            }
+        });
+
+        leftContainer.appendChild(errorContainer);
+        leftContainer.appendChild(resetContainer);
+    }
+
+    // Right side container for uptime
     const uptime = document.createElement('div');
     uptime.className = 'uptime';
     uptime.style.fontSize = '12px';
     uptime.style.color = '#999';
-    
-    nextContainer.appendChild(errorContainer);
-    nextContainer.appendChild(resetContainer);
+    uptime.style.textAlign = 'right';
+
+    nextContainer.appendChild(leftContainer);
     nextContainer.appendChild(uptime);
     card.appendChild(nextContainer);
 

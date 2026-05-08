@@ -3,6 +3,7 @@ let stationsList = [];
 let usersList = [];
 
 const columns = ['ID', 'Username', 'Role', 'Customer Code', 'Last Login', 'Created At', 'Actions'];
+const userInfo = StationAuth.getUserInfo();
 
 async function renderUserManagement() {
     const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Create User');
@@ -21,9 +22,13 @@ async function renderUserManagement() {
 
     renderUsersTable(usersList);
 
-    addButton.addEventListener('click', () => {
-        showUserFormPopup();
-    });
+    if (userInfo?.role !== 'admin') {
+        addButton.style.cursor = 'not-allowed';
+    } else {
+        addButton.addEventListener('click', () => {
+            showUserFormPopup();
+        });
+    }    
 }
 
 async function renderUsersTable(users) {
@@ -79,13 +84,20 @@ async function renderUsersTable(users) {
             actionTd.style.padding = '12px';
             
             const editBtn = createEditButton('Edit user');
-            editBtn.addEventListener('click', () => {
-                alert('Edit functionality coming soon');
-            });
+            if (userInfo?.role !== 'admin') {
+                editBtn.style.cursor = 'not-allowed';
+            } else {
+                editBtn.addEventListener('click', () => {
+                    alert('Edit functionality coming soon');
+                });
+            }
             
             const deleteBtn = createDeleteButton('Delete user');
-            deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
-
+            if (userInfo?.role !== 'admin') {
+                deleteBtn.style.cursor = 'not-allowed';
+            } else {
+                deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
+            }
             actionTd.appendChild(editBtn);
             actionTd.appendChild(deleteBtn);
             

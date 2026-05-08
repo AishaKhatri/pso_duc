@@ -1,6 +1,7 @@
 let stationsList = [];
 
 const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'Created At', 'Actions'];
+const userInfo = StationAuth.getUserInfo();
 
 async function renderSiteManagement() {
     const { content, addButton } = configPage('Site Management', 'Back', 'index.html', 'Add Site');
@@ -18,9 +19,13 @@ async function renderSiteManagement() {
 
     renderStationsTable(stationsList);
 
-    addButton.addEventListener('click', () => {
-        showStationFormPopup();
-    });
+    if (userInfo?.role !== 'admin') {
+        addButton.style.cursor = 'not-allowed';
+    } else {
+        addButton.addEventListener('click', () => {
+            showStationFormPopup();
+        });
+    }
 }
 
 function renderStationsTable(stations) {
@@ -76,12 +81,20 @@ function renderStationsTable(stations) {
             actionTd.style.padding = '12px';
             
             const editBtn = createEditButton('Edit station');
-            editBtn.addEventListener('click', () => {
-                alert('Edit functionality coming soon');
-            });
+            if (userInfo?.role !== 'admin') {
+                editBtn.style.cursor = 'not-allowed';
+            } else {
+                editBtn.addEventListener('click', () => {
+                    alert('Edit functionality coming soon');
+                });
+            }
             
             const deleteBtn = createDeleteButton('Delete station');
-            deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));
+            if (userInfo?.role !== 'admin') {
+                deleteBtn.style.cursor = 'not-allowed';
+            } else {
+                deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(user));
+            }
 
             actionTd.appendChild(editBtn);
             actionTd.appendChild(deleteBtn);

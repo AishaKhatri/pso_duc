@@ -17,19 +17,21 @@ function renderSidebar() {
     
     // Get current user from localStorage
     const currentUser = StationAuth.getUserInfo();
-    const isAdmin = currentUser?.role === 'admin';
-    
+    const role = currentUser?.role;
+    const isAdmin = role === 'admin';
+    const isOperator = role === 'operator';
+
     // Sidebar items based on user role
-    const items = [
-        { page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' },
-        { page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' },
-    ];
-    
-    // Only add User Management for admin users
-    if (isAdmin) {
-        items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
-        items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
+    const items = [];
+
+    // Overview is hidden from operators
+    if (!isOperator) {
+        items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'index.html' });
     }
+
+    items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' });
+    items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
+    items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
 
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
