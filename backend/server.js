@@ -5,17 +5,18 @@ const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
 const pool = require('./db'); // Use shared pool from db.js
-const { 
+const {
     setNotificationService,
-    subscribeToTopic, 
-    unsubscribeFromTopic, 
-    getGsmStatus, 
+    subscribeToTopic,
+    unsubscribeFromTopic,
+    getGsmStatus,
     getWiFiStatus,
-    getMqttStatus, 
-    getPowerOnStatus, 
+    getMqttStatus,
+    getPowerOnStatus,
     getGsmConnectionStatus,
     getWifiConnectionStatus,
-    clearedResetsCache } = require('./mqtt-service');
+    clearedResetsCache,
+    publishMessage } = require('./mqtt-service');
 
 const { 
     startMidnightResetService,
@@ -835,6 +836,23 @@ app.post('/api/dispensers', async (req, res) => {
     } catch (error) {
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to add dispenser: ' + error.message });
+    }
+});
+
+// Publish an MQTT command from the server on behalf of the frontend.
+// Frontend never speaks MQTT directly.
+app.post('/api/dispensers/publish', async (req, res) => {
+    try {
+        const { topic, message, retain } = req.body;
+        if (!topic || message === undefined || message === null) {
+            return res.status(400).json({ success: false, error: 'topic and message are required' });
+        }
+        const payload = typeof message === 'string' ? message : JSON.stringify(message);
+        await publishMessage(topic, payload, retain ? { retain: true } : {});
+        res.json({ success: true });
+    } catch (error) {
+        console.error('MQTT publish error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to publish' });
     }
 });
 

@@ -154,9 +154,8 @@ async function updateIRStatus(dispenserId, lockStatus) {
 }
 
 async function sendGetCommandsForDispenser(dispenser) {
-    const topic = `D${dispenser.address}`;
     const dis_addr = `D${dispenser.address}`;
-    
+
     // Configuration - comment out message types you don't want to request
     const messageTypesToRequest = {
         0: true,  // NOZ_STATUS
@@ -182,13 +181,17 @@ async function sendGetCommandsForDispenser(dispenser) {
             existingNozzles.add(shortId);
         });
 
+        const city = window.currentStation?.city || dispenser.city || 'NA';
+        const customerCode = dispenser.customer_code;
+        const publishTopic = `pso/${city}/${customerCode}/duc/d${dispenser.address}`;
+
         const messagesToSend = [];
-        
+
         ['A1', 'A2', 'B1', 'B2'].forEach(nozzleId => {
             if (existingNozzles.has(nozzleId)) {
                 const side = nozzleId[0];
                 const noz_number = nozzleId[1];
-                
+
                 Object.keys(messageTypesToRequest).forEach(msg_type => {
                     if (messageTypesToRequest[msg_type]) {
                         const message = {
@@ -199,10 +202,10 @@ async function sendGetCommandsForDispenser(dispenser) {
                             msg_type: parseInt(msg_type),
                             message: "0"
                         };
-                        
+
                         messagesToSend.push({
-                            topic: topic,
-                            message: JSON.stringify(message),
+                            topic: publishTopic,
+                            message: message,
                             nozzleId: nozzleId,
                             msg_type: msg_type
                         });
@@ -211,22 +214,30 @@ async function sendGetCommandsForDispenser(dispenser) {
             }
         });
 
-        // Send messages with delay between them
+        // Send messages with delay between them via backend publish endpoint
         let delay = 0;
-        messagesToSend.forEach((msg, index) => {
-            setTimeout(() => {
-                publishMessage(msg.topic, msg.message, (err) => {
-                    if (err) {
-                        console.error(`Error sending GET command for ${msg.nozzleId} msg_type ${msg.msg_type}:`, err);
+        messagesToSend.forEach((msg) => {
+            setTimeout(async () => {
+                try {
+                    const resp = await fetch(`${API_BASE_URL}/dispensers/publish`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ topic: msg.topic, message: msg.message })
+                    });
+                    if (!resp.ok) {
+                        const err = await resp.json().catch(() => ({}));
+                        console.error(`Error sending GET command for ${msg.nozzleId} msg_type ${msg.msg_type}:`, err.error || resp.statusText);
                     } else {
                         console.log(`Sent GET command for nozzle ${msg.nozzleId} msg_type ${msg.msg_type}`);
                     }
-                });
+                } catch (err) {
+                    console.error(`Error sending GET command for ${msg.nozzleId} msg_type ${msg.msg_type}:`, err);
+                }
             }, delay);
-            
+
             delay += DELAY_BETWEEN_MESSAGES;
         });
-        
+
         window.showNotification?.('Refresh commands sent for existing nozzles', 'info');
     } catch (error) {
         console.error('Error sending GET commands:', error);

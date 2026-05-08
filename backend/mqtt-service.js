@@ -1440,6 +1440,19 @@ mqttClient.on('offline', () => {
     logWithTimestamp(null, 'MQTT client is offline');
 });
 
+function publishMessage(topic, message, options = {}) {
+    return new Promise((resolve, reject) => {
+        if (!mqttClient || !mqttClient.connected) {
+            return reject(new Error('MQTT client not connected'));
+        }
+        const publishOptions = { qos: 1, ...options };
+        mqttClient.publish(topic, message, publishOptions, (err) => {
+            if (err) reject(err);
+            else resolve();
+        });
+    });
+}
+
 module.exports = {
     setNotificationService,
     subscribeToTopic,
@@ -1459,5 +1472,6 @@ module.exports = {
     handleWiFiStatusMessage,
     handleMqttStatusMessage,
     handlePowerOnMessage,
-    handleErrorMessage
+    handleErrorMessage,
+    publishMessage
 };

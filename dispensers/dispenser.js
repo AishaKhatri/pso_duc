@@ -17,51 +17,40 @@ async function renderDispenser() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        const {headerContainer, optionsContainer, gridContainer} = renderPageHeader('Dispenser Unit Control - DUC')    
-        
-        const configButton = createMainButton();
-        configButton.textContent = 'Configure Dispensers';
-        configButton.addEventListener('click', () => {
-            window.location.href = 'dispensers/config-dispensers.html';
-        });
+        const {headerContainer, optionsContainer, gridContainer} = renderPageHeader('Dispenser Unit Control - DUC')
 
-        const updatePricesButton = createMainButton();
-        updatePricesButton.textContent = 'Update Prices';
-        updatePricesButton.addEventListener('click', () => {
-            if (typeof window.showPriceUpdatePopup === 'function') {
-                window.showPriceUpdatePopup();
-            } else {
-                const script = document.createElement('script');
-                script.src = 'dispensers/price-update.js';
-                script.onload = () => {
-                    if (typeof window.showPriceUpdatePopup === 'function') {
-                        window.showPriceUpdatePopup();
-                    }
-                };
-                document.head.appendChild(script);
-            }
-        });
+        // Viewers cannot command or configure dispensers
+        const role = window.StationAuth?.getUserInfo?.()?.role;
+        const canCommand = role === 'admin' || role === 'operator';
 
-        const commandDispenserButton = createMainButton();
-        commandDispenserButton.textContent = 'Command Dispenser';
-        commandDispenserButton.addEventListener('click', () => {
-            if (typeof window.showCommandDispenserPopup === 'function') {
-                window.showCommandDispenserPopup();
-            } else {
-                const script = document.createElement('script');
-                script.src = 'dispensers/command-dispenser.js';
-                script.onload = () => {
-                    if (typeof window.showCommandDispenserPopup === 'function') {
-                        window.showCommandDispenserPopup();
-                    }
-                };
-                document.head.appendChild(script);
-            }
-        });
+        if (canCommand) {
+            const configButton = createMainButton();
+            configButton.textContent = 'Configure Dispensers';
+            configButton.addEventListener('click', () => {
+                window.location.href = 'dispensers/config-dispensers.html';
+            });
 
-        optionsContainer.appendChild(commandDispenserButton);
-        optionsContainer.appendChild(updatePricesButton);
-        optionsContainer.appendChild(configButton);
+            const commandDispenserButton = createMainButton();
+            commandDispenserButton.textContent = 'Command Dispenser';
+            commandDispenserButton.addEventListener('click', () => {
+                if (typeof window.showCommandDispenserPopup === 'function') {
+                    window.showCommandDispenserPopup();
+                } else {
+                    const script = document.createElement('script');
+                    script.src = 'dispensers/command-dispenser.js';
+                    script.onload = () => {
+                        if (typeof window.showCommandDispenserPopup === 'function') {
+                            window.showCommandDispenserPopup();
+                        }
+                    };
+                    document.head.appendChild(script);
+                }
+            });
+
+            optionsContainer.appendChild(commandDispenserButton);
+            optionsContainer.appendChild(configButton);
+        }
+
         headerContainer.appendChild(optionsContainer);
         content.appendChild(headerContainer);
 
@@ -80,8 +69,6 @@ async function renderDispenser() {
         content.appendChild(gridContainer);
 
         if (dispensers.length > 0) {
-            initializeMQTT(dispensers);
-
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
@@ -143,26 +130,30 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     irStatusContainer.appendChild(irLockIcon);
     titleContainer.appendChild(irStatusContainer);
 
-    const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '25px');
-    refreshButton.style.position = 'absolute';
-    refreshButton.style.top = '0';
-    refreshButton.style.left = '65%';
-    refreshButton.style.cursor = 'pointer';
-    refreshButton.style.transition = 'transform 0.2s ease';
-    refreshButton.title = 'Refresh';
-    refreshButton.addEventListener('click', () => {
-        sendGetCommandsForDispenser(dispenser);
-    });
+    // Refresh button issues commands and is only available to admin/operator
+    const cardRole = window.StationAuth?.getUserInfo?.()?.role;
+    if (cardRole === 'admin' || cardRole === 'operator') {
+        const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '25px');
+        refreshButton.style.position = 'absolute';
+        refreshButton.style.top = '0';
+        refreshButton.style.left = '65%';
+        refreshButton.style.cursor = 'pointer';
+        refreshButton.style.transition = 'transform 0.2s ease';
+        refreshButton.title = 'Refresh';
+        refreshButton.addEventListener('click', () => {
+            sendGetCommandsForDispenser(dispenser);
+        });
 
-    refreshButton.addEventListener('mouseover', () => {
-        refreshButton.style.transform = 'scale(1.05)';
-    });
+        refreshButton.addEventListener('mouseover', () => {
+            refreshButton.style.transform = 'scale(1.05)';
+        });
 
-    refreshButton.addEventListener('mouseout', () => {
-        refreshButton.style.transform = 'scale(1)';
-    });
+        refreshButton.addEventListener('mouseout', () => {
+            refreshButton.style.transform = 'scale(1)';
+        });
 
-    titleContainer.appendChild(refreshButton);
+        titleContainer.appendChild(refreshButton);
+    }
 
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
@@ -253,39 +244,6 @@ async function updateDispenserCard(dispenser) {
     } catch (error) {
         console.error('Error updating nozzle data:', error);
     }
-}
-
-function initializeMQTT(dispensers) {
-    initializeMQTTClient(() => {
-        dispensers.forEach(dispenser => {
-            const city = window.currentStation?.city || 'deraismailkhan';
-            const customerCode = dispenser.customer_code;
-            const topic = `pso/${city}/${customerCode}/duc/s${dispenser.address}`;
-            
-            subscribeToTopic(topic, async (receivedTopic, message) => {
-                const messageStr = message.toString();
-                console.log(`Received message on ${receivedTopic}: ${messageStr}`);
-
-                try {
-                    const data = JSON.parse(messageStr);
-                    const dispenserAddr = data.dis_addr;
-                    const side = data.side === '0' || data.side === 'A' ? 'A' : 
-                                 data.side === '1' || data.side === 'B' ? 'B' : 
-                                 'Unknown';                      
-                    const nozzleNum = data.noz_number;
-                    const nozzleId = `${dispenserAddr}-${side}${nozzleNum}`;
-
-                    if (data.msg_type === 0) {
-                        window.updateNozzleStatus?.(nozzleId, parseInt(data.message));
-                    }
-                } catch (error) {
-                    console.error('Error processing MQTT message:', error);
-                }
-            });
-        });
-    }, (err) => {
-        console.error('MQTT connection error:', err);
-    });
 }
 
 window.renderDispenser = renderDispenser;

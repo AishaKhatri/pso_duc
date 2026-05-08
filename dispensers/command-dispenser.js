@@ -76,10 +76,6 @@ async function showCommandDispenserPopup() {
     overlay.appendChild(popup);
     document.body.appendChild(overlay);
 
-    initializeMQTTClient(null, (err) => {
-        showCommandStatusMessage('MQTT connection error: ' + err.message, 'error');
-    });
-
     // Store all dispensers and stations data
     let allDispensers = [];
     let stationsMap = new Map();
@@ -451,14 +447,14 @@ function normalizeFuelType(product) {
 
 async function sendDispenserCommand(topic, customerCode, city, message, button, commandName = 'Command') {
     const originalText = button.textContent;
-    
+
     button.disabled = true;
     button.textContent = 'Sending...';
-    
+
     try {
         const address = topic.replace(/^D/, '');
         const publishTopic = `pso/${city}/${customerCode}/duc/d${address}`;
-        
+
         console.group(`Sending ${commandName}`);
         console.log('Publish Topic:', publishTopic);
         console.log('Customer Code:', customerCode);
@@ -466,16 +462,17 @@ async function sendDispenserCommand(topic, customerCode, city, message, button, 
         console.log('Message:', message);
         console.log('Timestamp:', new Date().toISOString());
 
-        const result = await new Promise((resolve) => {
-            publishMessage(publishTopic, JSON.stringify(message), (err) => {
-                console.log(err ? 'Publish error:' : 'Publish successful:', err || 'OK');
-                resolve({ success: !err, error: err });
-            });
+        const response = await fetch(`${API_BASE_URL}/dispensers/publish`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ topic: publishTopic, message })
         });
 
+        const result = await response.json().catch(() => ({}));
+        console.log(response.ok ? 'Publish successful:' : 'Publish error:', result);
         console.groupEnd();
 
-        if (result.success) {
+        if (response.ok && result.success) {
             showCommandStatusMessage(`${commandName} sent successfully`, 'success');
         } else {
             throw new Error(result.error || `Failed to send ${commandName}`);

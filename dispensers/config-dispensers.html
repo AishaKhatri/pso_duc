@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Central Server - Dispensers</title>
     <link rel="stylesheet" href="../styles.css">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/4.3.7/mqtt.min.js"></script>
     <!-- Set base href to the parent directory to resolve image paths correctly -->
     <base href="../" />
     <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
@@ -28,7 +27,14 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
-            
+
+            // Configuring dispensers is restricted to admin and operator
+            const userInfo = StationAuth.getUserInfo();
+            if (userInfo?.role !== 'admin' && userInfo?.role !== 'operator') {
+                window.location.href = '../dispensers.html';
+                return;
+            }
+
             renderApp()
             if (typeof window.renderConfigDispensers === 'function') {
                 window.renderConfigDispensers();
