@@ -315,13 +315,13 @@ function showUserFormPopup(user = null) {
             role: roleSelect.value,
         };
         
-        if (roleSelect.value === 'operator') {
-            if (!customerCodeSelect.value) {
-                alert('Please select a customer code for operator role');
-                return;
-            }
-            userData.customer_code = customerCodeSelect.value;
-        }
+        // if (roleSelect.value === 'operator') {
+        //     if (!customerCodeSelect.value) {
+        //         alert('Please select a customer code for operator role');
+        //         return;
+        //     }
+        //     userData.customer_code = customerCodeSelect.value;
+        // }
         
         if (!user && passwordInput) {
             if (!passwordInput.value) {

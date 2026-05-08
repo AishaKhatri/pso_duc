@@ -222,7 +222,7 @@ async function loadDispensersFromDB() {
 }
 
 async function renderConfigDispensers() {
-    const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', 'index.html', 'Add Dispenser');
+    const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', 'dispensers.html', 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
 
     let productOptions = [];
