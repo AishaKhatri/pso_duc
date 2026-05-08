@@ -7,7 +7,7 @@ function createBaseRow() {
     row.style.justifyContent = 'space-between';
     row.style.marginBottom = '10px';
     row.style.padding = '5px 0';
-    row.style.borderBottom = '1px solid #eee';
+    row.style.borderBottom = '1px solid var(--border-soft)';
     return row;
 }
 
@@ -18,11 +18,11 @@ function createStatusRow(label, value) {
     const labelSpan = document.createElement('span');
     labelSpan.textContent = label;
     labelSpan.style.fontWeight = 'bold';
-    labelSpan.style.color = '#333';
-    
+    labelSpan.style.color = 'var(--text-primary)';
+
     const valueSpan = document.createElement('span');
     valueSpan.textContent = value;
-    valueSpan.style.color = '#666';
+    valueSpan.style.color = 'var(--text-secondary)';
     
     row.appendChild(labelSpan);
     row.appendChild(valueSpan);
@@ -37,11 +37,11 @@ function createStatusIndicator(label, status, trueText = 'Yes', falseText = 'No'
     const labelSpan = document.createElement('span');
     labelSpan.textContent = label;
     labelSpan.style.fontWeight = 'bold';
-    labelSpan.style.color = '#333';
-    
+    labelSpan.style.color = 'var(--text-primary)';
+
     const valueSpan = document.createElement('span');
     valueSpan.textContent = status ? trueText : falseText;
-    valueSpan.style.color = status ? '#2e7d32' : '#d32f2f';
+    valueSpan.style.color = status ? 'var(--status-online)' : 'var(--status-offline)';
     valueSpan.style.fontWeight = 'bold';
     
     row.appendChild(labelSpan);
@@ -66,7 +66,7 @@ function createSectionHeader(title, color = '#2e7d32') {
 function createLastUpdatedText(timestamp) {
     const lastUpdated = document.createElement('div');
     lastUpdated.textContent = `Last updated: ${new Date(timestamp).toLocaleString()}`;
-    lastUpdated.style.color = '#999';
+    lastUpdated.style.color = 'var(--text-secondary)';
     lastUpdated.style.fontSize = '14px';
     lastUpdated.style.marginTop = '15px';
     lastUpdated.style.textAlign = 'right';
@@ -74,9 +74,10 @@ function createLastUpdatedText(timestamp) {
 }
 
 // Function to create a styled container for content
-function createStyledContainer(backgroundColor = '#f5f5f5', padding = '10px', borderRadius = '5px') {
+function createStyledContainer(backgroundColor = 'var(--bg-surface-2)', padding = '10px', borderRadius = '5px') {
     const container = document.createElement('div');
     container.style.backgroundColor = backgroundColor;
+    container.style.color = 'var(--text-primary)';
     container.style.padding = padding;
     container.style.borderRadius = borderRadius;
     return container;
@@ -92,8 +93,9 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     const gsmButton = document.createElement('button');
     gsmButton.textContent = 'GSM';
     gsmButton.style.padding = '6px 16px';
-    gsmButton.style.border = '1px solid #ddd';
-    gsmButton.style.background = '#f5f5f5';
+    gsmButton.style.border = '1px solid var(--border)';
+    gsmButton.style.background = 'var(--bg-surface-2)';
+    gsmButton.style.color = 'var(--text-primary)';
     gsmButton.style.borderRadius = '4px';
     gsmButton.style.fontSize = '14px';
     gsmButton.style.cursor = gsmEnabled ? 'pointer' : 'not-allowed';
@@ -102,8 +104,9 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     const wifiButton = document.createElement('button');
     wifiButton.textContent = 'WiFi';
     wifiButton.style.padding = '6px 16px';
-    wifiButton.style.border = '1px solid #ddd';
-    wifiButton.style.background = '#f5f5f5';
+    wifiButton.style.border = '1px solid var(--border)';
+    wifiButton.style.background = 'var(--bg-surface-2)';
+    wifiButton.style.color = 'var(--text-primary)';
     wifiButton.style.borderRadius = '4px';
     wifiButton.style.fontSize = '14px';
     wifiButton.style.cursor = wifiEnabled ? 'pointer' : 'not-allowed';
@@ -113,19 +116,19 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     
     const updateButtonStyles = () => {
         if (activeButton === 'gsm') {
-            gsmButton.style.background = '#2e7d32';
-            gsmButton.style.color = 'white';
-            gsmButton.style.border = '1px solid #2e7d32';
-            wifiButton.style.background = '#f5f5f5';
-            wifiButton.style.color = '#333';
-            wifiButton.style.border = '1px solid #ddd';
+            gsmButton.style.background = 'var(--status-online)';
+            gsmButton.style.color = '#fff';
+            gsmButton.style.border = '1px solid var(--status-online)';
+            wifiButton.style.background = 'var(--bg-surface-2)';
+            wifiButton.style.color = 'var(--text-primary)';
+            wifiButton.style.border = '1px solid var(--border)';
         } else {
-            wifiButton.style.background = '#2e7d32';
-            wifiButton.style.color = 'white';
-            wifiButton.style.border = '1px solid #2e7d32';
-            gsmButton.style.background = '#f5f5f5';
-            gsmButton.style.color = '#333';
-            gsmButton.style.border = '1px solid #ddd';
+            wifiButton.style.background = 'var(--status-online)';
+            wifiButton.style.color = '#fff';
+            wifiButton.style.border = '1px solid var(--status-online)';
+            gsmButton.style.background = 'var(--bg-surface-2)';
+            gsmButton.style.color = 'var(--text-primary)';
+            gsmButton.style.border = '1px solid var(--border)';
         }
     };
     
@@ -158,7 +161,7 @@ function createMainTabs(onTabChange) {
     const tabsContainer = document.createElement('div');
     tabsContainer.style.display = 'flex';
     tabsContainer.style.marginBottom = '20px';
-    tabsContainer.style.borderBottom = '2px solid #ddd';
+    tabsContainer.style.borderBottom = '2px solid var(--border)';
 
     const role = window.StationAuth?.getUserInfo?.()?.role;
     const showErrorsAndResets = role !== 'operator';
@@ -248,7 +251,7 @@ function createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wi
     const section = document.createElement('div');
     section.style.flex = '1';
     section.style.padding = '0 15px';
-    section.style.borderRight = '1px solid #ddd';
+    section.style.borderRight = '1px solid var(--border)';
     
     section.appendChild(createSectionHeader('Wireless Connectivity'));
    
@@ -448,14 +451,16 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     actionBar.style.justifyContent = 'space-between';
     actionBar.style.alignItems = 'center';
     actionBar.style.padding = '10px';
-    actionBar.style.backgroundColor = '#f8f9fa';
+    actionBar.style.backgroundColor = 'var(--bg-surface-2)';
     actionBar.style.borderRadius = '8px';
-    actionBar.style.border = '1px solid #e0e0e0';
+    actionBar.style.border = '1px solid var(--border)';
     
     // Create filter dropdown
     const filterDropdown = document.createElement('select');
     filterDropdown.style.padding = '8px';
-    filterDropdown.style.border = '1px solid #ccc';
+    filterDropdown.style.border = '1px solid var(--border)';
+    filterDropdown.style.backgroundColor = 'var(--bg-surface)';
+    filterDropdown.style.color = 'var(--text-primary)';
     filterDropdown.style.borderRadius = '4px';
     filterDropdown.style.width = '200px';
     filterDropdown.style.marginBottom = '0';
@@ -479,7 +484,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
     statsSpan.style.fontSize = '14px';
     statsSpan.style.fontWeight = 'bold';
-    statsSpan.style.color = '#666';
+    statsSpan.style.color = 'var(--text-secondary)';
     
     // Mark as cleared button (admin-only)
     const resetMarkRole = window.StationAuth?.getUserInfo?.()?.role;
@@ -547,14 +552,15 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             const isCleared = currentClearedIds.has(status.id);
             
             const row = document.createElement('tr');
-            row.style.backgroundColor = isCleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
+            row.style.backgroundColor = isCleared ? 'var(--bg-row-cleared)' : (index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
+            row.style.color = 'var(--text-primary)';
             row.style.opacity = isCleared ? '0.6' : '1';
             
             // Checkbox cell
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
-            checkboxTd.style.borderBottom = '1px solid #ddd';
+            checkboxTd.style.borderBottom = '1px solid var(--border)';
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.className = 'reset-checkbox';
@@ -592,9 +598,9 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
                 const td = document.createElement('td');
                 td.textContent = cellText;
                 td.style.padding = '12px';
-                td.style.borderBottom = '1px solid #ddd';
+                td.style.borderBottom = '1px solid var(--border)';
                 if (isCleared) {
-                    td.style.color = '#999';
+                    td.style.color = 'var(--text-secondary)';
                 }
                 row.appendChild(td);
             });
@@ -706,13 +712,15 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     actionBar.style.justifyContent = 'space-between';
     actionBar.style.alignItems = 'center';
     actionBar.style.padding = '10px';
-    actionBar.style.backgroundColor = '#f8f9fa';
+    actionBar.style.backgroundColor = 'var(--bg-surface-2)';
     actionBar.style.borderRadius = '8px';
-    actionBar.style.border = '1px solid #e0e0e0';
+    actionBar.style.border = '1px solid var(--border)';
     
     const filterDropdown = document.createElement('select');
     filterDropdown.style.padding = '8px';
-    filterDropdown.style.border = '1px solid #ccc';
+    filterDropdown.style.border = '1px solid var(--border)';
+    filterDropdown.style.backgroundColor = 'var(--bg-surface)';
+    filterDropdown.style.color = 'var(--text-primary)';
     filterDropdown.style.borderRadius = '4px';
     filterDropdown.style.width = '200px';
     filterDropdown.style.marginBottom = '0';
@@ -735,7 +743,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
     statsSpan.style.fontSize = '14px';
     statsSpan.style.fontWeight = 'bold';
-    statsSpan.style.color = '#666';
+    statsSpan.style.color = 'var(--text-secondary)';
     
     // Mark as cleared button (admin-only)
     const errorMarkRole = window.StationAuth?.getUserInfo?.()?.role;
@@ -796,13 +804,14 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         
         displayErrors.forEach((log, index) => {
             const row = document.createElement('tr');
-            row.style.backgroundColor = log.cleared ? '#f5f5f5' : (index % 2 === 0 ? '#f9f9f9' : 'white');
+            row.style.backgroundColor = log.cleared ? 'var(--bg-row-cleared)' : (index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
+            row.style.color = 'var(--text-primary)';
             row.style.opacity = log.cleared ? '0.6' : '1';
             
             const checkboxTd = document.createElement('td');
             checkboxTd.style.padding = '12px';
             checkboxTd.style.textAlign = 'center';
-            checkboxTd.style.borderBottom = '1px solid #ddd';
+            checkboxTd.style.borderBottom = '1px solid var(--border)';
             const checkbox = document.createElement('input');
             checkbox.type = 'checkbox';
             checkbox.className = 'error-checkbox';
@@ -840,7 +849,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
                 const td = document.createElement('td');
                 td.textContent = cellText;
                 td.style.padding = '12px';
-                td.style.borderBottom = '1px solid #ddd';
+                td.style.borderBottom = '1px solid var(--border)';
                 if (cellIndex === cells.length - 2) {
                     td.style.maxWidth = '300px';
                     td.style.overflow = 'auto';
@@ -848,7 +857,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
                     td.style.whiteSpace = 'normal';
                 }
                 if (log.cleared) {
-                    td.style.color = '#999';
+                    td.style.color = 'var(--text-secondary)';
                 }
                 row.appendChild(td);
             });
@@ -998,7 +1007,7 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         const labelSpan = document.createElement('span');
         labelSpan.textContent = item.label;
         labelSpan.style.fontWeight = '500';
-        labelSpan.style.color = '#666';
+        labelSpan.style.color = 'var(--text-secondary)';
         
         const valueSpan = document.createElement('span');
         

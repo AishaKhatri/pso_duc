@@ -45,6 +45,7 @@ function createHeaderSection(fuelType, nozzleId, layoutType) {
     header.style.display = 'flex';
     header.style.alignItems = 'center';
     header.style.borderBottom = `4px solid ${colorConfig.accent}`;
+    // Keep header readable in both themes — fuel header colors are brand identifiers
 
     // Left: Nozzle icon + number
     const nozzleLeft = document.createElement('div');
@@ -87,7 +88,7 @@ function createStatusSection(data, layoutType) {
         keypadContainer.style.gap = '8px';
 
         const keypadBox = document.createElement('div');
-        keypadBox.style.border = '1px solid #000000';
+        keypadBox.style.border = '1px solid var(--text-primary)';
         keypadBox.style.borderRadius = '4px';
         keypadBox.style.padding = '2px';
         keypadBox.style.display = 'flex';
@@ -109,8 +110,8 @@ function createStatusSection(data, layoutType) {
 
     // Status (right-aligned)
     const status = document.createElement('div');
-    status.style.background = data.status === 'Active' ? '#e1f3e3' : '#f9d6d5';
-    status.style.color = data.status === 'Active' ? '#014421' : '#a00000';
+    status.style.background = data.status === 'Active' ? 'var(--badge-online-bg)' : 'var(--badge-offline-bg)';
+    status.style.color = data.status === 'Active' ? 'var(--badge-online-text)' : 'var(--badge-offline-text)';
     status.style.fontWeight = '500';
     status.style.padding = '4px 10px';
     status.style.borderRadius = '20px';
@@ -139,16 +140,16 @@ function createMetricsSection(data) {
         
         const labelDiv = document.createElement('div');
         labelDiv.style.fontSize = '14px';
-        labelDiv.style.color = '#333';
+        labelDiv.style.color = 'var(--text-primary)';
         labelDiv.style.fontWeight = '500';
         labelDiv.textContent = label;
-        
+
         const valueDiv = document.createElement('div');
         valueDiv.style.fontSize = '16px';
         valueDiv.style.fontWeight = '600';
-        valueDiv.style.color = '#014421';
-        valueDiv.style.background = 'linear-gradient(to bottom, #f8f8f8, rgb(241, 241, 241))';
-        valueDiv.style.border = '1px solid #ccc';
+        valueDiv.style.color = 'var(--metric-value-text)';
+        valueDiv.style.background = 'var(--metric-value-bg)';
+        valueDiv.style.border = '1px solid var(--border)';
         valueDiv.style.borderRadius = '2px';
         valueDiv.style.padding = '3px 6px';
         valueDiv.style.minWidth = '75px';
@@ -175,21 +176,22 @@ function createTotalsFooter(data) {
     
     const footer = document.createElement('div');
     footer.style.padding = '8px 20px 8px';
-    footer.style.borderTop = '1px solid #999999';
-    footer.style.background = 'rgb(248, 248, 248)';
+    footer.style.borderTop = '1px solid var(--border)';
+    footer.style.background = 'var(--bg-surface-2)';
+    footer.style.color = 'var(--text-primary)';
     footer.style.fontSize = '14px';
-    
+
     const totalQuantityDiv = document.createElement('div');
     totalQuantityDiv.style.marginBottom = '0px';
     totalQuantityDiv.innerHTML = `
         <div>Total Quantity:</div>
-        <div style="text-align: right; font-weight: bold; color: #014421;">${safeNumber(data.totalQuantity).toFixed(2)} Ltr</div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">${safeNumber(data.totalQuantity).toFixed(2)} Ltr</div>
     `;
-    
+
     const salesTodayDiv = document.createElement('div');
     salesTodayDiv.innerHTML = `
         <div>Sales Today:</div>
-        <div style="text-align: right; font-weight: bold; color: #014421;">Rs. <span style="font-size: 28px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 28px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
     `;
     
     footer.appendChild(totalQuantityDiv);
@@ -203,8 +205,8 @@ function createLastUpdatedSection(lastUpdated) {
     const updated = document.createElement('div');
     updated.style.textAlign = 'center';
     updated.style.fontSize = '11px';
-    updated.style.borderTop = '1px solid #999999';
-    updated.style.color = '#666';
+    updated.style.borderTop = '1px solid var(--border)';
+    updated.style.color = 'var(--text-secondary)';
     updated.style.padding = '4px 0 4px';
     updated.textContent = `Last Updated: ${lastUpdated ?? '-'}`;
     return updated;
@@ -216,7 +218,7 @@ function createTransactionLogLink(data, layoutType) {
 
     const view_trans_log = createLink();
     view_trans_log.style.fontSize = config.ViewTransactionsFontSize;
-    view_trans_log.style.borderTop = '1px solid #999999';
+    view_trans_log.style.borderTop = '1px solid var(--border)';
     view_trans_log.style.padding = '4px 0 4px';
     view_trans_log.textContent = `View Transactions ↗`;
     
@@ -258,7 +260,7 @@ function createDisabledOverlay() {
     overlay.style.left = '0';
     overlay.style.width = '100%';
     overlay.style.height = '100%';
-    overlay.style.background = 'rgba(255, 255, 255, 0.7)';
+    overlay.style.background = 'var(--disabled-overlay)';
     overlay.style.display = 'flex';
     overlay.style.alignItems = 'center';
     overlay.style.justifyContent = 'center';
@@ -295,14 +297,14 @@ window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYO
         card.style.minWidth = config.minWidth;
         card.style.maxWidth = config.maxWidth;
         card.style.borderRadius = '10px';
-        card.style.background = '#ffffff';
+        card.style.background = 'var(--bg-surface)';
         card.style.fontFamily = 'Segoe UI, sans-serif';
-        card.style.color = '#333';
-        card.style.boxShadow = '0 4px 12px rgba(0, 0, 0, 0.06)';
+        card.style.color = 'var(--text-primary)';
+        card.style.boxShadow = 'var(--shadow-card)';
         card.style.overflow = 'hidden';
         card.style.flexShrink = '0';
         card.style.padding = '0px';
-        card.style.border = data.locked ? '3px solid #D32F2F' : '0.5px solid #dddddd';
+        card.style.border = data.locked ? '3px solid var(--danger)' : '0.5px solid var(--border)';
         
         // Header
         const header = createHeaderSection(data.fuelType, data.nozzleId, layoutType);

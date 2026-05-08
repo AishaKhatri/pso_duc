@@ -48,7 +48,7 @@ async function renderUsersTable(users) {
 
         users.forEach(user => {
             const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #ddd';
+            tr.style.borderBottom = '1px solid var(--border)';
             
             const idTd = document.createElement('td');
             idTd.style.padding = '12px';
@@ -158,7 +158,9 @@ function showUserFormPopup(user = null) {
     usernameInput.value = user ? user.username : '';
     usernameInput.required = true;
     usernameInput.style.padding = '8px';
-    usernameInput.style.border = '1px solid #ccc';
+    usernameInput.style.border = '1px solid var(--border)';
+    usernameInput.style.backgroundColor = 'var(--bg-surface)';
+    usernameInput.style.color = 'var(--text-primary)';
     usernameInput.style.borderRadius = '4px';
     
     usernameContainer.appendChild(usernameLabel);
@@ -181,7 +183,9 @@ function showUserFormPopup(user = null) {
         passwordInput.type = 'password';
         passwordInput.required = true;
         passwordInput.style.padding = '8px';
-        passwordInput.style.border = '1px solid #ccc';
+        passwordInput.style.border = '1px solid var(--border)';
+        passwordInput.style.backgroundColor = 'var(--bg-surface)';
+        passwordInput.style.color = 'var(--text-primary)';
         passwordInput.style.borderRadius = '4px';
         
         passwordContainer.appendChild(passwordLabel);
@@ -238,7 +242,9 @@ function showUserFormPopup(user = null) {
     customerCodeSelect.name = 'customer_code';
     customerCodeSelect.style.width = '100%';
     customerCodeSelect.style.padding = '8px';
-    customerCodeSelect.style.border = '1px solid #ccc';
+    customerCodeSelect.style.border = '1px solid var(--border)';
+    customerCodeSelect.style.backgroundColor = 'var(--bg-surface)';
+    customerCodeSelect.style.color = 'var(--text-primary)';
     customerCodeSelect.style.borderRadius = '4px';
     
     const defaultOption = document.createElement('option');
@@ -274,11 +280,11 @@ function showUserFormPopup(user = null) {
         if (roleSelect.value === 'operator') {
             customerCodeSelect.disabled = false;
             customerCodeSelect.style.opacity = '1';
-            customerCodeSelect.style.backgroundColor = '#fff';
+            customerCodeSelect.style.backgroundColor = 'var(--bg-surface)';
         } else {
             customerCodeSelect.disabled = true;
             customerCodeSelect.style.opacity = '0.6';
-            customerCodeSelect.style.backgroundColor = '#f5f5f5';
+            customerCodeSelect.style.backgroundColor = 'var(--bg-surface-2)';
         }
     };
     

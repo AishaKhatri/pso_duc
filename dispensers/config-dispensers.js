@@ -329,7 +329,9 @@ async function renderConfigDispensers() {
         addressInput.name = 'address';
         addressInput.required = true;
         addressInput.style.padding = '8px';
-        addressInput.style.border = '1px solid #ddd';
+        addressInput.style.border = '1px solid var(--border)';
+        addressInput.style.backgroundColor = 'var(--bg-surface)';
+        addressInput.style.color = 'var(--text-primary)';
         addressInput.style.borderRadius = '4px';
         addressInput.style.width = '90%';
         
@@ -352,7 +354,9 @@ async function renderConfigDispensers() {
         DispenserBrandSelect.name = 'DispenserBrand';
         DispenserBrandSelect.required = true;
         DispenserBrandSelect.style.padding = '8px';
-        DispenserBrandSelect.style.border = '1px solid #ddd';
+        DispenserBrandSelect.style.border = '1px solid var(--border)';
+        DispenserBrandSelect.style.backgroundColor = 'var(--bg-surface)';
+        DispenserBrandSelect.style.color = 'var(--text-primary)';
         DispenserBrandSelect.style.borderRadius = '4px';
         DispenserBrandSelect.style.width = '100%';
         DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Dispenser Brand</option>' + 
@@ -371,7 +375,7 @@ async function renderConfigDispensers() {
         const nozzlesTitle = document.createElement('h4');
         nozzlesTitle.textContent = 'Nozzles';
         nozzlesTitle.style.margin = '0';
-        nozzlesTitle.style.color = '#004D64';
+        nozzlesTitle.style.color = 'var(--text-heading)';
         nozzlesContainer.appendChild(nozzlesTitle);
         
         const nozzlesGrid = document.createElement('div');
@@ -474,7 +478,7 @@ async function renderConfigDispensers() {
             const td = document.createElement('td');
             td.colSpan = 6;
             td.style.textAlign = 'center';
-            td.style.borderBottom = '1px solid #ddd';
+            td.style.borderBottom = '1px solid var(--border)';
             td.style.padding = '10px';
             td.textContent = 'No dispensers configured';
             tr.appendChild(td);
@@ -484,7 +488,7 @@ async function renderConfigDispensers() {
 
         displayDispensers.forEach((dispenser, index) => {
             const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #ddd';
+            tr.style.borderBottom = '1px solid var(--border)';
             
             const customerCodeTd = document.createElement('td');
             customerCodeTd.style.padding = '12px';
@@ -697,7 +701,7 @@ async function renderConfigDispensers() {
         checkboxLabel.htmlFor = 'deleteHistory';
         checkboxLabel.textContent = 'Delete all historical records (transactions, sales history)';
         checkboxLabel.style.fontSize = '14px';
-        checkboxLabel.style.color = '#666';
+        checkboxLabel.style.color = 'var(--text-secondary)';
         
         checkboxContainer.appendChild(checkbox);
         checkboxContainer.appendChild(checkboxLabel);
@@ -709,10 +713,10 @@ async function renderConfigDispensers() {
         warningContainer.style.display = 'none';
         warningContainer.style.margin = '10px 0';
         warningContainer.style.padding = '10px';
-        warningContainer.style.backgroundColor = '#fff3cd';
-        warningContainer.style.border = '1px solid #ffeaa7';
+        warningContainer.style.backgroundColor = 'var(--badge-reset-bg)';
+        warningContainer.style.border = '1px solid var(--badge-reset-text)';
         warningContainer.style.borderRadius = '4px';
-        warningContainer.style.color = '#856404';
+        warningContainer.style.color = 'var(--badge-reset-text)';
         warningContainer.style.fontSize = '14px';
         
         const warningText = document.createElement('p');

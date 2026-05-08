@@ -1,8 +1,131 @@
+/* ===== Theme variables ===== */
+:root {
+    --bg-page: #f5f5f5;
+    --bg-surface: #ffffff;
+    --bg-surface-2: #ffffff;
+    --bg-topbar: #004D64;
+    --bg-sidebar: #ffffff;
+    --bg-sidebar-hover: #C0DAF0;
+    --bg-overlay: rgba(0, 0, 0, 0.5);
+    --bg-modal-overlay: rgba(0, 0, 0, 0.4);
+    --text-primary: #333;
+    --text-secondary: #666;
+    --text-on-accent: #ffffff;
+    --text-heading: #004D64;
+    --border: #ddd;
+    --border-soft: #eee;
+    --accent: #004D64;
+    --accent-hover: #00324C;
+    --danger: #d32f2f;
+    --shadow-card: 0 2px 6px rgba(0,0,0,0.05);
+    --shadow-modal: 0 4px 20px rgba(0,0,0,0.3);
+    --shadow-btn: 0 2px 2px rgba(0,0,0,0.3);
+    --shadow-primary: 0 4px 4px rgba(0,0,0,0.2);
+
+    /* Dashboard / map status colors */
+    --status-online: #2e7d32;
+    --status-partial: #f9a825;
+    --status-offline: #d32f2f;
+    --status-no-duc: #9e9e9e;
+
+    /* Filter chips */
+    --chip-bg: #f0f4f7;
+    --chip-bg-active: #004D64;
+    --chip-text: #004D64;
+    --chip-text-active: #ffffff;
+    --chip-border: #cfd8dc;
+
+    /* Tables */
+    --bg-table-head: #C0DAF0;
+
+    /* Badges (connectivity / errors / resets) */
+    --badge-online-bg: #e1f3e3;
+    --badge-online-text: #014421;
+    --badge-offline-bg: #f9d6d5;
+    --badge-offline-text: #a00000;
+    --badge-error-bg: #ffebee;
+    --badge-error-text: #d32f2f;
+    --badge-reset-bg: #fff3e0;
+    --badge-reset-text: #f57c00;
+
+    /* Nozzle metric */
+    --metric-value-bg: linear-gradient(to bottom, #f8f8f8, rgb(241, 241, 241));
+    --metric-value-text: #014421;
+
+    /* Disabled / locked overlay */
+    --disabled-overlay: rgba(255, 255, 255, 0.7);
+
+    /* Cleared/inactive row */
+    --bg-row-cleared: #ececec;
+
+    /* Hourly sales bars */
+    --chart-bar: #26a69a;
+    --chart-bar-hover: #00897b;
+    --chart-bar-empty: #e0e0e0;
+}
+
+[data-theme="dark"] {
+    --bg-page: #0f1419;
+    --bg-surface: #1a2128;
+    --bg-surface-2: #232c34;
+    --bg-topbar: #0d1418;
+    --bg-sidebar: #161c22;
+    --bg-sidebar-hover: #243744;
+    --bg-overlay: rgba(0, 0, 0, 0.7);
+    --bg-modal-overlay: rgba(0, 0, 0, 0.6);
+    --text-primary: #e6edf3;
+    --text-secondary: #9fb1bf;
+    --text-on-accent: #ffffff;
+    --text-heading: #4fc3f7;
+    --border: #2a3340;
+    --border-soft: #232c34;
+    --accent: #1f6f8b;
+    --accent-hover: #2c8eaf;
+    --danger: #ef5350;
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.5);
+    --shadow-modal: 0 4px 24px rgba(0,0,0,0.7);
+    --shadow-btn: 0 2px 2px rgba(0,0,0,0.5);
+    --shadow-primary: 0 4px 6px rgba(0,0,0,0.6);
+
+    --status-online: #66bb6a;
+    --status-partial: #ffca28;
+    --status-offline: #ef5350;
+    --status-no-duc: #757a83;
+
+    --chip-bg: #243744;
+    --chip-bg-active: #4fc3f7;
+    --chip-text: #cfe9f5;
+    --chip-text-active: #0d1418;
+    --chip-border: #2a3340;
+
+    --bg-table-head: #1f2a35;
+
+    --badge-online-bg: rgba(102, 187, 106, 0.18);
+    --badge-online-text: #81c784;
+    --badge-offline-bg: rgba(239, 83, 80, 0.18);
+    --badge-offline-text: #ef9a9a;
+    --badge-error-bg: rgba(239, 83, 80, 0.16);
+    --badge-error-text: #ef9a9a;
+    --badge-reset-bg: rgba(255, 167, 38, 0.18);
+    --badge-reset-text: #ffb74d;
+
+    --metric-value-bg: linear-gradient(to bottom, #20272f, #1a2128);
+    --metric-value-text: #81c784;
+
+    --disabled-overlay: rgba(0, 0, 0, 0.55);
+
+    --bg-row-cleared: #1c232b;
+
+    --chart-bar: #4dd0e1;
+    --chart-bar-hover: #80deea;
+    --chart-bar-empty: #2a3340;
+}
+
 body {
     margin: 0;
     font-family: 'Segoe UI', 'Roboto', sans-serif;
-    background-color: #f5f5f5;
-    color: #333;
+    background-color: var(--bg-page);
+    color: var(--text-primary);
 }
 
 .topbar {
@@ -11,8 +134,8 @@ body {
     left: 0;
     right: 0;
     height: 60px;
-    background-color: #004D64;
-    color: white;
+    background-color: var(--bg-topbar);
+    color: var(--text-on-accent);
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -22,8 +145,8 @@ body {
 
 .sidebar {
     width: 220px;
-    background-color: #ffffff;
-    border-right: 1px solid #ddd;
+    background-color: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
     position: fixed;
     height: 100%;
     overflow-y: auto;
@@ -41,13 +164,17 @@ body {
     justify-content: flex-end;
     padding: 10px;
     cursor: pointer;
-    border-bottom: 1px solid #ddd;
+    border-bottom: 1px solid var(--border);
     margin-bottom: 10px;
 }
 
 .toggle-icon {
     width: 20px;
-    /* transition: transform 0.3s ease; */
+}
+
+[data-theme="dark"] .toggle-icon,
+[data-theme="dark"] .sidebar-icon {
+    filter: invert(0.85) hue-rotate(180deg);
 }
 
 .sidebar-item {
@@ -57,14 +184,14 @@ body {
     align-items: center;
     gap: 10px;
     font-size: 16px;
-    color: #333;
+    color: var(--text-primary);
     text-decoration: none !important;
     white-space: nowrap;
     overflow: hidden;
 }
 
 .sidebar-item:hover, .sidebar-item.active {
-    background-color: #C0DAF0;
+    background-color: var(--bg-sidebar-hover);
 }
 
 .sidebar-icon {
@@ -108,19 +235,19 @@ body {
 
 h1 {
     font-size: 28px;
-    color: #004D64;
+    color: var(--text-heading);
     margin: 0;
 }
 
 h2 {
     font-size: 20px;
-    color: #004D64;
+    color: var(--text-heading);
     margin: 0;
 }
 
 h3 {
     font-size: 16px;
-    color: #666;
+    color: var(--text-secondary);
     margin-bottom: 10px;
 }
 
@@ -130,19 +257,20 @@ h3 {
     left: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.5);
+    background-color: var(--bg-overlay);
     display: flex;
     justify-content: center;
     align-items: center;
-    z-index: 1000; 
+    z-index: 1000;
 }
 
 .popup-modal {
-    background-color: white;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
     border-radius: 10px;
     padding: 20px;
     overflow-y: auto;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-modal);
     position: absolute;
 }
 
@@ -151,18 +279,17 @@ h3 {
     border: none;
     font-size: 24px;
     cursor: pointer;
-    color: #666;
+    color: var(--text-secondary);
 }
 
 .action-button {
     padding: 10px 20px;
-    /* background-color: #004D64; */
-    color: white;
+    color: var(--text-on-accent);
     border: none;
     border-radius: 5px;
     cursor: pointer;
     font-size: 14px;
-    box-shadow: 0 2px 2px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--shadow-btn);
     transition: background-color 0.2s ease;
 }
 
@@ -174,9 +301,10 @@ h3 {
 }
 
 .card {
-    background-color: #fff;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
     border-radius: 10px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    box-shadow: var(--shadow-card);
     padding: 20px;
 }
 
@@ -189,8 +317,8 @@ h3 {
 }
 
 .delete-btn {
-    background-color: #d32f2f;
-    color: white;
+    background-color: var(--danger);
+    color: var(--text-on-accent);
 }
 
 /* Modal Styles */
@@ -202,11 +330,12 @@ h3 {
     top: 0;
     width: 100%;
     height: 100%;
-    background-color: rgba(0,0,0,0.4);
+    background-color: var(--bg-modal-overlay);
 }
 
 .modal-content {
-    background-color: #fff;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
     margin: 5% auto;
     padding: 20px;
     border-radius: 8px;
@@ -229,7 +358,7 @@ h3 {
     font-size: 24px;
     font-weight: bold;
     line-height: 1;
-    color: #333;
+    color: var(--text-primary);
     opacity: 0.5;
 }
 
@@ -239,7 +368,7 @@ h3 {
 
 /* Error Messages */
 .error-message {
-    color: #d32f2f;
+    color: var(--danger);
     font-size: 12px;
     margin-top: 5px;
     text-align: center;
@@ -253,25 +382,23 @@ h3 {
 /* Common Styles */
 .primary-btn {
     padding: 14px 22px;
-    background-color: #004D64;
-    color: white;
+    background-color: var(--accent);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 8px;
     cursor: pointer;
     font-size: 18px;
-    /* font-weight: 500; */
-    /* width: 120px; */
-    box-shadow: 0 4px 4px rgba(0,0,0,0.2);
+    box-shadow: var(--shadow-primary);
 }
 
 .primary-btn:hover {
-    background-color: #00324C;
+    background-color: var(--accent-hover);
 }
 
 .save-btn {
     padding: 8px 12px;
-    background-color: #004D64;
-    color: white;
+    background-color: var(--accent);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 5px;
     cursor: pointer;
@@ -279,19 +406,19 @@ h3 {
 }
 
 .save-btn:hover {
-    background-color: #00324C;
+    background-color: var(--accent-hover);
 }
 
 .loading {
     text-align: center;
     padding: 20px;
-    color: #666;
+    color: var(--text-secondary);
 }
 
 .retry-btn {
     padding: 8px 16px;
-    background-color: #004D64;
-    color: white;
+    background-color: var(--accent);
+    color: var(--text-on-accent);
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -299,7 +426,7 @@ h3 {
 }
 
 .retry-btn:hover {
-    background-color: #00324C;
+    background-color: var(--accent-hover);
 }
 
 .user-controls {
@@ -315,4 +442,403 @@ h3 {
         opacity: 1;
         transform: translateY(0);
     }
+}
+
+/* ===== Generic input/table styling so existing pages pick up the dark theme ===== */
+input, select, textarea {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+}
+
+[data-theme="dark"] input,
+[data-theme="dark"] select,
+[data-theme="dark"] textarea {
+    background-color: var(--bg-surface-2);
+    color: var(--text-primary);
+    border-color: var(--border);
+}
+
+table {
+    color: var(--text-primary);
+}
+
+th {
+    background-color: var(--bg-surface-2);
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border);
+}
+
+td {
+    border-bottom: 1px solid var(--border-soft);
+}
+
+/* Theme toggle button (topbar) */
+.theme-toggle-btn {
+    background: rgba(255,255,255,0.12);
+    border: 1px solid rgba(255,255,255,0.25);
+    color: #fff;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 18px;
+    transition: background-color 0.2s ease, transform 0.2s ease;
+    user-select: none;
+}
+.theme-toggle-btn:hover {
+    background: rgba(255,255,255,0.22);
+    transform: scale(1.05);
+}
+
+/* ===== Dashboard ===== */
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(360px, 2fr);
+    gap: 15px;
+    margin-bottom: 20px;
+}
+@media (max-width: 900px) {
+    .dashboard-stats {
+        grid-template-columns: 1fr 1fr;
+    }
+    .stat-card.chart-card {
+        grid-column: span 2;
+    }
+}
+.stat-card {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow-card);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.stat-card .stat-label {
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+.stat-card .stat-value {
+    font-size: 30px;
+    font-weight: 700;
+    color: var(--text-heading);
+}
+.stat-card.online .stat-value { color: var(--status-online); }
+.stat-card.partial .stat-value { color: var(--status-partial); }
+.stat-card.offline .stat-value { color: var(--status-offline); }
+.stat-card.no-duc .stat-value { color: var(--status-no-duc); }
+
+.stat-card.chart-card {
+    min-height: 130px;
+    overflow: hidden;
+}
+.stat-card.chart-card .chart-container {
+    display: flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 70px;
+    margin-top: 6px;
+    max-width: 360px;
+}
+.chart-bar {
+    flex: 0 0 9px;
+    background: var(--chart-bar-empty);
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    position: relative;
+    cursor: pointer;
+    transition: background-color 0.15s ease, transform 0.15s ease;
+}
+.chart-bar:hover { transform: scaleY(1.05); transform-origin: bottom; }
+.chart-bar.has-data {
+    background: var(--chart-bar);
+}
+.chart-bar.has-data:hover {
+    background: var(--chart-bar-hover);
+}
+.chart-axis-row {
+    display: flex;
+    justify-content: space-between;
+    font-size: 10px;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    max-width: 360px;
+}
+.chart-tooltip {
+    position: absolute;
+    bottom: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-topbar);
+    color: #fff;
+    padding: 6px 9px;
+    border-radius: 4px;
+    font-size: 11px;
+    white-space: nowrap;
+    pointer-events: none;
+    z-index: 10;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+}
+.chart-tooltip::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: var(--bg-topbar);
+}
+
+/* Map + side panel layout */
+.dashboard-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 16px;
+    margin-bottom: 20px;
+    align-items: start;
+}
+@media (max-width: 1100px) {
+    .dashboard-main {
+        grid-template-columns: 1fr;
+    }
+}
+.dashboard-side {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+}
+.side-panel {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 14px 16px;
+}
+.side-panel h4 {
+    margin: 0 0 10px 0;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+.side-stat-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 6px 0;
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 13px;
+}
+.side-stat-row:last-child { border-bottom: none; }
+.side-stat-row .label { color: var(--text-secondary); }
+.side-stat-row .value {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.side-stat-row .value.online  { color: var(--status-online); }
+.side-stat-row .value.partial { color: var(--status-partial); }
+.side-stat-row .value.offline { color: var(--status-offline); }
+.side-stat-row .value.no-duc  { color: var(--status-no-duc); }
+
+/* Donut chart */
+.donut-wrapper {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+}
+.donut-svg {
+    width: 160px;
+    height: 160px;
+    flex-shrink: 0;
+}
+.donut-center {
+    text-anchor: middle;
+    dominant-baseline: middle;
+}
+.donut-center .donut-amount {
+    font-size: 14px;
+    fill: var(--text-primary);
+    font-weight: 700;
+}
+.donut-center .donut-label {
+    font-size: 10px;
+    fill: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+.donut-legend {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    width: 100%;
+}
+.donut-legend-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+.donut-legend-row .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.donut-legend-row .name { flex: 1; color: var(--text-primary); }
+.donut-legend-row .amt {
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+}
+.donut-empty {
+    color: var(--text-secondary);
+    font-size: 12px;
+    text-align: center;
+    padding: 30px 0;
+}
+
+/* Filter bar above map */
+.filter-bar {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.filter-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+}
+.filter-row .filter-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    margin-right: 6px;
+}
+.filter-chip {
+    background: var(--chip-bg);
+    color: var(--chip-text);
+    border: 1px solid var(--chip-border);
+    border-radius: 16px;
+    padding: 5px 12px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
+    user-select: none;
+}
+.filter-chip:hover { transform: translateY(-1px); }
+.filter-chip.active {
+    background: var(--chip-bg-active);
+    color: var(--chip-text-active);
+    border-color: var(--chip-bg-active);
+}
+.filter-chip .chip-count {
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.75;
+}
+.filter-chip.status-online::before,
+.filter-chip.status-partial::before,
+.filter-chip.status-offline::before,
+.filter-chip.status-no-duc::before {
+    content: '';
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+}
+.filter-chip.status-online::before { background: var(--status-online); }
+.filter-chip.status-partial::before { background: var(--status-partial); }
+.filter-chip.status-offline::before { background: var(--status-offline); }
+.filter-chip.status-no-duc::before { background: var(--status-no-duc); }
+
+/* Map */
+.map-wrapper {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 12px;
+    margin-bottom: 0;
+}
+#station-map {
+    height: 560px;
+    width: 100%;
+    border-radius: 6px;
+}
+.map-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 10px 4px 4px;
+    font-size: 13px;
+    color: var(--text-primary);
+}
+.legend-dot {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-right: 6px;
+    vertical-align: middle;
+    border: 2px solid rgba(0,0,0,0.15);
+}
+
+/* Dark-mode tweak: invert the map tiles a touch so the markers stay legible */
+[data-theme="dark"] #station-map .leaflet-tile-pane {
+    filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
+}
+
+/* Leaflet popup looks native to the theme */
+[data-theme="dark"] .leaflet-popup-content-wrapper,
+[data-theme="dark"] .leaflet-popup-tip {
+    background: var(--bg-surface);
+    color: var(--text-primary);
+}
+.station-popup .popup-title {
+    font-weight: 600;
+    font-size: 14px;
+    color: var(--text-heading);
+    margin-bottom: 4px;
+}
+.station-popup .popup-row {
+    font-size: 12px;
+    color: var(--text-primary);
+    margin: 2px 0;
+}
+.station-popup .popup-link {
+    display: inline-block;
+    margin-top: 8px;
+    background: var(--accent);
+    color: var(--text-on-accent);
+    padding: 6px 10px;
+    border-radius: 4px;
+    text-decoration: none;
+    font-size: 12px;
+}
+.station-popup .popup-link.disabled {
+    background: var(--text-secondary);
+    cursor: not-allowed;
+    pointer-events: none;
 }

@@ -27,6 +27,24 @@ function renderTopbar() {
     userContainer.style.alignItems = 'center';
     userContainer.style.gap = '10px';
     userContainer.style.position = 'relative';
+
+    // Theme toggle (sun / moon)
+    const themeBtn = document.createElement('button');
+    themeBtn.className = 'theme-toggle-btn';
+    themeBtn.type = 'button';
+    const setThemeIcon = () => {
+        const isDark = window.AppTheme && window.AppTheme.get() === 'dark';
+        themeBtn.textContent = isDark ? '☀' : '☽';
+        themeBtn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+        themeBtn.setAttribute('aria-label', themeBtn.title);
+    };
+    setThemeIcon();
+    themeBtn.addEventListener('click', () => {
+        if (window.AppTheme) window.AppTheme.toggle();
+        setThemeIcon();
+    });
+    window.addEventListener('themechange', setThemeIcon);
+    userContainer.appendChild(themeBtn);
     
     // User initial circle
     const userCircle = document.createElement('div');

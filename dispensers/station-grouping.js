@@ -51,16 +51,17 @@ async function createFilterContainer(stations, onFilterChange) {
     filterContainer.style.gap = '15px';
     filterContainer.style.marginBottom = '0px';
     filterContainer.style.padding = '10px 15px';
-    filterContainer.style.backgroundColor = '#f8f9fa';
+    filterContainer.style.backgroundColor = 'var(--bg-surface-2)';
+    filterContainer.style.color = 'var(--text-primary)';
     filterContainer.style.borderRadius = '8px';
-    filterContainer.style.border = '1px solid #e0e0e0';
+    filterContainer.style.border = '1px solid var(--border)';
     filterContainer.style.width = '100%';
     
     // City Filter
     const cityLabel = document.createElement('label');
     cityLabel.textContent = 'City:';
     cityLabel.style.fontWeight = 'bold';
-    cityLabel.style.color = '#333';
+    cityLabel.style.color = 'var(--text-primary)';
     cityLabel.style.fontSize = '14px';
     
     const cityDropdown = createDropdown('All Cities');
@@ -85,7 +86,7 @@ async function createFilterContainer(stations, onFilterChange) {
     const stationLabel = document.createElement('label');
     stationLabel.textContent = 'Station:';
     stationLabel.style.fontWeight = 'bold';
-    stationLabel.style.color = '#333';
+    stationLabel.style.color = 'var(--text-primary)';
     stationLabel.style.fontSize = '14px';
     
     const stationDropdown = createDropdown('All Stations');
@@ -177,10 +178,11 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationSection.setAttribute('data-station-code', stationCode);
     stationSection.setAttribute('data-city', stationInfo.city || '');
     stationSection.style.marginBottom = '5px';
-    stationSection.style.backgroundColor = '#fff';
+    stationSection.style.backgroundColor = 'var(--bg-surface)';
+    stationSection.style.color = 'var(--text-primary)';
     stationSection.style.borderRadius = '10px';
     stationSection.style.padding = '15px';
-    stationSection.style.border = '1px solid #ddd';
+    stationSection.style.border = '1px solid var(--border)';
     stationSection.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
     stationSection.style.overflowX = 'hidden';
     
@@ -197,7 +199,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     const stationTitle = document.createElement('h3');
     stationTitle.textContent = `Station: ${stationCode}`;
     stationTitle.style.margin = '0';
-    stationTitle.style.color = '#2E7D32';
+    stationTitle.style.color = 'var(--status-online)';
     stationTitle.style.fontSize = '22px';
     stationTitle.style.fontWeight = '650';
     
@@ -239,11 +241,11 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     // Right side - Dispenser count
     const dispenserCountSpan = document.createElement('span');
     dispenserCountSpan.textContent = `${dispenserCount} Dispenser${dispenserCount !== 1 ? 's' : ''}`;
-    dispenserCountSpan.style.backgroundColor = '#e9ecef';
+    dispenserCountSpan.style.backgroundColor = 'var(--bg-surface-2)';
     dispenserCountSpan.style.padding = '4px 12px';
     dispenserCountSpan.style.borderRadius = '20px';
     dispenserCountSpan.style.fontSize = '14px';
-    dispenserCountSpan.style.color = '#495057';
+    dispenserCountSpan.style.color = 'var(--text-secondary)';
     
     stationHeader.appendChild(stationTitle);
     stationHeader.appendChild(locationContainer);

@@ -155,22 +155,22 @@ function renderMainContainer(pageTitle) {
 function createHeader(){
     const header = document.createElement('div');
     header.style.paddingBottom = '5px';
-    header.style.borderBottom = '2px solid #004D64';
+    header.style.borderBottom = '2px solid var(--accent)';
     header.style.marginBottom = '15px';
     header.style.display = 'flex';
     header.style.justifyContent = 'space-between';
     header.style.alignItems = 'center';
-    
+
     return header;
 }
 
 // Common title creation function
 function createTitle() {
     const title = document.createElement('h2');
-    title.style.color = '#004D64';
+    title.style.color = 'var(--text-heading)';
     title.style.margin = '0';
     title.style.fontSize = '18px';
-    
+
     return title;
 }
 
@@ -226,42 +226,44 @@ function createMainButton() {
 function createNoDataMessage(message) {
     const noData = document.createElement('div');
     noData.textContent = message;
-    noData.style.color = '#666';
+    noData.style.color = 'var(--text-secondary)';
     noData.style.textAlign = 'center';
     noData.style.padding = '20px';
     return noData;
 }
 
-function createTable(columns) { 
+function createTable(columns) {
     const tableContainer = document.createElement('div');
-    tableContainer.style.backgroundColor = 'white';
+    tableContainer.className = 'app-table-container';
+    tableContainer.style.backgroundColor = 'var(--bg-surface)';
     tableContainer.style.borderRadius = '5px';
-    tableContainer.style.boxShadow = '0 2px 8px rgba(0,0,0,0.1)';
+    tableContainer.style.boxShadow = 'var(--shadow-card)';
     tableContainer.style.overflow = 'hidden';
 
     const table = document.createElement('table');
+    table.className = 'app-table';
     table.style.width = '100%';
     table.style.borderCollapse = 'collapse';
     table.style.fontFamily = 'Arial, sans-serif';
     table.style.fontSize = '14px';
+    table.style.color = 'var(--text-primary)';
 
     const thead = document.createElement('thead');
-    
+
     const headerRow = document.createElement('tr');
-    headerRow.style.backgroundColor = '#C0DAF0';
+    headerRow.style.backgroundColor = 'var(--bg-table-head)';
     columns.forEach(headerText => {
         const th = document.createElement('th');
         th.style.padding = '12px';
         th.style.textAlign = 'left';
-        th.style.borderBottom = '1px solid #ddd';
-        // th.style.borderRight = '1px solid #ddd';
+        th.style.borderBottom = '1px solid var(--border)';
         th.style.fontWeight = '600';
-        th.style.color = '#333';
+        th.style.color = 'var(--text-primary)';
         th.textContent = headerText;
         headerRow.appendChild(th);
     });
     headerRow.lastChild.style.borderRight = 'none';
-    
+
     thead.appendChild(headerRow);
     table.appendChild(thead);
 
@@ -277,10 +279,12 @@ function createTable(columns) {
 function createDropdown(placeholderText) {
     const dropdown = document.createElement('select');
     dropdown.style.padding = '8px';
-    dropdown.style.border = '1px solid #ccc';
+    dropdown.style.border = '1px solid var(--border)';
     dropdown.style.borderRadius = '4px';
     dropdown.style.width = '100%';
     dropdown.style.marginBottom = '20px';
+    dropdown.style.backgroundColor = 'var(--bg-surface)';
+    dropdown.style.color = 'var(--text-primary)';
 
     if (placeholderText != null) {
         const placeholderOption = createPlaceholder(placeholderText);
@@ -295,24 +299,24 @@ function createPlaceholder(text) {
     placeholder.textContent = text;
     placeholder.disabled = true;
     placeholder.selected = true;
-    placeholder.style.color = '#666';
-    
+    placeholder.style.color = 'var(--text-secondary)';
+
     return placeholder;
 }
 
 async function updateConnStatus(deviceId, connStatus, connected_at, deviceType = 'dispenser') {
     let deviceCard;
-    
+
     if (deviceType === 'dispenser') {
         deviceCard = document.querySelector(`div[data-address="${deviceId}"]`);
     }
-    
+
     if (deviceCard) {
         const connStatusText = deviceCard.querySelector('.conn-status');
         const uptime = deviceCard.querySelector('.uptime');
-        
-        connStatusText.style.background = connStatus === 1 ? '#e1f3e3' : '#f9d6d5';
-        connStatusText.style.color = connStatus === 1 ? '#014421' : '#a00000';
+
+        connStatusText.style.background = connStatus === 1 ? 'var(--badge-online-bg)' : 'var(--badge-offline-bg)';
+        connStatusText.style.color = connStatus === 1 ? 'var(--badge-online-text)' : 'var(--badge-offline-text)';
         connStatusText.style.fontWeight = '500';
         connStatusText.style.padding = '4px 10px';
         connStatusText.style.borderRadius = '20px';
@@ -335,11 +339,13 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
 
 async function createCard(address, customer_code) {
     const card = document.createElement('div');
+    card.classList.add('app-dispenser-card');
     Object.assign(card.style, {
-        backgroundColor: '#fff',
-        border: '1px solid #ddd',
+        backgroundColor: 'var(--bg-surface)',
+        color: 'var(--text-primary)',
+        border: '1px solid var(--border)',
         borderRadius: '10px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+        boxShadow: 'var(--shadow-card)',
         display: 'flex',
         flexDirection: 'column',
         minWidth: 'fit-content',
@@ -362,7 +368,7 @@ async function createCard(address, customer_code) {
     const statusText = createLink();
     statusText.className = 'conn-status';
     statusText.textContent = 'Connecting...';
-    statusText.style.color = '#666';
+    statusText.style.color = 'var(--text-secondary)';
     statusText.title = 'Click to view details';
     // Add click handler
     statusText.addEventListener('click', () => {
@@ -405,8 +411,8 @@ async function createCard(address, customer_code) {
         errorCountSpan.className = 'dispenser-error-count';
         errorCountSpan.style.fontSize = '13px';
         errorCountSpan.style.fontWeight = 'bold';
-        errorCountSpan.style.color = '#d32f2f';
-        errorCountSpan.style.backgroundColor = '#ffebee';
+        errorCountSpan.style.color = 'var(--badge-error-text)';
+        errorCountSpan.style.backgroundColor = 'var(--badge-error-bg)';
         errorCountSpan.style.padding = '2px 8px';
         errorCountSpan.style.borderRadius = '12px';
         errorCountSpan.style.display = 'none';
@@ -443,8 +449,8 @@ async function createCard(address, customer_code) {
         resetCountSpan.className = 'dispenser-reset-count';
         resetCountSpan.style.fontSize = '13px';
         resetCountSpan.style.fontWeight = 'bold';
-        resetCountSpan.style.color = '#f57c00';
-        resetCountSpan.style.backgroundColor = '#fff3e0';
+        resetCountSpan.style.color = 'var(--badge-reset-text)';
+        resetCountSpan.style.backgroundColor = 'var(--badge-reset-bg)';
         resetCountSpan.style.padding = '2px 8px';
         resetCountSpan.style.borderRadius = '12px';
         resetCountSpan.style.display = 'none';
@@ -477,7 +483,7 @@ async function createCard(address, customer_code) {
     const uptime = document.createElement('div');
     uptime.className = 'uptime';
     uptime.style.fontSize = '12px';
-    uptime.style.color = '#999';
+    uptime.style.color = 'var(--text-secondary)';
     uptime.style.textAlign = 'right';
 
     nextContainer.appendChild(leftContainer);
@@ -573,12 +579,13 @@ function renderPageHeader(pageTitleText) {
     headerContainer.style.display = 'flex';
     headerContainer.style.justifyContent = 'space-between';
     headerContainer.style.alignItems = 'center';
-    headerContainer.style.backgroundColor = '#fff';
+    headerContainer.style.backgroundColor = 'var(--bg-surface)';
+    headerContainer.style.color = 'var(--text-primary)';
     headerContainer.style.padding = '20px';
-    headerContainer.style.border = '1px solid #ddd';
+    headerContainer.style.border = '1px solid var(--border)';
     headerContainer.style.borderRadius = '10px';
     headerContainer.style.marginBottom = '20px';
-    headerContainer.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+    headerContainer.style.boxShadow = 'var(--shadow-card)';
 
     const pageTitle = document.createElement('h1');
     pageTitle.style.fontSize = '32px';

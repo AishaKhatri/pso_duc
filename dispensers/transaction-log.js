@@ -201,10 +201,11 @@ async function showTransactionLogPopup(nozzle_id) {
 
 function createDateFilterSection() {
     const section = document.createElement('div');
-    section.style.backgroundColor = 'white';
+    section.style.backgroundColor = 'var(--bg-surface)';
+    section.style.color = 'var(--text-primary)';
     section.style.padding = '15px';
     section.style.borderRadius = '8px';
-    section.style.border = '1px solid #ddd';
+    section.style.border = '1px solid var(--border)';
 
     const sectionHeader = createHeader();
     
@@ -231,13 +232,15 @@ function createDateFilterSection() {
     startLabel.textContent = 'Start Date';
     startLabel.style.fontSize = '12px';
     startLabel.style.fontWeight = 'bold';
-    startLabel.style.color = '#555';
+    startLabel.style.color = 'var(--text-secondary)';
 
     const startDateInput = document.createElement('input');
     startDateInput.type = 'date';
     startDateInput.id = 'start-date';
     startDateInput.style.padding = '8px';
-    startDateInput.style.border = '1px solid #ddd';
+    startDateInput.style.border = '1px solid var(--border)';
+    startDateInput.style.backgroundColor = 'var(--bg-surface)';
+    startDateInput.style.color = 'var(--text-primary)';
     startDateInput.style.borderRadius = '4px';
     startDateInput.style.fontSize = '14px';
 
@@ -254,13 +257,15 @@ function createDateFilterSection() {
     endLabel.textContent = 'End Date';
     endLabel.style.fontSize = '12px';
     endLabel.style.fontWeight = 'bold';
-    endLabel.style.color = '#555';
+    endLabel.style.color = 'var(--text-secondary)';
 
     const endDateInput = document.createElement('input');
     endDateInput.type = 'date';
     endDateInput.id = 'end-date';
     endDateInput.style.padding = '8px';
-    endDateInput.style.border = '1px solid #ddd';
+    endDateInput.style.border = '1px solid var(--border)';
+    endDateInput.style.backgroundColor = 'var(--bg-surface)';
+    endDateInput.style.color = 'var(--text-primary)';
     endDateInput.style.borderRadius = '4px';
     endDateInput.style.fontSize = '14px';
 
@@ -284,10 +289,11 @@ function createDateFilterSection() {
 
 function createSummarySection() {
     const section = document.createElement('div');
-    section.style.backgroundColor = 'white';
+    section.style.backgroundColor = 'var(--bg-surface)';
+    section.style.color = 'var(--text-primary)';
     section.style.padding = '15px';
     section.style.borderRadius = '8px';
-    section.style.border = '1px solid #ddd';
+    section.style.border = '1px solid var(--border)';
 
     const sectionHeader = createHeader();
     
@@ -310,13 +316,13 @@ function createSummarySection() {
     amountContainer.style.display = 'flex';
     amountContainer.style.justifyContent = 'space-between';
     amountContainer.style.padding = '10px';
-    amountContainer.style.backgroundColor = '#f8f9fa';
+    amountContainer.style.backgroundColor = 'var(--bg-surface-2)';
     amountContainer.style.borderRadius = '6px';
 
     const amountLabel = document.createElement('span');
     amountLabel.textContent = 'Total Amount:';
     amountLabel.style.fontWeight = 'bold';
-    amountLabel.style.color = '#555';
+    amountLabel.style.color = 'var(--text-secondary)';
 
     const amountValue = document.createElement('span');
     amountValue.id = 'total-amount';
@@ -332,13 +338,13 @@ function createSummarySection() {
     volumeContainer.style.display = 'flex';
     volumeContainer.style.justifyContent = 'space-between';
     volumeContainer.style.padding = '10px';
-    volumeContainer.style.backgroundColor = '#f8f9fa';
+    volumeContainer.style.backgroundColor = 'var(--bg-surface-2)';
     volumeContainer.style.borderRadius = '6px';
 
     const volumeLabel = document.createElement('span');
     volumeLabel.textContent = 'Total Volume:';
     volumeLabel.style.fontWeight = 'bold';
-    volumeLabel.style.color = '#555';
+    volumeLabel.style.color = 'var(--text-secondary)';
 
     const volumeValue = document.createElement('span');
     volumeValue.id = 'total-volume';
@@ -354,13 +360,13 @@ function createSummarySection() {
     countContainer.style.display = 'flex';
     countContainer.style.justifyContent = 'space-between';
     countContainer.style.padding = '10px';
-    countContainer.style.backgroundColor = '#f8f9fa';
+    countContainer.style.backgroundColor = 'var(--bg-surface-2)';
     countContainer.style.borderRadius = '6px';
 
     const countLabel = document.createElement('span');
     countLabel.textContent = 'Transactions:';
     countLabel.style.fontWeight = 'bold';
-    countLabel.style.color = '#555';
+    countLabel.style.color = 'var(--text-secondary)';
 
     const countValue = document.createElement('span');
     countValue.id = 'transaction-count';
@@ -418,7 +424,8 @@ function createTransactionTable(transactions) {
     
     transactions.forEach((transaction, index) => {
         const row = document.createElement('tr');
-        row.style.backgroundColor = index % 2 === 0 ? '#f9f9f9' : 'white';
+        row.style.backgroundColor = index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)';
+        row.style.color = 'var(--text-primary)';
         
         const transactionDate = new Date(transaction.time);
         const formattedDate = transactionDate.toLocaleString();

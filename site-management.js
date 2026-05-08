@@ -45,7 +45,7 @@ function renderStationsTable(stations) {
 
         stations.forEach(station => {
             const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid #ddd';
+            tr.style.borderBottom = '1px solid var(--border)';
             
             const idTd = document.createElement('td');
             idTd.style.padding = '12px';
@@ -158,7 +158,9 @@ function showStationFormPopup(station = null) {
     usernameInput.value = station ? station.username : '';
     usernameInput.required = true;
     usernameInput.style.padding = '8px';
-    usernameInput.style.border = '1px solid #ccc';
+    usernameInput.style.border = '1px solid var(--border)';
+    usernameInput.style.backgroundColor = 'var(--bg-surface)';
+    usernameInput.style.color = 'var(--text-primary)';
     usernameInput.style.borderRadius = '4px';
     
     usernameContainer.appendChild(usernameLabel);
@@ -181,7 +183,9 @@ function showStationFormPopup(station = null) {
         passwordInput.type = 'password';
         passwordInput.required = true;
         passwordInput.style.padding = '8px';
-        passwordInput.style.border = '1px solid #ccc';
+        passwordInput.style.border = '1px solid var(--border)';
+        passwordInput.style.backgroundColor = 'var(--bg-surface)';
+        passwordInput.style.color = 'var(--text-primary)';
         passwordInput.style.borderRadius = '4px';
         
         passwordContainer.appendChild(passwordLabel);
@@ -205,7 +209,9 @@ function showStationFormPopup(station = null) {
     customerCodeInput.value = station ? station.customer_code : '';
     customerCodeInput.required = true;
     customerCodeInput.style.padding = '8px';
-    customerCodeInput.style.border = '1px solid #ccc';
+    customerCodeInput.style.border = '1px solid var(--border)';
+    customerCodeInput.style.backgroundColor = 'var(--bg-surface)';
+    customerCodeInput.style.color = 'var(--text-primary)';
     customerCodeInput.style.borderRadius = '4px';
     
     customerCodeContainer.appendChild(customerCodeLabel);
@@ -227,7 +233,9 @@ function showStationFormPopup(station = null) {
     stationIdInput.value = station ? station.station_id : '';
     stationIdInput.required = true;
     stationIdInput.style.padding = '8px';
-    stationIdInput.style.border = '1px solid #ccc';
+    stationIdInput.style.border = '1px solid var(--border)';
+    stationIdInput.style.backgroundColor = 'var(--bg-surface)';
+    stationIdInput.style.color = 'var(--text-primary)';
     stationIdInput.style.borderRadius = '4px';
     
     stationIdContainer.appendChild(stationIdLabel);
@@ -249,7 +257,9 @@ function showStationFormPopup(station = null) {
     cityInput.value = station ? station.city : '';
     cityInput.required = true;
     cityInput.style.padding = '8px';
-    cityInput.style.border = '1px solid #ccc';
+    cityInput.style.border = '1px solid var(--border)';
+    cityInput.style.backgroundColor = 'var(--bg-surface)';
+    cityInput.style.color = 'var(--text-primary)';
     cityInput.style.borderRadius = '4px';
     
     cityContainer.appendChild(cityLabel);

@@ -114,6 +114,80 @@ app.get('/api/station-locations', async (req, res) => {
     }
 });
 
+app.get('/api/dashboard-stats', async (req, res) => {
+    try {
+        const [totalsRows] = await pool.query(
+            `SELECT
+                COUNT(*) AS total_count,
+                COALESCE(SUM(amount), 0) AS total_amount,
+                COALESCE(SUM(volume), 0) AS total_volume
+             FROM transactions
+             WHERE DATE(time) = CURDATE()`
+        );
+
+        const [hourlyRows] = await pool.query(
+            `SELECT
+                HOUR(time) AS hour,
+                COUNT(*) AS tx_count,
+                COALESCE(SUM(amount), 0) AS amount,
+                COALESCE(SUM(volume), 0) AS volume
+             FROM transactions
+             WHERE DATE(time) = CURDATE()
+             GROUP BY HOUR(time)`
+        );
+
+        const hourly = Array.from({ length: 24 }, (_, h) => ({
+            hour: h, tx_count: 0, amount: 0, volume: 0
+        }));
+        for (const r of hourlyRows) {
+            const h = Number(r.hour);
+            if (h >= 0 && h < 24) {
+                hourly[h] = {
+                    hour: h,
+                    tx_count: Number(r.tx_count) || 0,
+                    amount: Number(r.amount) || 0,
+                    volume: Number(r.volume) || 0
+                };
+            }
+        }
+
+        const [productRows] = await pool.query(
+            `SELECT
+                COALESCE(n.product, 'Unknown') AS product,
+                COUNT(*) AS tx_count,
+                COALESCE(SUM(t.amount), 0) AS amount,
+                COALESCE(SUM(t.volume), 0) AS volume
+             FROM transactions t
+             LEFT JOIN nozzles n
+               ON n.customer_code = t.customer_code
+              AND n.dispenser_id  = t.dispenser_id
+              AND n.nozzle_id     = t.nozzle_id
+             WHERE DATE(t.time) = CURDATE()
+             GROUP BY n.product`
+        );
+
+        const products = productRows.map(r => ({
+            product: r.product || 'Unknown',
+            tx_count: Number(r.tx_count) || 0,
+            amount:   Number(r.amount) || 0,
+            volume:   Number(r.volume) || 0
+        }));
+
+        res.json({
+            today: {
+                tx_count: Number(totalsRows[0].total_count) || 0,
+                total_amount: Number(totalsRows[0].total_amount) || 0,
+                total_volume: Number(totalsRows[0].total_volume) || 0
+            },
+            hourly,
+            products
+        });
+    } catch (error) {
+        console.error('Error building dashboard stats:', error);
+        res.status(500).json({ error: error.message || 'Failed to build dashboard stats' });
+    }
+});
+
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
