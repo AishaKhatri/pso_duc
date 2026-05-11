@@ -59,7 +59,10 @@ const StationAuth = {
   },
 
   clearAuth() {
+    // Preserve user theme preference across sign-out
+    const theme = localStorage.getItem('theme');
     localStorage.clear();
+    if (theme) localStorage.setItem('theme', theme);
   }
 };
 

@@ -1,9 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
-  // Style the body
+  // Style the body — uses theme variables so dark mode applies
   document.body.style.fontFamily = 'Arial, sans-serif';
   document.body.style.margin = '0';
-  document.body.style.backgroundColor = '#f0f4f3';
-  document.body.style.color = '#333';
+  document.body.style.backgroundColor = 'var(--bg-page)';
+  document.body.style.color = 'var(--text-primary)';
   document.body.style.display = 'flex';
   document.body.style.justifyContent = 'center';
   document.body.style.alignItems = 'center';
@@ -11,10 +11,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Create main container
   const container = document.createElement('div');
-  container.style.backgroundColor = '#fff';
+  container.className = 'card';
   container.style.padding = '30px';
   container.style.borderRadius = '8px';
-  container.style.boxShadow = '0 2px 6px rgba(0,0,0,0.1)';
   container.style.maxWidth = '400px';
   container.style.width = '100%';
   container.style.boxSizing = 'border-box';
@@ -41,10 +40,38 @@ document.addEventListener('DOMContentLoaded', () => {
 
   const heading = document.createElement('h1');
   heading.textContent = 'Sign In';
-  heading.style.color = '#004D64';
+  heading.style.color = 'var(--text-heading)';
   heading.style.margin = '0';
   heading.style.fontSize = '24px';
   headerContainer.appendChild(heading);
+
+  // Theme toggle button
+  const themeBtn = document.createElement('button');
+  themeBtn.type = 'button';
+  themeBtn.style.marginLeft = 'auto';
+  themeBtn.style.background = 'transparent';
+  themeBtn.style.border = '1px solid var(--border)';
+  themeBtn.style.color = 'var(--text-primary)';
+  themeBtn.style.borderRadius = '50%';
+  themeBtn.style.width = '32px';
+  themeBtn.style.height = '32px';
+  themeBtn.style.cursor = 'pointer';
+  themeBtn.style.display = 'flex';
+  themeBtn.style.alignItems = 'center';
+  themeBtn.style.justifyContent = 'center';
+  themeBtn.style.fontSize = '16px';
+  const setThemeIcon = () => {
+    const isDark = window.AppTheme && window.AppTheme.get() === 'dark';
+    themeBtn.textContent = isDark ? '☀' : '☽';
+    themeBtn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+  };
+  setThemeIcon();
+  themeBtn.addEventListener('click', () => {
+    if (window.AppTheme) window.AppTheme.toggle();
+    setThemeIcon();
+  });
+  window.addEventListener('themechange', setThemeIcon);
+  headerContainer.appendChild(themeBtn);
 
   container.appendChild(headerContainer);
 
@@ -58,14 +85,16 @@ document.addEventListener('DOMContentLoaded', () => {
   const usernameLabel = document.createElement('label');
   usernameLabel.textContent = 'Username';
   usernameLabel.style.fontSize = '16px';
-  usernameLabel.style.color = '#333';
+  usernameLabel.style.color = 'var(--text-primary)';
   form.appendChild(usernameLabel);
 
   const usernameInput = document.createElement('input');
   usernameInput.type = 'text';
   usernameInput.placeholder = 'Enter username';
   usernameInput.style.padding = '10px';
-  usernameInput.style.border = '1px solid #e0e0e0';
+  usernameInput.style.border = '1px solid var(--border)';
+  usernameInput.style.backgroundColor = 'var(--bg-surface)';
+  usernameInput.style.color = 'var(--text-primary)';
   usernameInput.style.borderRadius = '4px';
   usernameInput.style.fontSize = '16px';
   form.appendChild(usernameInput);
@@ -74,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const passwordLabel = document.createElement('label');
   passwordLabel.textContent = 'Password';
   passwordLabel.style.fontSize = '16px';
-  passwordLabel.style.color = '#333';
+  passwordLabel.style.color = 'var(--text-primary)';
   form.appendChild(passwordLabel);
 
   const passwordContainer = document.createElement('div');
@@ -84,7 +113,9 @@ document.addEventListener('DOMContentLoaded', () => {
   passwordInput.type = 'password';
   passwordInput.placeholder = 'Enter password';
   passwordInput.style.padding = '10px';
-  passwordInput.style.border = '1px solid #e0e0e0';
+  passwordInput.style.border = '1px solid var(--border)';
+  passwordInput.style.backgroundColor = 'var(--bg-surface)';
+  passwordInput.style.color = 'var(--text-primary)';
   passwordInput.style.borderRadius = '4px';
   passwordInput.style.fontSize = '16px';
   passwordInput.style.width = '100%';
@@ -105,6 +136,7 @@ document.addEventListener('DOMContentLoaded', () => {
   toggleIcon.alt = 'Toggle Password Visibility';
   toggleIcon.style.width = '16px';
   toggleIcon.style.height = '16px';
+  toggleIcon.className = 'signin-eye-icon';
   toggleButton.appendChild(toggleIcon);
 
   passwordContainer.appendChild(toggleButton);
@@ -120,8 +152,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const submitButton = document.createElement('button');
   submitButton.textContent = 'Sign In';
   submitButton.style.padding = '12px';
-  submitButton.style.backgroundColor = '#004D64';
-  submitButton.style.color = '#fff';
+  submitButton.style.backgroundColor = 'var(--accent)';
+  submitButton.style.color = 'var(--text-on-accent)';
   submitButton.style.border = 'none';
   submitButton.style.borderRadius = '4px';
   submitButton.style.fontSize = '16px';
@@ -129,10 +161,10 @@ document.addEventListener('DOMContentLoaded', () => {
   submitButton.style.transition = 'background-color 0.3s';
 
   submitButton.onmouseover = () => {
-    submitButton.style.backgroundColor = '#00324C';
+    submitButton.style.backgroundColor = 'var(--accent-hover)';
   };
   submitButton.onmouseout = () => {
-    submitButton.style.backgroundColor = '#004D64';
+    submitButton.style.backgroundColor = 'var(--accent)';
   };
   form.appendChild(submitButton);
 
