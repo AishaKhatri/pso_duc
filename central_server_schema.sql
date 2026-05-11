@@ -9,6 +9,7 @@ CREATE TABLE `stations` (
   `customer_code` varchar(8) NOT NULL,
   `station_id` varchar(255) NOT NULL,
   `city` varchar(255) NOT NULL,
+  `district` varchar(255) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `username` (`username`),

@@ -33,6 +33,9 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const cityName = station?.city
         ? station.city.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
         : '';
+    const districtName = station?.district
+        ? station.district.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
+        : '';
     const stationId = station?.station_id || '';
     const sales = stats?.today?.total_amount || 0;
     const tx = stats?.today?.tx_count || 0;
@@ -48,8 +51,9 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     left.innerHTML = `
         <h1 class="station-header-title">${stationId ? stationId : 'Station ' + customerCode}</h1>
         <div class="station-header-meta">
-            <span class="station-header-meta-item"><b>Customer Code:</b> ${customerCode}</span>
-            ${cityName ? `<span class="station-header-meta-item"><img src="assets/graphics/location-icon.png" alt="City" />${cityName}</span>` : ''}
+            <span class="station-header-meta-item"><b>Customer Code:</b>${customerCode}</span>
+            ${cityName ? `<span class="station-header-meta-item"><img src="assets/graphics/location-icon-1.png" alt="City" />${cityName},</span>` : ''}
+            ${districtName ? `<span class="station-header-meta-item">${districtName}</span>` : 'N/A'}
         </div>
     `;
     top.appendChild(left);
@@ -126,19 +130,14 @@ async function renderDispenser() {
             gridContainer.style.justifyContent = 'flex-start';
             gridContainer.style.marginTop = '20px';
         } else {
-            // Plain heading + action row, no card-style page header
+            // Action row only — page title now lives in the topbar
             headerContainer = document.createElement('div');
             headerContainer.style.display = 'flex';
-            headerContainer.style.justifyContent = 'space-between';
+            headerContainer.style.justifyContent = 'flex-end';
             headerContainer.style.alignItems = 'center';
             headerContainer.style.marginBottom = '16px';
             headerContainer.style.gap = '12px';
             headerContainer.style.flexWrap = 'wrap';
-
-            const heading = document.createElement('h1');
-            heading.textContent = 'Dispenser Unit Control - DUC';
-            heading.style.margin = '0';
-            headerContainer.appendChild(heading);
 
             optionsContainer = document.createElement('div');
             optionsContainer.style.display = 'flex';

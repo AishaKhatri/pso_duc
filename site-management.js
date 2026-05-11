@@ -1,6 +1,6 @@
 let stationsList = [];
 
-const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'District', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 async function renderSiteManagement() {
@@ -71,6 +71,11 @@ function renderStationsTable(stations) {
             cityTd.style.padding = '12px';
             cityTd.textContent = station.city;
             tr.appendChild(cityTd);
+
+            const districtTd = document.createElement('td');
+            districtTd.style.padding = '12px';
+            districtTd.textContent = station.district || '-';
+            tr.appendChild(districtTd);
 
             const createdAtTd = document.createElement('td');
             createdAtTd.style.padding = '12px';
