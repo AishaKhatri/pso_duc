@@ -117,8 +117,18 @@ app.get('/api/station-locations', async (req, res) => {
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
         const customerCode = (req.query.customer_code || '').trim();
-        const filterClause = customerCode ? 'AND customer_code = ?' : '';
-        const filterParams = customerCode ? [customerCode] : [];
+        const dispenserId = (req.query.dispenser_id || '').toString().trim();
+        const filters = [];
+        const filterParams = [];
+        if (customerCode) {
+            filters.push('customer_code = ?');
+            filterParams.push(customerCode);
+        }
+        if (dispenserId) {
+            filters.push('dispenser_id = ?');
+            filterParams.push(dispenserId);
+        }
+        const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
 
         const [totalsRows] = await pool.query(
             `SELECT
@@ -157,7 +167,10 @@ app.get('/api/dashboard-stats', async (req, res) => {
             }
         }
 
-        const productFilterClause = customerCode ? 'AND t.customer_code = ?' : '';
+        const productFilters = [];
+        if (customerCode) productFilters.push('t.customer_code = ?');
+        if (dispenserId) productFilters.push('t.dispenser_id = ?');
+        const productFilterClause = productFilters.length ? 'AND ' + productFilters.join(' AND ') : '';
         const [productRows] = await pool.query(
             `SELECT
                 COALESCE(n.product, 'Unknown') AS product,
@@ -209,7 +222,6 @@ app.get('/api/auth/verify', async (req, res) => {
     let decoded;
     try {
       decoded = jwt.verify(token, JWT_SECRET);
-      console.log('Decoded token:', decoded);
     } catch (jwtError) {
       if (jwtError.name === 'TokenExpiredError') {
         console.log('Token has expired');
@@ -230,9 +242,7 @@ app.get('/api/auth/verify', async (req, res) => {
       console.log('No user ID found in token');
       return res.status(401).json({ success: false, message: 'Invalid token format' });
     }
-    
-    console.log('Looking for user with ID:', userId);
-    
+       
     // Check if session exists and is signed in
     const [sessions] = await pool.query(
       'SELECT * FROM sessions WHERE session_token = ? AND signed_in = 1',
@@ -244,8 +254,6 @@ app.get('/api/auth/verify', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Session not active' });
     }
     
-    console.log('Active session found');
-
     // Get user from database
     const [users] = await pool.query(
       'SELECT id, username, role, customer_code, is_active FROM users WHERE id = ?',
@@ -258,7 +266,6 @@ app.get('/api/auth/verify', async (req, res) => {
     }
 
     const user = users[0];
-    console.log('User found:', user.username);
     
     if (user.is_active === 0) {
       console.log('Account is disabled');
@@ -279,9 +286,6 @@ app.get('/api/auth/verify', async (req, res) => {
         customer_code: user.customer_code
       }
     });
-
-    console.log(`Verified token for user: ${user.username} (ID: ${user.id})`);
-
   } catch (error) {
     console.error('Verify error:', error);
     res.status(500).json({ success: false, message: 'Server error' });
@@ -358,7 +362,7 @@ app.get('/api/users/:id', async (req, res) => {
 app.get('/api/stations', async (req, res) => {
     try {
         const [stations] = await pool.query(
-            'SELECT id, customer_code, station_id, city, district, username, created_at FROM stations ORDER BY id'
+            'SELECT id, customer_code, station_id, city, district, division, username, created_at FROM stations ORDER BY id'
         );
         res.json(stations);
     } catch (error) {
@@ -372,7 +376,7 @@ app.get('/api/stations/:customerCode', async (req, res) => {
         const { customerCode } = req.params;
         
         const [stations] = await pool.query(
-            'SELECT id, username, customer_code, station_id, city, district, created_at FROM stations WHERE customer_code = ?',
+            'SELECT id, username, customer_code, station_id, city, district, division, created_at FROM stations WHERE customer_code = ?',
             [customerCode]
         );
         
@@ -863,25 +867,25 @@ app.post('/api/users', async (req, res) => {
 
 app.post('/api/stations', async (req, res) => {
     try {
-        const { username, password, customer_code, station_id, city } = req.body;
-        
+        const { username, password, customer_code, station_id, city, district, division } = req.body;
+
         // Check if station already exists
         const [existing] = await pool.query(
             'SELECT id FROM stations WHERE customer_code = ?',
             [customer_code]
         );
-        
+
         if (existing.length > 0) {
-            return res.status(400).json({ 
-                success: false, 
-                message: 'Station already exists' 
+            return res.status(400).json({
+                success: false,
+                message: 'Station already exists'
             });
         }
-        
+
         const [result] = await pool.query(
-            `INSERT INTO stations (username, password, customer_code, station_id, city) 
-             VALUES (?, ?, ?, ?, ?)`,
-            [username, password, customer_code, station_id, city]
+            `INSERT INTO stations (username, password, customer_code, station_id, city, district, division)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [username, password, customer_code, station_id, city, district || null, division || null]
         );
         
         res.status(201).json({

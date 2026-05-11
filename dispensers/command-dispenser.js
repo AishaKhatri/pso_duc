@@ -1,9 +1,10 @@
-async function showCommandDispenserPopup() {
+async function showCommandDispenserPopup(options = {}) {
+    const presetCustomerCode = options.presetCustomerCode || null;
     const overlay = createModalOverlay();
 
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '600px';
+    popup.style.width = '560px';
     popup.style.maxHeight = '80vh';
     dragPopup(overlay, popup);
 
@@ -18,49 +19,43 @@ async function showCommandDispenserPopup() {
     header.appendChild(closeButton);
     popup.appendChild(header);
 
-    // Selectors container (side by side)
+    const makeSelectorBlock = (labelText, dropdown) => {
+        const container = document.createElement('div');
+        container.style.flex = '1 1 calc(50% - 10px)';
+        const label = document.createElement('label');
+        label.textContent = labelText;
+        label.style.display = 'block';
+        label.style.marginBottom = '6px';
+        label.style.fontWeight = 'bold';
+        label.style.fontSize = '13px';
+        container.appendChild(label);
+        dropdown.style.width = '100%';
+        dropdown.style.marginBottom = '0';
+        container.appendChild(dropdown);
+        return container;
+    };
+
+    // Selectors container — city + division on top row, station + dispenser below
     const selectorsContainer = document.createElement('div');
     selectorsContainer.style.display = 'flex';
+    selectorsContainer.style.flexWrap = 'wrap';
     selectorsContainer.style.gap = '20px';
     selectorsContainer.style.marginBottom = '20px';
     selectorsContainer.style.width = '100%';
 
-    // Station selector
-    const stationContainer = document.createElement('div');
-    stationContainer.style.flex = '1';
-    
-    const stationLabel = document.createElement('label');
-    stationLabel.textContent = 'Select Station:';
-    stationLabel.style.display = 'block';
-    stationLabel.style.marginBottom = '8px';
-    stationLabel.style.fontWeight = 'bold';
-    stationContainer.appendChild(stationLabel);
-
+    const citySelect = createDropdown('All Cities');
+    citySelect.id = 'citySelect';
+    const divisionSelect = createDropdown('All Divisions');
+    divisionSelect.id = 'divisionSelect';
     const stationSelect = createDropdown('All Stations');
     stationSelect.id = 'stationSelect';
-    stationSelect.style.width = '100%';
-    stationSelect.style.marginBottom = '0';
-    stationContainer.appendChild(stationSelect);
-
-    // Dispenser selector
-    const dispenserContainer = document.createElement('div');
-    dispenserContainer.style.flex = '1';
-    
-    const dispenserLabel = document.createElement('label');
-    dispenserLabel.textContent = 'Select Dispenser:';
-    dispenserLabel.style.display = 'block';
-    dispenserLabel.style.marginBottom = '8px';
-    dispenserLabel.style.fontWeight = 'bold';
-    dispenserContainer.appendChild(dispenserLabel);
-
     const dispenserSelect = createDropdown('Select dispenser');
     dispenserSelect.id = 'dispenserSelect';
-    dispenserSelect.style.width = '100%';
-    dispenserSelect.style.marginBottom = '0';
-    dispenserContainer.appendChild(dispenserSelect);
 
-    selectorsContainer.appendChild(stationContainer);
-    selectorsContainer.appendChild(dispenserContainer);
+    selectorsContainer.appendChild(makeSelectorBlock('Select City:', citySelect));
+    selectorsContainer.appendChild(makeSelectorBlock('Select Division:', divisionSelect));
+    selectorsContainer.appendChild(makeSelectorBlock('Select Station:', stationSelect));
+    selectorsContainer.appendChild(makeSelectorBlock('Select Dispenser:', dispenserSelect));
     popup.appendChild(selectorsContainer);
 
     const controlsContainer = document.createElement('div');
@@ -89,6 +84,7 @@ async function showCommandDispenserPopup() {
         stations.forEach(station => {
             stationsMap.set(station.customer_code, {
                 city: station.city || '',
+                division: station.division || '',
                 station_id: station.station_id || '',
                 customer_code: station.customer_code,
                 dispensers: []
@@ -115,23 +111,93 @@ async function showCommandDispenserPopup() {
             }
         }
 
-        // Populate station dropdown
-        const allOption = document.createElement('option');
-        allOption.value = 'all';
-        allOption.textContent = 'All Stations';
-        stationSelect.appendChild(allOption);
+        const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
-        for (const [customerCode, stationInfo] of stationsMap) {
-            if (stationInfo.dispensers.length > 0) {
-                const option = document.createElement('option');
-                option.value = customerCode;
-                const cityName = stationInfo.city ? stationInfo.city.split(' ').map(word => 
-                    word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-                ).join(' ') : '';
-                option.textContent = `${customerCode}${cityName ? ` - ${cityName}` : ''} (${stationInfo.dispensers.length} dispensers)`;
-                stationSelect.appendChild(option);
+        const stationsWithDispensers = Array.from(stationsMap.values()).filter(s => s.dispensers.length > 0);
+
+        // Populate City dropdown
+        citySelect.innerHTML = '';
+        const allCitiesOpt = document.createElement('option');
+        allCitiesOpt.value = 'all';
+        allCitiesOpt.textContent = 'All Cities';
+        citySelect.appendChild(allCitiesOpt);
+        const cities = [...new Set(stationsWithDispensers.map(s => s.city).filter(Boolean))].sort();
+        cities.forEach(city => {
+            const opt = document.createElement('option');
+            opt.value = city;
+            opt.textContent = titleCase(city);
+            citySelect.appendChild(opt);
+        });
+
+        const populateDivisionDropdown = (selectedCity) => {
+            divisionSelect.innerHTML = '';
+            const allOpt = document.createElement('option');
+            allOpt.value = 'all';
+            allOpt.textContent = 'All divisions';
+            divisionSelect.appendChild(allOpt);
+            const filtered = selectedCity === 'all'
+                ? stationsWithDispensers
+                : stationsWithDispensers.filter(s => s.city === selectedCity);
+            const divisions = [...new Set(filtered.map(s => s.division).filter(Boolean))].sort();
+            divisions.forEach(d => {
+                const opt = document.createElement('option');
+                opt.value = d;
+                opt.textContent = titleCase(d);
+                divisionSelect.appendChild(opt);
+            });
+        };
+
+        const populateStationDropdown = (selectedCity, selectedDivision) => {
+            stationSelect.innerHTML = '';
+            const allOpt = document.createElement('option');
+            allOpt.value = 'all';
+            allOpt.textContent = 'All Stations';
+            stationSelect.appendChild(allOpt);
+            const matches = stationsWithDispensers.filter(s =>
+                (selectedCity === 'all' || s.city === selectedCity) &&
+                (selectedDivision === 'all' || s.division === selectedDivision)
+            );
+            matches.forEach(s => {
+                const opt = document.createElement('option');
+                opt.value = s.customer_code;
+                const cityName = titleCase(s.city);
+                opt.textContent = `${s.customer_code}${cityName ? ` - ${cityName}` : ''} (${s.dispensers.length} dispensers)`;
+                stationSelect.appendChild(opt);
+            });
+        };
+
+        populateDivisionDropdown('all');
+        populateStationDropdown('all', 'all');
+
+        // If invoked from a customer-filtered dispenser page, pre-select that station's
+        // city/division/station so the operator does not have to drill back down.
+        if (presetCustomerCode) {
+            const presetStation = stationsMap.get(presetCustomerCode);
+            if (presetStation && presetStation.dispensers.length > 0) {
+                if (presetStation.city) {
+                    citySelect.value = presetStation.city;
+                    populateDivisionDropdown(presetStation.city);
+                }
+                if (presetStation.division) {
+                    divisionSelect.value = presetStation.division;
+                }
+                populateStationDropdown(citySelect.value, divisionSelect.value);
+                stationSelect.value = presetCustomerCode;
             }
         }
+
+        citySelect.addEventListener('change', () => {
+            populateDivisionDropdown(citySelect.value);
+            populateStationDropdown(citySelect.value, divisionSelect.value);
+            populateDispenserDropdown(stationSelect.value);
+            controlsContainer.innerHTML = '';
+        });
+
+        divisionSelect.addEventListener('change', () => {
+            populateStationDropdown(citySelect.value, divisionSelect.value);
+            populateDispenserDropdown(stationSelect.value);
+            controlsContainer.innerHTML = '';
+        });
 
     } catch (error) {
         showCommandStatusMessage(`Error fetching data: ${error.message}`, 'error');
@@ -139,18 +205,23 @@ async function showCommandDispenserPopup() {
 
     function populateDispenserDropdown(selectedStation) {
         dispenserSelect.innerHTML = '';
-        
+
         const placeholderOption = document.createElement('option');
         placeholderOption.value = '';
         placeholderOption.textContent = 'Select dispenser';
         placeholderOption.disabled = true;
         placeholderOption.selected = true;
         dispenserSelect.appendChild(placeholderOption);
-        
+
         let dispensersToShow = [];
-        
+
         if (selectedStation === 'all' || !selectedStation) {
-            dispensersToShow = allDispensers;
+            // Cascade from city/division selections: only stations visible in stationSelect contribute
+            const visibleStationCodes = Array.from(stationSelect.options)
+                .map(o => o.value)
+                .filter(v => v && v !== 'all');
+            const visibleSet = new Set(visibleStationCodes);
+            dispensersToShow = allDispensers.filter(d => visibleSet.has(d.customer_code));
         } else {
             const stationInfo = stationsMap.get(selectedStation);
             if (stationInfo) {
@@ -202,7 +273,7 @@ async function showCommandDispenserPopup() {
     });
 
     if (allDispensers.length > 0) {
-        populateDispenserDropdown('all');
+        populateDispenserDropdown(stationSelect.value || 'all');
     }
 }
 
@@ -291,8 +362,9 @@ function createIRControlSection(dispenserTopic, container, customerCode, city) {
     const irTitle = document.createElement('h3');
     irTitle.textContent = 'IR Control';
     irTitle.style.marginTop = '0';
-    irTitle.style.borderBottom = '1px solid #eee';
+    irTitle.style.borderBottom = '1px solid var(--border)';
     irTitle.style.paddingBottom = '8px';
+    irTitle.style.color = 'var(--text-primary)';
     irSection.appendChild(irTitle);
 
     const { controlRow, dropdown, confirmButton } = createControlRow(
@@ -321,8 +393,9 @@ function createNozzlesSection(dispenserTopic, nozzles, container, customerCode, 
     const nozzlesTitle = document.createElement('h3');
     nozzlesTitle.textContent = 'Nozzle Controls';
     nozzlesTitle.style.marginTop = '0';
-    nozzlesTitle.style.borderBottom = '1px solid #eee';
+    nozzlesTitle.style.borderBottom = '1px solid var(--border)';
     nozzlesTitle.style.paddingBottom = '8px';
+    nozzlesTitle.style.color = 'var(--text-primary)';
     container.appendChild(nozzlesTitle);
 
     const nozzlesGrid = document.createElement('div');
@@ -344,14 +417,15 @@ function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfi
     const nozzleCard = document.createElement('div');
     nozzleCard.style.position = 'relative';
     nozzleCard.style.borderRadius = '8px';
-    nozzleCard.style.background = '#ffffff';
+    nozzleCard.style.background = 'var(--bg-surface)';
     nozzleCard.style.fontFamily = 'Segoe UI, sans-serif';
-    nozzleCard.style.color = '#333';
-    nozzleCard.style.boxShadow = '0 3px 10px rgba(0, 0, 0, 0.06)';
+    nozzleCard.style.color = 'var(--text-primary)';
+    nozzleCard.style.boxShadow = 'var(--shadow-card)';
     nozzleCard.style.overflow = 'hidden';
     nozzleCard.style.padding = '0';
-    nozzleCard.style.border = nozzle.lock_unlock ? '2px solid #D32F2F' : '0.5px solid #dddddd';
-    nozzleCard.style.width = '220px';
+    nozzleCard.style.border = nozzle.lock_unlock ? '2px solid var(--danger)' : '0.5px solid var(--border)';
+    nozzleCard.style.width = '100%';
+    nozzleCard.style.minWidth = '0';
 
     const header = document.createElement('div');
     header.style.background = colorConfig.header;

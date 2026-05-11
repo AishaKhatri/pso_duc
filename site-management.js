@@ -1,6 +1,6 @@
 let stationsList = [];
 
-const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'District', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'District', 'Division', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 async function renderSiteManagement() {
@@ -77,6 +77,11 @@ function renderStationsTable(stations) {
             districtTd.textContent = station.district || '-';
             tr.appendChild(districtTd);
 
+            const divisionTd = document.createElement('td');
+            divisionTd.style.padding = '12px';
+            divisionTd.textContent = station.division || '-';
+            tr.appendChild(divisionTd);
+
             const createdAtTd = document.createElement('td');
             createdAtTd.style.padding = '12px';
             createdAtTd.textContent = new Date(station.created_at).toLocaleString() || '-';
@@ -98,7 +103,7 @@ function renderStationsTable(stations) {
             if (userInfo?.role !== 'admin') {
                 deleteBtn.style.cursor = 'not-allowed';
             } else {
-                deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(user));
+                deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));
             }
 
             actionTd.appendChild(editBtn);
@@ -252,11 +257,11 @@ function showStationFormPopup(station = null) {
     cityContainer.style.display = 'flex';
     cityContainer.style.flexDirection = 'column';
     cityContainer.style.gap = '5px';
-    
+
     const cityLabel = document.createElement('label');
     cityLabel.textContent = 'City *';
     cityLabel.style.fontWeight = 'bold';
-    
+
     const cityInput = document.createElement('input');
     cityInput.type = 'text';
     cityInput.value = station ? station.city : '';
@@ -266,10 +271,56 @@ function showStationFormPopup(station = null) {
     cityInput.style.backgroundColor = 'var(--bg-surface)';
     cityInput.style.color = 'var(--text-primary)';
     cityInput.style.borderRadius = '4px';
-    
+
     cityContainer.appendChild(cityLabel);
     cityContainer.appendChild(cityInput);
     form.appendChild(cityContainer);
+
+    // District field
+    const districtContainer = document.createElement('div');
+    districtContainer.style.display = 'flex';
+    districtContainer.style.flexDirection = 'column';
+    districtContainer.style.gap = '5px';
+
+    const districtLabel = document.createElement('label');
+    districtLabel.textContent = 'District';
+    districtLabel.style.fontWeight = 'bold';
+
+    const districtInput = document.createElement('input');
+    districtInput.type = 'text';
+    districtInput.value = station && station.district ? station.district : '';
+    districtInput.style.padding = '8px';
+    districtInput.style.border = '1px solid var(--border)';
+    districtInput.style.backgroundColor = 'var(--bg-surface)';
+    districtInput.style.color = 'var(--text-primary)';
+    districtInput.style.borderRadius = '4px';
+
+    districtContainer.appendChild(districtLabel);
+    districtContainer.appendChild(districtInput);
+    form.appendChild(districtContainer);
+
+    // Division field
+    const divisionContainer = document.createElement('div');
+    divisionContainer.style.display = 'flex';
+    divisionContainer.style.flexDirection = 'column';
+    divisionContainer.style.gap = '5px';
+
+    const divisionLabel = document.createElement('label');
+    divisionLabel.textContent = 'Division';
+    divisionLabel.style.fontWeight = 'bold';
+
+    const divisionInput = document.createElement('input');
+    divisionInput.type = 'text';
+    divisionInput.value = station && station.division ? station.division : '';
+    divisionInput.style.padding = '8px';
+    divisionInput.style.border = '1px solid var(--border)';
+    divisionInput.style.backgroundColor = 'var(--bg-surface)';
+    divisionInput.style.color = 'var(--text-primary)';
+    divisionInput.style.borderRadius = '4px';
+
+    divisionContainer.appendChild(divisionLabel);
+    divisionContainer.appendChild(divisionInput);
+    form.appendChild(divisionContainer);
 
     popup.appendChild(form);
 
@@ -298,9 +349,11 @@ function showStationFormPopup(station = null) {
         const stationData = {
             username: usernameInput.value.trim(),
             station_id: stationIdInput.value.trim(),
-            city: cityInput.value.trim()
+            city: cityInput.value.trim(),
+            district: districtInput.value.trim(),
+            division: divisionInput.value.trim()
         };
-        
+
         if (!station && passwordInput && customerCodeInput) {
             if (!passwordInput.value || !customerCodeInput.value) {
                 alert('Missing or invalid entry in required fields');

@@ -38,12 +38,63 @@ function statusColor(key) {
 const dashboardState = {
     stations: [],
     stats: null,
-    districts: [],
-    selectedDistrict: 'ALL',
+    divisions: [],
+    selectedDivision: 'ALL',
+    selectedCity: 'ALL',
     selectedStatuses: new Set(STATUS_KEYS),
     map: null,
-    markerLayer: null
+    markerLayer: null,
+    kpiStrip: null,
+    networkBars: null,
+    cityRow: null,
+    statusChips: null
 };
+
+function getRegionScopedStations() {
+    const div = dashboardState.selectedDivision;
+    const city = dashboardState.selectedCity;
+    return dashboardState.stations.filter(s => {
+        const divOk = div === 'ALL'
+            || (s.division || '').toLowerCase() === div.toLowerCase();
+        const cityOk = city === 'ALL'
+            || (s.city || '').toLowerCase() === city.toLowerCase();
+        return divOk && cityOk;
+    });
+}
+
+function refreshTiles() {
+    const scoped = getRegionScopedStations();
+    if (dashboardState.kpiStrip && dashboardState.stats) {
+        populateKpiStrip(dashboardState.kpiStrip, scoped, dashboardState.stats.today);
+    }
+    if (dashboardState.networkBars) {
+        populateNetworkBreakdown(dashboardState.networkBars, scoped);
+    }
+    refreshStatusChipCounts();
+}
+
+function refreshStatusChipCounts() {
+    if (!dashboardState.statusChips) return;
+    const scoped = getRegionScopedStations();
+    const counts = { all_online: 0, partial: 0, all_offline: 0, no_duc: 0 };
+    for (const s of scoped) counts[s.status] = (counts[s.status] || 0) + 1;
+    dashboardState.statusChips.forEach((chip, key) => {
+        const c = chip.querySelector('.chip-count');
+        if (c) c.textContent = counts[key] || 0;
+    });
+}
+
+function citiesInDivision(div) {
+    if (!div || div === 'ALL') return [];
+    const target = div.toLowerCase();
+    const set = new Set();
+    for (const s of dashboardState.stations) {
+        if ((s.division || '').toLowerCase() !== target) continue;
+        const c = (s.city || '').trim();
+        if (c) set.add(c);
+    }
+    return Array.from(set).sort();
+}
 
 function formatCurrency(value) {
     const num = Number(value) || 0;
@@ -65,11 +116,20 @@ function formatCount(value) {
 }
 
 function buildKpiStrip(stations, today) {
+    const strip = document.createElement('div');
+    strip.className = 'kpi-strip';
+    populateKpiStrip(strip, stations, today);
+    return strip;
+}
+
+function populateKpiStrip(strip, stations, today) {
     const counts = { total: stations.length, with_duc: 0 };
     let totalDucs = 0;
     let onlineDucs = 0;
+    let notInstalled = 0;
     for (const s of stations) {
         if (s.duc_count > 0) counts.with_duc += 1;
+        else notInstalled += 1;
         totalDucs += s.duc_count;
         onlineDucs += s.online_count;
     }
@@ -80,17 +140,16 @@ function buildKpiStrip(stations, today) {
     const totalVolume = Number(today.total_volume) || 0;
 
     const kpis = [
-        { label: 'Sites',         value: formatCount(counts.total),    sub: `${counts.with_duc} with DUC`,                cls: 'accent' },
-        { label: 'DUCs Online',   value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
-        { label: 'DUCs Offline',  value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '' },
-        { label: 'Tx Today',      value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
-        { label: 'Sales Today',   value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
-        { label: 'Volume Today',  value: formatVolume(totalVolume),     sub: '',                                            cls: '' },
-        { label: 'Districts',     value: formatCount(new Set(stations.map(s => s.city).filter(Boolean)).size), sub: '',     cls: '' }
+        { label: 'Sites',          value: formatCount(counts.total),    sub: `${counts.with_duc} with DUC`,                cls: 'accent' },
+        { label: 'DUCs Online',    value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
+        { label: 'DUCs Offline',   value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '' },
+        { label: 'Not Installed',  value: formatCount(notInstalled),     sub: '',                                            cls: 'no-duc' },
+        { label: 'Tx Today',       value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
+        { label: 'Sales Today',    value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
+        { label: 'Volume Today',   value: formatVolume(totalVolume),     sub: '',                                            cls: '' }
     ];
 
-    const strip = document.createElement('div');
-    strip.className = 'kpi-strip';
+    strip.innerHTML = '';
     kpis.forEach(k => {
         const cell = document.createElement('div');
         cell.className = `kpi ${k.cls || ''}`.trim();
@@ -101,7 +160,6 @@ function buildKpiStrip(stations, today) {
         `;
         strip.appendChild(cell);
     });
-    return strip;
 }
 
 function buildHourlyChartPanel(hourly) {
@@ -195,6 +253,8 @@ function buildPopupHtml(station) {
             <div class="popup-title">${station.station_name || station.customer_code}</div>
             <div class="popup-row"><b>Customer Code:</b> ${station.customer_code}</div>
             <div class="popup-row"><b>City:</b> ${station.city || '-'}</div>
+            ${station.district ? `<div class="popup-row"><b>District:</b> ${station.district}</div>` : ''}
+            ${station.division ? `<div class="popup-row"><b>Division:</b> ${station.division}</div>` : ''}
             <div class="popup-row"><b>Status:</b> ${STATUS_LABELS[station.status]}</div>
             <div class="popup-row"><b>DUCs:</b> ${station.online_count} online / ${station.duc_count} installed (sheet: ${station.total_dus})</div>
             ${link}
@@ -203,12 +263,7 @@ function buildPopupHtml(station) {
 }
 
 function getFilteredStations() {
-    return dashboardState.stations.filter(s => {
-        const districtOk = dashboardState.selectedDistrict === 'ALL'
-            || (s.city || '').toLowerCase() === dashboardState.selectedDistrict.toLowerCase();
-        const statusOk = dashboardState.selectedStatuses.has(s.status);
-        return districtOk && statusOk;
-    });
+    return getRegionScopedStations().filter(s => dashboardState.selectedStatuses.has(s.status));
 }
 
 function refreshMarkers() {
@@ -232,39 +287,48 @@ function buildFilterBar() {
     const bar = document.createElement('div');
     bar.className = 'filter-bar';
 
-    const districts = Array.from(new Set(
-        dashboardState.stations.map(s => (s.city || '').trim()).filter(Boolean)
+    const divisions = Array.from(new Set(
+        dashboardState.stations.map(s => (s.division || '').trim()).filter(Boolean)
     )).sort();
-    dashboardState.districts = districts;
+    dashboardState.divisions = divisions;
 
-    const districtRow = document.createElement('div');
-    districtRow.className = 'filter-row';
-    const districtLabel = document.createElement('span');
-    districtLabel.className = 'filter-label';
-    districtLabel.textContent = 'District';
-    districtRow.appendChild(districtLabel);
+    const divisionRow = document.createElement('div');
+    divisionRow.className = 'filter-row';
+    const divisionLabel = document.createElement('span');
+    divisionLabel.className = 'filter-label';
+    divisionLabel.textContent = 'Division';
+    divisionRow.appendChild(divisionLabel);
 
-    const districtChips = [{ key: 'ALL', label: 'All' }, ...districts.map(d => ({ key: d, label: d }))];
-    districtChips.forEach(({ key, label }) => {
+    const divisionChips = [{ key: 'ALL', label: 'All' }, ...divisions.map(d => ({ key: d, label: d }))];
+    divisionChips.forEach(({ key, label }) => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'filter-chip';
-        if (dashboardState.selectedDistrict === key) chip.classList.add('active');
+        if (dashboardState.selectedDivision === key) chip.classList.add('active');
 
         const count = key === 'ALL'
             ? dashboardState.stations.length
-            : dashboardState.stations.filter(s => (s.city || '').toLowerCase() === key.toLowerCase()).length;
+            : dashboardState.stations.filter(s => (s.division || '').toLowerCase() === key.toLowerCase()).length;
 
         chip.innerHTML = `${label}<span class="chip-count">${count}</span>`;
         chip.addEventListener('click', () => {
-            dashboardState.selectedDistrict = key;
-            districtRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+            dashboardState.selectedDivision = key;
+            dashboardState.selectedCity = 'ALL';
+            divisionRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
+            renderCityRow();
             refreshMarkers();
+            refreshTiles();
         });
-        districtRow.appendChild(chip);
+        divisionRow.appendChild(chip);
     });
-    bar.appendChild(districtRow);
+    bar.appendChild(divisionRow);
+
+    const cityRow = document.createElement('div');
+    cityRow.className = 'filter-row filter-row-city';
+    dashboardState.cityRow = cityRow;
+    bar.appendChild(cityRow);
+    renderCityRow();
 
     const statusRow = document.createElement('div');
     statusRow.className = 'filter-row';
@@ -273,14 +337,14 @@ function buildFilterBar() {
     statusLabel.textContent = 'Status';
     statusRow.appendChild(statusLabel);
 
+    const statusChipMap = new Map();
     STATUS_KEYS.forEach(key => {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = `filter-chip ${STATUS_CHIP_CLASS[key]}`;
         if (dashboardState.selectedStatuses.has(key)) chip.classList.add('active');
 
-        const count = dashboardState.stations.filter(s => s.status === key).length;
-        chip.innerHTML = `${STATUS_LABELS[key]}<span class="chip-count">${count}</span>`;
+        chip.innerHTML = `${STATUS_LABELS[key]}<span class="chip-count">0</span>`;
         chip.addEventListener('click', () => {
             if (dashboardState.selectedStatuses.has(key)) {
                 if (dashboardState.selectedStatuses.size > 1) {
@@ -294,26 +358,79 @@ function buildFilterBar() {
             refreshMarkers();
         });
         statusRow.appendChild(chip);
+        statusChipMap.set(key, chip);
     });
+    dashboardState.statusChips = statusChipMap;
     bar.appendChild(statusRow);
+
+    refreshStatusChipCounts();
 
     return bar;
 }
 
+function renderCityRow() {
+    const row = dashboardState.cityRow;
+    if (!row) return;
+    row.innerHTML = '';
+
+    const cities = citiesInDivision(dashboardState.selectedDivision);
+    if (cities.length === 0) {
+        row.style.display = 'none';
+        return;
+    }
+    row.style.display = '';
+
+    const lbl = document.createElement('span');
+    lbl.className = 'filter-label';
+    lbl.textContent = 'City';
+    row.appendChild(lbl);
+
+    const divKey = dashboardState.selectedDivision;
+    const inDiv = dashboardState.stations.filter(
+        s => (s.division || '').toLowerCase() === divKey.toLowerCase()
+    );
+    const chips = [{ key: 'ALL', label: 'All' }, ...cities.map(c => ({ key: c, label: c }))];
+    chips.forEach(({ key, label }) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'filter-chip';
+        if (dashboardState.selectedCity === key) chip.classList.add('active');
+
+        const count = key === 'ALL'
+            ? inDiv.length
+            : inDiv.filter(s => (s.city || '').toLowerCase() === key.toLowerCase()).length;
+
+        chip.innerHTML = `${label}<span class="chip-count">${count}</span>`;
+        chip.addEventListener('click', () => {
+            dashboardState.selectedCity = key;
+            row.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
+            chip.classList.add('active');
+            refreshMarkers();
+            refreshTiles();
+        });
+        row.appendChild(chip);
+    });
+}
+
 function buildNetworkBreakdownPanel(stations) {
+    const panel = document.createElement('div');
+    panel.className = 'side-panel';
+    panel.innerHTML = `<h4>Network Status</h4>`;
+    const bars = document.createElement('div');
+    bars.className = 'network-bars';
+    panel.appendChild(bars);
+    populateNetworkBreakdown(bars, stations);
+    return panel;
+}
+
+function populateNetworkBreakdown(bars, stations) {
     const counts = { all_online: 0, partial: 0, all_offline: 0, no_duc: 0 };
     for (const s of stations) {
         counts[s.status] = (counts[s.status] || 0) + 1;
     }
     const total = stations.length || 1;
 
-    const panel = document.createElement('div');
-    panel.className = 'side-panel';
-    panel.innerHTML = `<h4>Network Status</h4>`;
-
-    const bars = document.createElement('div');
-    bars.className = 'network-bars';
-
+    bars.innerHTML = '';
     STATUS_KEYS.forEach(key => {
         const c = counts[key] || 0;
         const pct = (c / total) * 100;
@@ -326,9 +443,6 @@ function buildNetworkBreakdownPanel(stations) {
         `;
         bars.appendChild(row);
     });
-
-    panel.appendChild(bars);
-    return panel;
 }
 
 function productColor(name, fallbackIdx) {
@@ -464,25 +578,47 @@ async function renderDashboard() {
     dashboardState.stations = stations;
     dashboardState.stats = stats;
 
-    content.appendChild(buildKpiStrip(stations, stats.today));
-    content.appendChild(buildFilterBar());
+    const topRow = document.createElement('div');
+    topRow.style.display = 'flex';
+    topRow.style.justifyContent = 'flex-end';
+    topRow.style.marginBottom = '8px';
+    const lastUpdatedEl = document.createElement('div');
+    lastUpdatedEl.id = 'page-last-updated';
+    lastUpdatedEl.style.fontSize = '12px';
+    lastUpdatedEl.style.color = 'var(--text-secondary)';
+    lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
+    topRow.appendChild(lastUpdatedEl);
+    content.appendChild(topRow);
+
+    const kpiStrip = buildKpiStrip(stations, stats.today);
+    dashboardState.kpiStrip = kpiStrip;
+    content.appendChild(kpiStrip);
 
     const main = document.createElement('div');
     main.className = 'dashboard-main';
+
+    const mapColumn = document.createElement('div');
+    mapColumn.className = 'map-column';
+
+    mapColumn.appendChild(buildFilterBar());
 
     const mapWrapper = document.createElement('div');
     mapWrapper.className = 'map-wrapper';
     const mapEl = document.createElement('div');
     mapEl.id = 'station-map';
     mapWrapper.appendChild(mapEl);
+
     mapWrapper.appendChild(buildLegend());
-    main.appendChild(mapWrapper);
+    mapColumn.appendChild(mapWrapper);
+    main.appendChild(mapColumn);
 
     const side = document.createElement('div');
     side.className = 'dashboard-side';
     side.appendChild(buildHourlyChartPanel(stats.hourly));
     side.appendChild(buildProductDonutPanel(stats.products || []));
-    side.appendChild(buildNetworkBreakdownPanel(stations));
+    const networkPanel = buildNetworkBreakdownPanel(stations);
+    dashboardState.networkBars = networkPanel.querySelector('.network-bars');
+    side.appendChild(networkPanel);
     main.appendChild(side);
 
     content.appendChild(main);
