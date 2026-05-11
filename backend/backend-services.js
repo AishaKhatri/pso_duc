@@ -14,6 +14,11 @@ const STATION_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1XaqQ10uhq
 const STATION_SHEET_TTL_MS = 5 * 60 * 1000;
 let stationSheetCache = { fetchedAt: 0, rows: null };
 
+// Local CSV with verified BWP-division station coords (from "BWP div details.xlsx").
+// Used as the source of truth for any station whose customer_code appears in it.
+const BWP_STATIONS_CSV_PATH = path.join(__dirname, '..', 'sites', 'bwp-stations.csv');
+let bwpStationsCache = null;
+
 async function logPing(message) {
     try {
         await fs.appendFile(PING_LOG_FILE_PATH, message + '\n', 'utf8');
@@ -306,51 +311,123 @@ function parseCsvRow(line) {
     return out;
 }
 
-async function fetchStationSheetRows() {
-    const now = Date.now();
-    if (stationSheetCache.rows && now - stationSheetCache.fetchedAt < STATION_SHEET_TTL_MS) {
-        return stationSheetCache.rows;
+async function loadBwpStationRows() {
+    if (bwpStationsCache) return bwpStationsCache;
+    let text;
+    try {
+        text = await fs.readFile(BWP_STATIONS_CSV_PATH, 'utf8');
+    } catch (err) {
+        if (err.code === 'ENOENT') {
+            bwpStationsCache = [];
+            return bwpStationsCache;
+        }
+        throw err;
     }
-    const response = await fetch(STATION_SHEET_CSV_URL, { redirect: 'follow' });
-    if (!response.ok) {
-        throw new Error(`Sheet fetch failed: ${response.status}`);
-    }
-    const text = await response.text();
     const lines = text.split(/\r?\n/).filter(l => l.length > 0);
-    if (lines.length < 2) return [];
-    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-    const idx = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
-    const colStation = idx('Station Name');
-    const colCustomer = idx('Customer Code');
-    const colCity = idx('City');
-    const colLocation = idx('Location');
-    const colLat = idx('lat');
-    const colLng = idx('lon');
-    const colTotal = idx('Total no of Dus');
-    const colVersion = idx('Version');
-    const colPhase = idx('Phase');
+    if (lines.length < 2) {
+        bwpStationsCache = [];
+        return bwpStationsCache;
+    }
+    const headers = parseCsvRow(lines[0]).map(h => h.trim().toLowerCase());
+    const colOf = name => headers.indexOf(name);
+    const cCode = colOf('customer_code');
+    const cName = colOf('station_name');
+    const cCity = colOf('city');
+    const cDistrict = colOf('district');
+    const cDivision = colOf('division');
+    const cProvince = colOf('province');
+    const cLocation = colOf('location');
+    const cLat = colOf('lat');
+    const cLng = colOf('lng');
+    const cTotal = colOf('total_dus');
 
     const rows = [];
     for (let i = 1; i < lines.length; i++) {
         const cols = parseCsvRow(lines[i]);
-        const customer_code = (cols[colCustomer] || '').trim();
-        const lat = parseFloat(cols[colLat]);
-        const lng = parseFloat(cols[colLng]);
+        const customer_code = (cols[cCode] || '').trim();
+        const lat = parseFloat(cols[cLat]);
+        const lng = parseFloat(cols[cLng]);
         if (!customer_code || isNaN(lat) || isNaN(lng)) continue;
         rows.push({
-            station_name: (cols[colStation] || '').trim(),
+            station_name: (cols[cName] || '').trim(),
             customer_code,
-            city: (cols[colCity] || '').trim(),
-            location: colLocation >= 0 ? (cols[colLocation] || '').trim() : '',
+            city: (cols[cCity] || '').trim(),
+            district: cDistrict >= 0 ? (cols[cDistrict] || '').trim() : '',
+            division: cDivision >= 0 ? (cols[cDivision] || '').trim() : '',
+            province: cProvince >= 0 ? (cols[cProvince] || '').trim() : '',
+            location: cLocation >= 0 ? (cols[cLocation] || '').trim() : '',
             lat,
             lng,
-            total_dus: parseInt(cols[colTotal]) || 0,
-            version: colVersion >= 0 ? (cols[colVersion] || '').trim() : '',
-            phase: colPhase >= 0 ? (cols[colPhase] || '').trim() : ''
+            total_dus: parseInt(cols[cTotal]) || 0,
+            source: 'bwp-sheet'
         });
     }
-    stationSheetCache = { fetchedAt: now, rows };
+    bwpStationsCache = rows;
     return rows;
+}
+
+async function fetchStationSheetRows() {
+    const now = Date.now();
+    let sheetRows;
+    if (stationSheetCache.rows && now - stationSheetCache.fetchedAt < STATION_SHEET_TTL_MS) {
+        sheetRows = stationSheetCache.rows;
+    } else {
+        sheetRows = [];
+        try {
+            const response = await fetch(STATION_SHEET_CSV_URL, { redirect: 'follow' });
+            if (response.ok) {
+                const text = await response.text();
+                const lines = text.split(/\r?\n/).filter(l => l.length > 0);
+                if (lines.length >= 2) {
+                    const headers = parseCsvRow(lines[0]).map(h => h.trim());
+                    const idx = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
+                    const colStation = idx('Station Name');
+                    const colCustomer = idx('Customer Code');
+                    const colCity = idx('City');
+                    const colLocation = idx('Location');
+                    const colLat = idx('lat');
+                    const colLng = idx('lon');
+                    const colTotal = idx('Total no of Dus');
+                    const colVersion = idx('Version');
+                    const colPhase = idx('Phase');
+
+                    for (let i = 1; i < lines.length; i++) {
+                        const cols = parseCsvRow(lines[i]);
+                        const customer_code = (cols[colCustomer] || '').trim();
+                        const lat = parseFloat(cols[colLat]);
+                        const lng = parseFloat(cols[colLng]);
+                        if (!customer_code || isNaN(lat) || isNaN(lng)) continue;
+                        sheetRows.push({
+                            station_name: (cols[colStation] || '').trim(),
+                            customer_code,
+                            city: (cols[colCity] || '').trim(),
+                            district: '',
+                            location: colLocation >= 0 ? (cols[colLocation] || '').trim() : '',
+                            lat,
+                            lng,
+                            total_dus: parseInt(cols[colTotal]) || 0,
+                            version: colVersion >= 0 ? (cols[colVersion] || '').trim() : '',
+                            phase: colPhase >= 0 ? (cols[colPhase] || '').trim() : '',
+                            source: 'google-sheet'
+                        });
+                    }
+                }
+            } else {
+                console.warn(`Sheet fetch failed: ${response.status}`);
+            }
+        } catch (err) {
+            console.warn('Google sheet fetch failed, falling back to BWP-only data:', err.message);
+        }
+        stationSheetCache = { fetchedAt: now, rows: sheetRows };
+    }
+
+    // Merge BWP local rows: they take precedence for any matching customer_code
+    // and contribute new stations that the Google Sheet does not list.
+    const bwpRows = await loadBwpStationRows();
+    const merged = new Map();
+    for (const r of sheetRows) merged.set(r.customer_code, r);
+    for (const r of bwpRows) merged.set(r.customer_code, { ...(merged.get(r.customer_code) || {}), ...r });
+    return Array.from(merged.values());
 }
 
 module.exports = {
@@ -364,5 +441,6 @@ module.exports = {
     resetDailyTotals,
     NotificationWebSocketServer,
     NotificationService,
-    fetchStationSheetRows
+    fetchStationSheetRows,
+    loadBwpStationRows
 };
