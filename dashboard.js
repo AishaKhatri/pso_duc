@@ -17,12 +17,14 @@ const STATUS_BAR_CLASS = {
     all_offline: 'offline',
     no_duc:      'no-duc'
 };
-const PRODUCT_COLORS = {
-    'PMG':  '#FF7043',
-    'HSD':  '#FFB300',
-    'HOBC': '#1E88E5'
-};
 const FALLBACK_PRODUCT_COLORS = ['#26a69a', '#7e57c2', '#ec407a', '#5c6bc0', '#9ccc65', '#ffa726'];
+
+const MAP_MARKER_COLORS = {
+    all_online:  '#00e676',
+    partial:     '#ffab00',
+    all_offline: '#ff1744',
+    no_duc:      '#90a4ae'
+};
 
 function statusColor(key) {
     const css = getComputedStyle(document.documentElement);
@@ -33,6 +35,10 @@ function statusColor(key) {
         no_duc:      '--status-no-duc'
     };
     return css.getPropertyValue(map[key] || '--status-no-duc').trim() || '#9e9e9e';
+}
+
+function markerColor(key) {
+    return MAP_MARKER_COLORS[key] || MAP_MARKER_COLORS.no_duc;
 }
 
 const dashboardState = {
@@ -47,7 +53,12 @@ const dashboardState = {
     kpiStrip: null,
     networkBars: null,
     cityRow: null,
-    statusChips: null
+    statusChips: null,
+    filterBarEl: null,
+    hourlyPanelEl: null,
+    donutPanelEl: null,
+    lastUpdatedEl: null,
+    refreshTimer: null
 };
 
 function getRegionScopedStations() {
@@ -219,7 +230,7 @@ function buildLegend() {
         const item = document.createElement('span');
         const dot = document.createElement('span');
         dot.className = 'legend-dot';
-        dot.style.background = statusColor(key);
+        dot.style.background = markerColor(key);
         item.appendChild(dot);
         item.appendChild(document.createTextNode(STATUS_LABELS[key]));
         legend.appendChild(item);
@@ -228,19 +239,19 @@ function buildLegend() {
 }
 
 function makeMarkerIcon(status) {
-    const color = statusColor(status);
+    const color = markerColor(status);
     const html = `<div style="
-        width: 10px; height: 10px;
+        width: 12px; height: 12px;
         background: ${color};
         border-radius: 50%;
-        box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+        box-shadow: 0 0 2px ${color}, 0 0 0 1px rgba(0,0,0,0.2);
     "></div>`;
     return L.divIcon({
         html,
         className: 'station-marker',
-        iconSize: [10, 10],
-        iconAnchor: [5, 5],
-        popupAnchor: [0, -6]
+        iconSize: [12, 12],
+        iconAnchor: [6, 6],
+        popupAnchor: [0, -8]
     });
 }
 
@@ -266,19 +277,23 @@ function getFilteredStations() {
     return getRegionScopedStations().filter(s => dashboardState.selectedStatuses.has(s.status));
 }
 
-function refreshMarkers() {
+function refreshMarkers(options = {}) {
     if (!dashboardState.map || !dashboardState.markerLayer) return;
     dashboardState.markerLayer.clearLayers();
 
     const filtered = getFilteredStations();
     const bounds = [];
     filtered.forEach(s => {
-        const marker = L.marker([s.lat, s.lng], { icon: makeMarkerIcon(s.status) });
+        const isNoDuc = s.status === 'no_duc';
+        const marker = L.marker([s.lat, s.lng], {
+            icon: makeMarkerIcon(s.status),
+            zIndexOffset: isNoDuc ? 0 : 1000
+        });
         marker.bindPopup(buildPopupHtml(s));
         marker.addTo(dashboardState.markerLayer);
         bounds.push([s.lat, s.lng]);
     });
-    if (bounds.length > 0) {
+    if (options.fit !== false && bounds.length > 0) {
         dashboardState.map.fitBounds(bounds, { padding: [12, 12], maxZoom: 16 });
     }
 }
@@ -446,7 +461,8 @@ function populateNetworkBreakdown(bars, stations) {
 }
 
 function productColor(name, fallbackIdx) {
-    return PRODUCT_COLORS[name?.toUpperCase?.()] || FALLBACK_PRODUCT_COLORS[fallbackIdx % FALLBACK_PRODUCT_COLORS.length];
+    const cfg = (typeof productColorConfig !== 'undefined') ? productColorConfig[name?.toUpperCase?.()] : null;
+    return cfg?.header || FALLBACK_PRODUCT_COLORS[fallbackIdx % FALLBACK_PRODUCT_COLORS.length];
 }
 
 function buildProductDonutPanel(products) {
@@ -514,13 +530,13 @@ function buildProductDonutPanel(products) {
     const legend = document.createElement('div');
     legend.className = 'donut-legend';
     sorted.forEach((p, idx) => {
-        const pct = (Number(p.amount) || 0) / total * 100;
+        const amount = Number(p.amount) || 0;
         const row = document.createElement('div');
         row.className = 'donut-legend-row';
         row.innerHTML = `
             <span class="swatch" style="background:${productColor(p.product, idx)}"></span>
-            <span class="name">${p.product}</span>
-            <span class="amt">${pct.toFixed(1)}%</span>
+            <span class="name">${(p.product || '').toUpperCase()}</span>
+            <span class="amt">${formatCurrency(amount)}</span>
         `;
         legend.appendChild(row);
     });
@@ -587,6 +603,7 @@ async function renderDashboard() {
     lastUpdatedEl.style.fontSize = '12px';
     lastUpdatedEl.style.color = 'var(--text-secondary)';
     lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
+    dashboardState.lastUpdatedEl = lastUpdatedEl;
     topRow.appendChild(lastUpdatedEl);
     content.appendChild(topRow);
 
@@ -600,7 +617,9 @@ async function renderDashboard() {
     const mapColumn = document.createElement('div');
     mapColumn.className = 'map-column';
 
-    mapColumn.appendChild(buildFilterBar());
+    const filterBarEl = buildFilterBar();
+    dashboardState.filterBarEl = filterBarEl;
+    mapColumn.appendChild(filterBarEl);
 
     const mapWrapper = document.createElement('div');
     mapWrapper.className = 'map-wrapper';
@@ -614,8 +633,12 @@ async function renderDashboard() {
 
     const side = document.createElement('div');
     side.className = 'dashboard-side';
-    side.appendChild(buildHourlyChartPanel(stats.hourly));
-    side.appendChild(buildProductDonutPanel(stats.products || []));
+    const hourlyPanelEl = buildHourlyChartPanel(stats.hourly);
+    dashboardState.hourlyPanelEl = hourlyPanelEl;
+    side.appendChild(hourlyPanelEl);
+    const donutPanelEl = buildProductDonutPanel(stats.products || []);
+    dashboardState.donutPanelEl = donutPanelEl;
+    side.appendChild(donutPanelEl);
     const networkPanel = buildNetworkBreakdownPanel(stations);
     dashboardState.networkBars = networkPanel.querySelector('.network-bars');
     side.appendChild(networkPanel);
@@ -639,14 +662,63 @@ async function renderDashboard() {
         msg.style.padding = '12px';
         msg.style.color = 'var(--text-secondary)';
         mapWrapper.insertBefore(msg, mapEl);
+    } else {
+        refreshMarkers();
+    }
+
+    startDashboardAutoRefresh();
+}
+
+async function refreshDashboardData() {
+    let stations, stats;
+    try {
+        [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats()]);
+    } catch (error) {
+        console.warn('Dashboard auto-refresh failed:', error.message);
         return;
     }
 
-    refreshMarkers();
+    dashboardState.stations = stations;
+    dashboardState.stats = stats;
+
+    if (dashboardState.filterBarEl) {
+        const newBar = buildFilterBar();
+        dashboardState.filterBarEl.replaceWith(newBar);
+        dashboardState.filterBarEl = newBar;
+    }
+
+    if (dashboardState.hourlyPanelEl) {
+        const newHourly = buildHourlyChartPanel(stats.hourly);
+        dashboardState.hourlyPanelEl.replaceWith(newHourly);
+        dashboardState.hourlyPanelEl = newHourly;
+    }
+
+    if (dashboardState.donutPanelEl) {
+        const newDonut = buildProductDonutPanel(stats.products || []);
+        dashboardState.donutPanelEl.replaceWith(newDonut);
+        dashboardState.donutPanelEl = newDonut;
+    }
+
+    refreshTiles();
+    refreshMarkers({ fit: false });
+
+    if (dashboardState.lastUpdatedEl) {
+        dashboardState.lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
+    }
+}
+
+function startDashboardAutoRefresh() {
+    if (dashboardState.refreshTimer) {
+        clearInterval(dashboardState.refreshTimer);
+    }
+    dashboardState.refreshTimer = setInterval(() => {
+        if (document.hidden) return;
+        refreshDashboardData();
+    }, DASHBOARD_REFRESH_MS);
 }
 
 window.addEventListener('themechange', () => {
-    if (dashboardState.markerLayer) refreshMarkers();
+    if (dashboardState.markerLayer) refreshMarkers({ fit: false });
 });
 
 window.renderDashboard = renderDashboard;

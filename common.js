@@ -18,6 +18,8 @@ const productColorConfig = {
       'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
     };
 
+const DASHBOARD_REFRESH_MS = 30 * 1000;
+
 function renderApp(pageTitle) {
     const app = document.getElementById('app');
     app.innerHTML = `
