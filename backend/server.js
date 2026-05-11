@@ -358,7 +358,7 @@ app.get('/api/users/:id', async (req, res) => {
 app.get('/api/stations', async (req, res) => {
     try {
         const [stations] = await pool.query(
-            'SELECT id, customer_code, station_id, city, username, created_at FROM stations ORDER BY customer_code'
+            'SELECT id, customer_code, station_id, city, district, username, created_at FROM stations ORDER BY id'
         );
         res.json(stations);
     } catch (error) {
@@ -372,7 +372,7 @@ app.get('/api/stations/:customerCode', async (req, res) => {
         const { customerCode } = req.params;
         
         const [stations] = await pool.query(
-            'SELECT id, username, customer_code, station_id, city, created_at FROM stations WHERE customer_code = ?',
+            'SELECT id, username, customer_code, station_id, city, district, created_at FROM stations WHERE customer_code = ?',
             [customerCode]
         );
         
@@ -768,6 +768,13 @@ app.post('/api/auth/signin', async (req, res) => {
       'INSERT INTO sessions (user_id, session_token, expires_at, signed_in) VALUES (?, ?, ?, ?)',
       [user.id, token, expiresAt, 1]
     );
+
+    // Record last login on the user — driven by successful session insert
+    await pool.query(
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = ?',
+      [user.id]
+    );
+    user.last_login = new Date();
 
     const { password: _, ...userData } = user;
 

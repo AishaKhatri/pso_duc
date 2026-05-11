@@ -2,7 +2,7 @@
 let stationsList = [];
 let usersList = [];
 
-const columns = ['ID', 'Username', 'Role', 'Customer Code', 'Last Login', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Role', 'Last Login', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 async function renderUserManagement() {
@@ -64,11 +64,6 @@ async function renderUsersTable(users) {
             roleTd.style.padding = '12px';
             roleTd.textContent = user.role || '-';
             tr.appendChild(roleTd);
-
-            const customerCodeTd = document.createElement('td');
-            customerCodeTd.style.padding = '12px';
-            customerCodeTd.textContent = user.customer_code || '-';
-            tr.appendChild(customerCodeTd);
 
             const lastLoginTd = document.createElement('td');
             lastLoginTd.style.padding = '12px';

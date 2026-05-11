@@ -78,7 +78,6 @@ function buildKpiStrip(stations, today) {
     const txCount = Number(today.tx_count) || 0;
     const totalAmount = Number(today.total_amount) || 0;
     const totalVolume = Number(today.total_volume) || 0;
-    const avgTx = txCount > 0 ? totalAmount / txCount : 0;
 
     const kpis = [
         { label: 'Sites',         value: formatCount(counts.total),    sub: `${counts.with_duc} with DUC`,                cls: 'accent' },
@@ -87,7 +86,6 @@ function buildKpiStrip(stations, today) {
         { label: 'Tx Today',      value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
         { label: 'Sales Today',   value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
         { label: 'Volume Today',  value: formatVolume(totalVolume),     sub: '',                                            cls: '' },
-        { label: 'Avg Sale',      value: formatCurrency(avgTx),         sub: '',                                            cls: '' },
         { label: 'Districts',     value: formatCount(new Set(stations.map(s => s.city).filter(Boolean)).size), sub: '',     cls: '' }
     ];
 
@@ -174,18 +172,17 @@ function buildLegend() {
 function makeMarkerIcon(status) {
     const color = statusColor(status);
     const html = `<div style="
-        width: 18px; height: 18px;
+        width: 10px; height: 10px;
         background: ${color};
-        border: 3px solid #fff;
         border-radius: 50%;
-        box-shadow: 0 0 0 1px rgba(0,0,0,0.4), 0 2px 6px rgba(0,0,0,0.3);
+        box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
     "></div>`;
     return L.divIcon({
         html,
         className: 'station-marker',
-        iconSize: [18, 18],
-        iconAnchor: [9, 9],
-        popupAnchor: [0, -10]
+        iconSize: [10, 10],
+        iconAnchor: [5, 5],
+        popupAnchor: [0, -6]
     });
 }
 
@@ -227,7 +224,7 @@ function refreshMarkers() {
         bounds.push([s.lat, s.lng]);
     });
     if (bounds.length > 0) {
-        dashboardState.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+        dashboardState.map.fitBounds(bounds, { padding: [12, 12], maxZoom: 16 });
     }
 }
 
@@ -444,17 +441,6 @@ async function renderDashboard() {
     const content = document.getElementById('content');
     if (!content) return;
     content.innerHTML = '';
-
-    const titleRow = document.createElement('div');
-    titleRow.className = 'dashboard-title';
-    const heading = document.createElement('h1');
-    heading.textContent = 'Network Dashboard';
-    const updated = document.createElement('span');
-    updated.className = 'updated';
-    updated.textContent = 'Updated ' + new Date().toLocaleTimeString();
-    titleRow.appendChild(heading);
-    titleRow.appendChild(updated);
-    content.appendChild(titleRow);
 
     const loading = document.createElement('div');
     loading.textContent = 'Loading dashboard…';
