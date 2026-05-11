@@ -321,7 +321,6 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
 
     const optionsRow = document.createElement('div');
     optionsRow.className = 'station-header-options';
-    wrap.appendChild(optionsRow);
 
     return { wrap, optionsContainer: optionsRow };
 }
@@ -431,17 +430,24 @@ async function renderDispenser() {
         refreshTimestamp();
 
         if (customerCodeFilter) {
-            // Back button + last-updated share one row above the station header
+            const topRow = document.createElement('div');
+            topRow.style.display = 'flex';
+            topRow.style.justifyContent = 'flex-end';
+            topRow.style.marginBottom = '8px';
+            topRow.appendChild(lastUpdatedEl);
+            content.appendChild(topRow);
+
             const backRow = document.createElement('div');
             backRow.style.display = 'flex';
             backRow.style.justifyContent = 'space-between';
             backRow.style.alignItems = 'center';
             backRow.style.marginBottom = '14px';
+
             const backBtn = createActionButton();
             backBtn.textContent = '← Back';
             backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
             backRow.appendChild(backBtn);
-            backRow.appendChild(lastUpdatedEl);
+            backRow.appendChild(optionsContainer);
             content.appendChild(backRow);
         } else {
             const topRow = document.createElement('div');

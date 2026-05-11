@@ -402,6 +402,7 @@ async function fetchStationSheetRows() {
                             customer_code,
                             city: (cols[colCity] || '').trim(),
                             district: '',
+                            division: 'DIK',
                             location: colLocation >= 0 ? (cols[colLocation] || '').trim() : '',
                             lat,
                             lng,

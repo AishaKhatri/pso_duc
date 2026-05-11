@@ -12,6 +12,7 @@ function renderSidebar() {
     // remove the left margin reserved for it.
     if (isOperator) {
         sidebar.style.display = 'none';
+        document.body.classList.add('sidebar-hidden');
         const contentWrapper = document.querySelector('.content-wrapper');
         if (contentWrapper) {
             contentWrapper.style.marginLeft = '0';
@@ -23,6 +24,9 @@ function renderSidebar() {
     const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     if (isCollapsed) {
         sidebar.classList.add('collapsed');
+        document.body.classList.add('sidebar-collapsed');
+    } else {
+        document.body.classList.remove('sidebar-collapsed');
     }
 
     // Create toggle button
@@ -103,11 +107,12 @@ function renderSidebar() {
     toggleBtn.addEventListener('click', function() {
         const isNowCollapsed = !sidebar.classList.contains('collapsed');
         sidebar.classList.toggle('collapsed');
+        document.body.classList.toggle('sidebar-collapsed', isNowCollapsed);
         toggleBtn.title = isNowCollapsed ? 'Expand Sidebar' : 'Collapse Sidebar';
-        
+
         // Save state to localStorage
         localStorage.setItem('sidebarCollapsed', isNowCollapsed.toString());
-        
+
         // Adjust content wrapper
         if (contentWrapper) {
             contentWrapper.style.marginLeft = isNowCollapsed ? '55px' : '220px';

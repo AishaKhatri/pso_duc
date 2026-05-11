@@ -2,6 +2,18 @@ function renderTopbar(pageTitle) {
     const topbar = document.getElementById('topbar');
     topbar.className = 'topbar';
 
+    // Left section: logo (shown only when sidebar is hidden/collapsed) + title
+    const leftSection = document.createElement('div');
+    leftSection.style.display = 'flex';
+    leftSection.style.alignItems = 'center';
+    leftSection.style.gap = '12px';
+
+    const topbarLogo = document.createElement('img');
+    topbarLogo.src = 'assets/graphics/stingray-logo-new.jpeg';
+    topbarLogo.alt = 'Stingray Logo';
+    topbarLogo.className = 'topbar-logo';
+    leftSection.appendChild(topbarLogo);
+
     // Main title
     const titleDiv = document.createElement('div');
     titleDiv.style.display = 'flex';
@@ -31,8 +43,9 @@ function renderTopbar(pageTitle) {
         titleDiv.appendChild(pageLabel);
     }
 
-    topbar.appendChild(titleDiv);
-    
+    leftSection.appendChild(titleDiv);
+    topbar.appendChild(leftSection);
+
     // User section
     const currentUser = StationAuth.getCurrentUser() || 'User';
     const userInfo = StationAuth.getUserInfo();
