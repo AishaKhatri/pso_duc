@@ -29,13 +29,6 @@
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
 
-            // Operators are scoped to their own station and don't get the network-wide dashboard
-            const userInfo = StationAuth.getUserInfo();
-            if (userInfo?.role === 'operator') {
-                window.location.href = 'dispensers.html';
-                return;
-            }
-
             renderApp();
             if (typeof window.renderDashboard === 'function') {
                 window.renderDashboard();

@@ -181,8 +181,22 @@ async function sendGetCommandsForDispenser(dispenser) {
             existingNozzles.add(shortId);
         });
 
-        const city = window.currentStation?.city || dispenser.city || 'NA';
         const customerCode = dispenser.customer_code;
+
+        let city = window.currentStation?.city || dispenser.city;
+        if (!city) {
+            try {
+                const stationResp = await fetch(`${API_BASE_URL}/stations/${encodeURIComponent(customerCode)}`);
+                if (stationResp.ok) {
+                    const stationData = await stationResp.json();
+                    city = stationData?.station?.city || '';
+                }
+            } catch (err) {
+                console.error('Error fetching station city:', err);
+            }
+        }
+        if (!city) city = 'NA';
+
         const publishTopic = `pso/${city}/${customerCode}/duc/d${dispenser.address}`;
 
         const messagesToSend = [];
@@ -229,6 +243,8 @@ async function sendGetCommandsForDispenser(dispenser) {
                         console.error(`Error sending GET command for ${msg.nozzleId} msg_type ${msg.msg_type}:`, err.error || resp.statusText);
                     } else {
                         console.log(`Sent GET command for nozzle ${msg.nozzleId} msg_type ${msg.msg_type}`);
+                        console.log(`topic:`, msg.topic);
+                        console.log(`Message:`, msg.message);
                     }
                 } catch (err) {
                     console.error(`Error sending GET command for ${msg.nozzleId} msg_type ${msg.msg_type}:`, err);

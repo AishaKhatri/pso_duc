@@ -43,11 +43,11 @@ function getStationCity(customerCode) {
 }
 
 // Create filter container with both city and station dropdowns
-async function createFilterContainer(stations, onFilterChange) {
+async function createFilterContainer(stations, onFilterChange, actionsContainer = null) {
     const filterContainer = document.createElement('div');
     filterContainer.style.display = 'flex';
     filterContainer.style.alignItems = 'center';
-    filterContainer.style.justifyContent = 'flex-end';
+    filterContainer.style.justifyContent = 'space-between';
     filterContainer.style.gap = '15px';
     filterContainer.style.marginBottom = '0px';
     filterContainer.style.padding = '10px 15px';
@@ -56,7 +56,15 @@ async function createFilterContainer(stations, onFilterChange) {
     filterContainer.style.borderRadius = '8px';
     filterContainer.style.border = '1px solid var(--border)';
     filterContainer.style.width = '100%';
-    
+    filterContainer.style.flexWrap = 'wrap';
+
+    // Left side wrapper holds the city/station filters
+    const filtersLeft = document.createElement('div');
+    filtersLeft.style.display = 'flex';
+    filtersLeft.style.alignItems = 'center';
+    filtersLeft.style.gap = '15px';
+    filtersLeft.style.flexWrap = 'wrap';
+
     // City Filter
     const cityLabel = document.createElement('label');
     cityLabel.textContent = 'City:';
@@ -163,11 +171,18 @@ async function createFilterContainer(stations, onFilterChange) {
         }
     });
     
-    filterContainer.appendChild(cityLabel);
-    filterContainer.appendChild(cityDropdown);
-    filterContainer.appendChild(stationLabel);
-    filterContainer.appendChild(stationDropdown);
-    
+    filtersLeft.appendChild(cityLabel);
+    filtersLeft.appendChild(cityDropdown);
+    filtersLeft.appendChild(stationLabel);
+    filtersLeft.appendChild(stationDropdown);
+
+    filterContainer.appendChild(filtersLeft);
+
+    if (actionsContainer) {
+        actionsContainer.style.marginLeft = 'auto';
+        filterContainer.appendChild(actionsContainer);
+    }
+
     return filterContainer;
 }
 
@@ -410,7 +425,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
 }
 
 // Render all stations with their dispensers
-async function renderStationWiseDispensers(dispensers, gridContainer, createCardFunction, additionalParams = {}) {
+async function renderStationWiseDispensers(dispensers, gridContainer, createCardFunction, additionalParams = {}, actionsContainer = null) {
     if (!dispensers || dispensers.length === 0) {
         const message = createNoDataMessage('No dispensers configured');
         message.style.padding = '40px';
@@ -439,14 +454,14 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
                 const stationCity = stationSection.getAttribute('data-city');
                 const cityMatch = selectedCity === 'all' || stationCity === selectedCity;
                 const stationMatch = selectedStation === 'all' || stationCode === selectedStation;
-                
+
                 if (cityMatch && stationMatch) {
                     stationSection.style.display = 'block';
                 } else {
                     stationSection.style.display = 'none';
                 }
             }
-        });
+        }, actionsContainer);
         gridContainer.appendChild(filterContainer);
     }
     

@@ -13,6 +13,21 @@ async function renderOverview() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.justifyContent = 'flex-end';
+        topRow.style.marginBottom = '8px';
+        const lastUpdatedEl = document.createElement('div');
+        lastUpdatedEl.id = 'page-last-updated';
+        lastUpdatedEl.style.fontSize = '12px';
+        lastUpdatedEl.style.color = 'var(--text-secondary)';
+        const refreshTimestamp = () => {
+            lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
+        };
+        refreshTimestamp();
+        topRow.appendChild(lastUpdatedEl);
+        content.appendChild(topRow);
+
         const gridContainer = document.createElement('div');
         gridContainer.style.display = 'flex';
         gridContainer.style.flexWrap = 'wrap';
@@ -42,6 +57,7 @@ async function renderOverview() {
                     for (const dispenser of updatedDispensers) {
                         await updateDispenserCard(dispenser);
                     }
+                    refreshTimestamp();
                 } catch (error) {
                     console.error('Error during periodic update:', error);
                 }

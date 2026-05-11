@@ -9,7 +9,7 @@ function renderTopbar(pageTitle) {
     titleDiv.style.gap = '10px';
 
     const title = document.createElement('h1');
-    title.textContent = 'PSO DUC Dashboard';
+    title.textContent = 'DUC Dashboard';
     title.style.fontSize = '24px';
     title.style.color = 'white';
     title.style.margin = '0';
@@ -20,13 +20,13 @@ function renderTopbar(pageTitle) {
         const sep = document.createElement('span');
         sep.textContent = '›';
         sep.style.color = 'rgba(255,255,255,0.5)';
-        sep.style.fontSize = '20px';
+        sep.style.fontSize = '24px';
         titleDiv.appendChild(sep);
 
         const pageLabel = document.createElement('span');
         pageLabel.textContent = pageTitle;
         pageLabel.style.color = 'rgba(255,255,255,0.85)';
-        pageLabel.style.fontSize = '18px';
+        pageLabel.style.fontSize = '20px';
         pageLabel.style.fontWeight = '500';
         titleDiv.appendChild(pageLabel);
     }

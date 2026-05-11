@@ -10,7 +10,7 @@ const LAYOUT_CONFIG = {
         showLockStatus: true,
         showMetrics: true,
         showTotals: true,
-        showLastUpdated: true,
+        showLastUpdated: false,
         headerPadding: '3px 7px 3px',
         sectionPadding: '8px 12px',
         statusFontSize: '12px'

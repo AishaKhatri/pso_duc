@@ -222,7 +222,13 @@ async function loadDispensersFromDB() {
 }
 
 async function renderConfigDispensers() {
-    const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', 'dispensers.html', 'Add Dispenser');
+    const params = new URLSearchParams(window.location.search);
+    const customerCodeFilter = (params.get('customer_code') || '').trim();
+    const backTarget = customerCodeFilter
+        ? `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}`
+        : 'dispensers.html';
+
+    const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', backTarget, 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
 
     let productOptions = [];
@@ -230,7 +236,9 @@ async function renderConfigDispensers() {
         // Load stations first
         stationsList = await loadStationsFromDB();
         const data = await loadDispensersFromDB();
-        window.dispensers = data.dispensers;
+        window.dispensers = customerCodeFilter
+            ? data.dispensers.filter(d => d.customer_code === customerCodeFilter)
+            : data.dispensers;
         productOptions = data.products;
     } catch (error) {
         console.error('Load error:', error);
@@ -241,7 +249,10 @@ async function renderConfigDispensers() {
     const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
     const nozzleOptions = ['A1', 'A2', 'B1', 'B2'];
 
-    const columns = ['Customer Code', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
+    const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
+
+    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
 
     const { tableContainer , tbody } = createTable(columns);
     content.appendChild(tableContainer);
@@ -476,7 +487,7 @@ async function renderConfigDispensers() {
         if (displayDispensers.length === 0) {
             const tr = document.createElement('tr');
             const td = document.createElement('td');
-            td.colSpan = 6;
+            td.colSpan = columns.length;
             td.style.textAlign = 'center';
             td.style.borderBottom = '1px solid var(--border)';
             td.style.padding = '10px';
@@ -489,12 +500,24 @@ async function renderConfigDispensers() {
         displayDispensers.forEach((dispenser, index) => {
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid var(--border)';
-            
+
+            const station = stationByCode.get(dispenser.customer_code);
+
             const customerCodeTd = document.createElement('td');
             customerCodeTd.style.padding = '12px';
             customerCodeTd.textContent = dispenser.customer_code || '-';
             tr.appendChild(customerCodeTd);
-            
+
+            const cityTd = document.createElement('td');
+            cityTd.style.padding = '12px';
+            cityTd.textContent = station?.city ? titleCase(station.city) : '-';
+            tr.appendChild(cityTd);
+
+            const divisionTd = document.createElement('td');
+            divisionTd.style.padding = '12px';
+            divisionTd.textContent = station?.division ? titleCase(station.division) : '-';
+            tr.appendChild(divisionTd);
+
             const addressTd = document.createElement('td');
             addressTd.style.padding = '12px';
             addressTd.textContent = dispenser.address || '-';

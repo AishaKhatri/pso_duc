@@ -1,25 +1,36 @@
 function renderSidebar() {
     const sidebar = document.getElementById('sidebar');
     sidebar.className = 'sidebar';
-    
+
+    // Get current user from localStorage
+    const currentUser = StationAuth.getUserInfo();
+    const role = currentUser?.role;
+    const isAdmin = role === 'admin';
+    const isOperator = role === 'operator';
+
+    // Operators get a chrome-free dashboard view: hide the sidebar entirely and
+    // remove the left margin reserved for it.
+    if (isOperator) {
+        sidebar.style.display = 'none';
+        const contentWrapper = document.querySelector('.content-wrapper');
+        if (contentWrapper) {
+            contentWrapper.style.marginLeft = '0';
+        }
+        return;
+    }
+
     // Check localStorage for sidebar state
     const isCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
     if (isCollapsed) {
         sidebar.classList.add('collapsed');
     }
-    
+
     // Create toggle button
     const toggleBtn = document.createElement('div');
     toggleBtn.className = 'sidebar-toggle';
     toggleBtn.innerHTML = `
         <img src="assets/graphics/sidebar-icon.png" alt="Toggle Sidebar" class="toggle-icon">
     `;
-    
-    // Get current user from localStorage
-    const currentUser = StationAuth.getUserInfo();
-    const role = currentUser?.role;
-    const isAdmin = role === 'admin';
-    const isOperator = role === 'operator';
 
     // Sidebar items based on user role
     const items = [];
