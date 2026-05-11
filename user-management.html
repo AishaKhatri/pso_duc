@@ -27,7 +27,7 @@
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
             
-            renderApp()
+            renderApp('User Management')
             if (typeof window.renderUserManagement === 'function') {
                 window.renderUserManagement();
             } else {

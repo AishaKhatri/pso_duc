@@ -18,14 +18,14 @@ const productColorConfig = {
       'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
     };
 
-function renderApp() {
+function renderApp(pageTitle) {
     const app = document.getElementById('app');
     app.innerHTML = `
         <div id="topbar"></div>
         <div id="sidebar"></div>
         <div class="content-wrapper" id="content"></div>
     `;
-    renderTopbar();
+    renderTopbar(pageTitle);
     renderSidebar();
 }
 
@@ -717,16 +717,13 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
     }
     content.innerHTML = '';
 
+    // Page title now lives in the topbar; this row only carries the back button.
     const headerContainer = document.createElement('div');
     headerContainer.style.display = 'flex';
-    headerContainer.style.justifyContent = 'space-between';
+    headerContainer.style.justifyContent = 'flex-end';
     headerContainer.style.alignItems = 'center';
-    headerContainer.style.marginBottom = '20px';
+    headerContainer.style.marginBottom = '16px';
     headerContainer.style.width = '100%';
-
-    const heading = document.createElement('h1');
-    heading.textContent = pageTitle;
-    headerContainer.appendChild(heading);
 
     const backButton = createActionButton();
     backButton.textContent = backButtonText;
@@ -744,7 +741,7 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
 
     const addButton = createActionButton();
     addButton.textContent = addButtonText;
-    
+
     buttonContainer.appendChild(addButton);
     content.appendChild(buttonContainer);
 

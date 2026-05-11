@@ -1,20 +1,36 @@
-function renderTopbar() {
+function renderTopbar(pageTitle) {
     const topbar = document.getElementById('topbar');
     topbar.className = 'topbar';
-    
+
     // Main title
     const titleDiv = document.createElement('div');
     titleDiv.style.display = 'flex';
-    titleDiv.style.alignItems = 'center';
+    titleDiv.style.alignItems = 'baseline';
     titleDiv.style.gap = '10px';
-    
+
     const title = document.createElement('h1');
     title.textContent = 'PSO DUC Dashboard';
     title.style.fontSize = '24px';
     title.style.color = 'white';
     title.style.margin = '0';
-    
+
     titleDiv.appendChild(title);
+
+    if (pageTitle) {
+        const sep = document.createElement('span');
+        sep.textContent = '›';
+        sep.style.color = 'rgba(255,255,255,0.5)';
+        sep.style.fontSize = '20px';
+        titleDiv.appendChild(sep);
+
+        const pageLabel = document.createElement('span');
+        pageLabel.textContent = pageTitle;
+        pageLabel.style.color = 'rgba(255,255,255,0.85)';
+        pageLabel.style.fontSize = '18px';
+        pageLabel.style.fontWeight = '500';
+        titleDiv.appendChild(pageLabel);
+    }
+
     topbar.appendChild(titleDiv);
     
     // User section
@@ -113,7 +129,29 @@ function renderTopbar() {
         <div>Role: ${userInfo?.role || 'User'}</div>
     `;
     dropdown.appendChild(userInfoItem);
-    
+
+    // Users link
+    const usersLink = document.createElement('a');
+    usersLink.textContent = 'Users';
+    usersLink.href = 'user-management.html';
+    usersLink.style.cssText = `
+        padding: 10px 16px;
+        background: none;
+        border: none;
+        border-bottom: 1px solid #eee;
+        text-align: left;
+        cursor: pointer;
+        color: #333;
+        font-size: 14px;
+        width: 100%;
+        text-decoration: none;
+        display: block;
+        box-sizing: border-box;
+    `;
+    usersLink.onmouseover = () => { usersLink.style.backgroundColor = '#f5f5f5'; };
+    usersLink.onmouseout = () => { usersLink.style.backgroundColor = 'transparent'; };
+    dropdown.appendChild(usersLink);
+
     // Sign out button
     const signOutBtn = document.createElement('button');
     signOutBtn.textContent = 'Sign Out';
@@ -127,19 +165,19 @@ function renderTopbar() {
         font-size: 14px;
         width: 100%;
     `;
-    
+
     signOutBtn.onmouseover = () => {
         signOutBtn.style.backgroundColor = '#f5f5f5';
     };
-    
+
     signOutBtn.onmouseout = () => {
         signOutBtn.style.backgroundColor = 'transparent';
     };
-    
+
     signOutBtn.onclick = async () => {
         await StationAuth.signOut();
     };
-    
+
     dropdown.appendChild(signOutBtn);
        
     userContainer.appendChild(userCircle);

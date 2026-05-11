@@ -13,11 +13,6 @@ async function renderOverview() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        const heading = document.createElement('h1');
-        heading.textContent = 'DUC - Overview';
-        heading.style.margin = '0 0 16px 0';
-        content.appendChild(heading);
-
         const gridContainer = document.createElement('div');
         gridContainer.style.display = 'flex';
         gridContainer.style.flexWrap = 'wrap';

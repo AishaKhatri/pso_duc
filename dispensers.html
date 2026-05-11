@@ -43,7 +43,7 @@
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
             
-            renderApp()
+            renderApp('Dispensers')
             if (typeof window.renderDispenser === 'function') {
                 window.renderDispenser();
             } else {
