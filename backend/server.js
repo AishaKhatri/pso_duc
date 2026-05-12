@@ -209,6 +209,33 @@ app.get('/api/dashboard-stats', async (req, res) => {
     }
 });
 
+// Recent dispenser connect/disconnect events for the dashboard alerts panel.
+app.get('/api/connection-events', async (req, res) => {
+    try {
+        const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+        const [rows] = await pool.query(
+            `SELECT ch.address, ch.dispenser_id, ch.conn_status, ch.connected_at,
+                    ch.created_at, d.customer_code
+             FROM connections_history ch
+             LEFT JOIN dispensers d ON d.dispenser_id = ch.dispenser_id
+             ORDER BY ch.id DESC
+             LIMIT ?`,
+            [limit]
+        );
+        res.json(rows.map(r => ({
+            address: r.address,
+            dispenser_id: r.dispenser_id,
+            customer_code: r.customer_code || '',
+            conn_status: r.conn_status,
+            connected_at: r.connected_at,
+            created_at: r.created_at
+        })));
+    } catch (error) {
+        console.error('Error fetching connection events:', error);
+        res.status(500).json({ error: error.message || 'Failed to fetch connection events' });
+    }
+});
+
 app.get('/api/auth/verify', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];

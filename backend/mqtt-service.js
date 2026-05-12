@@ -737,29 +737,22 @@ async function handleConnectionAlert(topic, alertData) {
         let deviceAddr = clientId.substring(1); // Remove 'D' prefix
         let connectedAt;
 
-        // await notificationService.sendConnectivityNotification(
-        //     clientId,
-        //     'Connectivity Status',
-        //     `Device ${clientId} ${action}`,
-        //     notifType
-        // );
-
         // Update connected_at timestamp
         if (isConnection) {
-            connectedAt = new Date(alertData.connected_at);                  
+            connectedAt = new Date(alertData.connected_at);
         } else {
-            connectedAt = new Date(alertData.disconnected_at);                  
+            connectedAt = new Date(alertData.disconnected_at);
         }
 
         // For dispensers, update database as before
         if (deviceType === 'dispenser') {
             const [dispensers] = await pool.query(
-                'SELECT dispenser_id FROM dispensers WHERE address = ?',
+                'SELECT dispenser_id, customer_code FROM dispensers WHERE address = ?',
                 [deviceAddr]
             );
-            
+
             if (dispensers.length > 0) {
-                const { dispenser_id } = dispensers[0];
+                const { dispenser_id, customer_code } = dispensers[0];
                 const log = `Dispenser ${clientId} ${action}.`;
                 logWithTimestamp(color, log);
                 logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(connectedAt)} `);
@@ -768,7 +761,7 @@ async function handleConnectionAlert(topic, alertData) {
                     'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
                     [dispenser_id, deviceAddr, conn_status, connectedAt]
                 );
-                
+
                 await pool.query(
                     'UPDATE nozzles SET status = 0 WHERE dispenser_id = ?',
                     [dispenser_id]
@@ -783,6 +776,49 @@ async function handleConnectionAlert(topic, alertData) {
                     'UPDATE dispensers SET connected_at = ? WHERE dispenser_id = ?',
                     [connectedAt, dispenser_id]
                 );
+
+                if (notificationService) {
+                    await notificationService.sendSystemNotification(
+                        'Connectivity Status',
+                        `Device ${clientId} ${action}`,
+                        notifType,
+                        {
+                            event: 'connectivity',
+                            address: deviceAddr,
+                            dispenser_id,
+                            customer_code,
+                            conn_status,
+                            connected_at: connectedAt
+                        }
+                    );
+
+                    // If this disconnect brought the whole station offline,
+                    // emit an additional station-level alert.
+                    if (!isConnection && customer_code) {
+                        const [counts] = await pool.query(
+                            `SELECT
+                                COUNT(*) AS total,
+                                SUM(CASE WHEN conn_status = 1 THEN 1 ELSE 0 END) AS online
+                             FROM dispensers WHERE customer_code = ?`,
+                            [customer_code]
+                        );
+                        const total = Number(counts[0]?.total) || 0;
+                        const online = Number(counts[0]?.online) || 0;
+                        if (total > 0 && online === 0) {
+                            await notificationService.sendSystemNotification(
+                                'Station Offline',
+                                `Station ${customer_code} all DUCs offline`,
+                                'error',
+                                {
+                                    event: 'station_offline',
+                                    customer_code,
+                                    total_ducs: total,
+                                    at: connectedAt
+                                }
+                            );
+                        }
+                    }
+                }
             } else {
                 logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${deviceAddr}`);
             }

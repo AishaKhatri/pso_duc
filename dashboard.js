@@ -41,6 +41,8 @@ function markerColor(key) {
     return MAP_MARKER_COLORS[key] || MAP_MARKER_COLORS.no_duc;
 }
 
+const ALERTS_MAX = 100;
+
 const dashboardState = {
     stations: [],
     stats: null,
@@ -58,7 +60,11 @@ const dashboardState = {
     hourlyPanelEl: null,
     donutPanelEl: null,
     lastUpdatedEl: null,
-    refreshTimer: null
+    refreshTimer: null,
+    alerts: [],
+    alertsListEl: null,
+    alertsPanelEl: null,
+    alertListenerAttached: false
 };
 
 function getRegionScopedStations() {
@@ -546,6 +552,139 @@ function buildProductDonutPanel(products) {
     return panel;
 }
 
+function escapeHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+function buildAlertsPanel() {
+    const panel = document.createElement('div');
+    panel.className = 'side-panel alerts-panel';
+
+    const header = document.createElement('div');
+    header.className = 'alerts-header';
+    const title = document.createElement('h4');
+    title.textContent = 'Alerts';
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'alerts-clear';
+    clearBtn.type = 'button';
+    clearBtn.textContent = 'Clear';
+    clearBtn.addEventListener('click', () => {
+        dashboardState.alerts = [];
+        renderAlertsList();
+    });
+    header.appendChild(title);
+    header.appendChild(clearBtn);
+    panel.appendChild(header);
+
+    const list = document.createElement('div');
+    list.className = 'alerts-list';
+    panel.appendChild(list);
+    dashboardState.alertsListEl = list;
+
+    renderAlertsList();
+    return panel;
+}
+
+function formatAlertTime(ts) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    return d.toLocaleTimeString(undefined, { hour12: false });
+}
+
+function renderAlertsList() {
+    const list = dashboardState.alertsListEl;
+    if (!list) return;
+    list.innerHTML = '';
+    if (!dashboardState.alerts.length) {
+        const empty = document.createElement('div');
+        empty.className = 'alerts-empty';
+        empty.textContent = 'No alerts yet.';
+        list.appendChild(empty);
+        return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const a of dashboardState.alerts) {
+        const row = document.createElement('div');
+        row.className = `alert-row ${a.type || 'info'}`;
+        row.innerHTML = `
+            <span class="alert-device">${escapeHtml(a.device)}</span>
+            <span class="alert-status">${escapeHtml(a.status)}</span>
+            <span class="alert-when">${escapeHtml(formatAlertTime(a.ts))}</span>
+        `;
+        frag.appendChild(row);
+    }
+    list.appendChild(frag);
+}
+
+function alertFromNotification(payload) {
+    const data = payload.data || {};
+    const ts = payload.timestamp || data.connected_at || data.at || Date.now();
+    let device = '';
+    let status = '';
+    let type = payload.notificationType || payload.type || 'info';
+
+    if (data.event === 'station_offline') {
+        device = `Station ${data.customer_code || '?'}`;
+        status = 'ALL DUCS OFFLINE';
+        type = 'error';
+    } else if (data.event === 'connectivity' || data.address) {
+        device = `D${data.address || ''}`;
+        const isUp = !!data.conn_status;
+        status = isUp ? 'CONNECTED' : 'DISCONNECTED';
+        type = isUp ? 'success' : 'error';
+    } else {
+        device = payload.title || 'Alert';
+        status = payload.message || '';
+    }
+    return {
+        id: payload.id || `${ts}-${Math.random().toString(36).slice(2, 8)}`,
+        ts, type, device, status
+    };
+}
+
+function addAlert(payload) {
+    if (!payload) return;
+    dashboardState.alerts.unshift(alertFromNotification(payload));
+    if (dashboardState.alerts.length > ALERTS_MAX) {
+        dashboardState.alerts.length = ALERTS_MAX;
+    }
+    renderAlertsList();
+}
+
+function seedAlertsFromConnectionEvents(rows) {
+    // API returns newest first; preserve that order in the alerts list.
+    dashboardState.alerts = rows.map(r => {
+        const isUp = !!r.conn_status;
+        return {
+            id: `seed-${r.address}-${r.created_at || r.connected_at}`,
+            ts: r.created_at || r.connected_at,
+            type: isUp ? 'success' : 'error',
+            device: `D${r.address}`,
+            status: isUp ? 'CONNECTED' : 'DISCONNECTED'
+        };
+    }).slice(0, ALERTS_MAX);
+    renderAlertsList();
+}
+
+async function fetchConnectionEvents(limit = 50) {
+    try {
+        const resp = await fetch(`${API_BASE_URL}/connection-events?limit=${limit}`);
+        if (!resp.ok) return [];
+        return await resp.json();
+    } catch (err) {
+        console.warn('Failed to load connection events:', err.message);
+        return [];
+    }
+}
+
+function attachAlertListener() {
+    if (dashboardState.alertListenerAttached) return;
+    window.addEventListener('app-notification', (e) => addAlert(e.detail));
+    dashboardState.alertListenerAttached = true;
+}
+
 async function fetchDashboardStats() {
     try {
         const resp = await fetch(`${API_BASE_URL}/dashboard-stats`);
@@ -644,7 +783,17 @@ async function renderDashboard() {
     side.appendChild(networkPanel);
     main.appendChild(side);
 
+    const alertsColumn = document.createElement('div');
+    alertsColumn.className = 'alerts-column';
+    const alertsPanelEl = buildAlertsPanel();
+    dashboardState.alertsPanelEl = alertsPanelEl;
+    alertsColumn.appendChild(alertsPanelEl);
+    main.appendChild(alertsColumn);
+
     content.appendChild(main);
+
+    attachAlertListener();
+    fetchConnectionEvents().then(seedAlertsFromConnectionEvents);
 
     dashboardState.map = L.map('station-map', { scrollWheelZoom: true })
         .setView([30.3753, 69.3451], 6);
