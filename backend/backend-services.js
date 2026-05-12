@@ -8,16 +8,13 @@ const { v4: uuidv4 } = require('uuid');
 const PING_LOG_FILE_PATH = path.join(__dirname, '../logs/ping.log');
 const LOG_FILE_PATH = path.join(__dirname, '../logs/all_messages.log');
 
-// Station map data: combines the Google Sheet station roster (lat/lng/city)
-// with live DUC status from the dispensers table.
-const STATION_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/1XaqQ10uhq9ciOnE4JQm2If9JSb-zC9Kq/export?format=csv&gid=1496142417';
-const STATION_SHEET_TTL_MS = 5 * 60 * 1000;
-let stationSheetCache = { fetchedAt: 0, rows: null };
-
-// Local CSV with verified BWP-division station coords (from "BWP div details.xlsx").
-// Used as the source of truth for any station whose customer_code appears in it.
+// Local CSVs with verified station coords (lat/lng/city/division). Used as the
+// source of truth for stations whose customer_code appears in them; the live
+// DUC status is then merged in from the dispensers table.
 const BWP_STATIONS_CSV_PATH = path.join(__dirname, '..', 'sites', 'bwp-stations.csv');
+const DIK_STATIONS_CSV_PATH = path.join(__dirname, '..', 'sites', 'dik-stations.csv');
 let bwpStationsCache = null;
+let dikStationsCache = null;
 
 async function logPing(message) {
     try {
@@ -311,23 +308,16 @@ function parseCsvRow(line) {
     return out;
 }
 
-async function loadBwpStationRows() {
-    if (bwpStationsCache) return bwpStationsCache;
+async function loadStationCsvRows(csvPath, source) {
     let text;
     try {
-        text = await fs.readFile(BWP_STATIONS_CSV_PATH, 'utf8');
+        text = await fs.readFile(csvPath, 'utf8');
     } catch (err) {
-        if (err.code === 'ENOENT') {
-            bwpStationsCache = [];
-            return bwpStationsCache;
-        }
+        if (err.code === 'ENOENT') return [];
         throw err;
     }
     const lines = text.split(/\r?\n/).filter(l => l.length > 0);
-    if (lines.length < 2) {
-        bwpStationsCache = [];
-        return bwpStationsCache;
-    }
+    if (lines.length < 2) return [];
     const headers = parseCsvRow(lines[0]).map(h => h.trim().toLowerCase());
     const colOf = name => headers.indexOf(name);
     const cCode = colOf('customer_code');
@@ -359,74 +349,31 @@ async function loadBwpStationRows() {
             lat,
             lng,
             total_dus: parseInt(cols[cTotal]) || 0,
-            source: 'bwp-sheet'
+            source
         });
     }
-    bwpStationsCache = rows;
     return rows;
 }
 
+async function loadBwpStationRows() {
+    if (bwpStationsCache) return bwpStationsCache;
+    bwpStationsCache = await loadStationCsvRows(BWP_STATIONS_CSV_PATH, 'bwp-sheet');
+    return bwpStationsCache;
+}
+
+async function loadDikStationRows() {
+    if (dikStationsCache) return dikStationsCache;
+    dikStationsCache = await loadStationCsvRows(DIK_STATIONS_CSV_PATH, 'dik-sheet');
+    return dikStationsCache;
+}
+
 async function fetchStationSheetRows() {
-    const now = Date.now();
-    let sheetRows;
-    if (stationSheetCache.rows && now - stationSheetCache.fetchedAt < STATION_SHEET_TTL_MS) {
-        sheetRows = stationSheetCache.rows;
-    } else {
-        sheetRows = [];
-        try {
-            const response = await fetch(STATION_SHEET_CSV_URL, { redirect: 'follow' });
-            if (response.ok) {
-                const text = await response.text();
-                const lines = text.split(/\r?\n/).filter(l => l.length > 0);
-                if (lines.length >= 2) {
-                    const headers = parseCsvRow(lines[0]).map(h => h.trim());
-                    const idx = (name) => headers.findIndex(h => h.toLowerCase() === name.toLowerCase());
-                    const colStation = idx('Station Name');
-                    const colCustomer = idx('Customer Code');
-                    const colCity = idx('City');
-                    const colLocation = idx('Location');
-                    const colLat = idx('lat');
-                    const colLng = idx('lon');
-                    const colTotal = idx('Total no of Dus');
-                    const colVersion = idx('Version');
-                    const colPhase = idx('Phase');
-
-                    for (let i = 1; i < lines.length; i++) {
-                        const cols = parseCsvRow(lines[i]);
-                        const customer_code = (cols[colCustomer] || '').trim();
-                        const lat = parseFloat(cols[colLat]);
-                        const lng = parseFloat(cols[colLng]);
-                        if (!customer_code || isNaN(lat) || isNaN(lng)) continue;
-                        sheetRows.push({
-                            station_name: (cols[colStation] || '').trim(),
-                            customer_code,
-                            city: (cols[colCity] || '').trim(),
-                            district: '',
-                            division: 'DIK',
-                            location: colLocation >= 0 ? (cols[colLocation] || '').trim() : '',
-                            lat,
-                            lng,
-                            total_dus: parseInt(cols[colTotal]) || 0,
-                            version: colVersion >= 0 ? (cols[colVersion] || '').trim() : '',
-                            phase: colPhase >= 0 ? (cols[colPhase] || '').trim() : '',
-                            source: 'google-sheet'
-                        });
-                    }
-                }
-            } else {
-                console.warn(`Sheet fetch failed: ${response.status}`);
-            }
-        } catch (err) {
-            console.warn('Google sheet fetch failed, falling back to BWP-only data:', err.message);
-        }
-        stationSheetCache = { fetchedAt: now, rows: sheetRows };
-    }
-
-    // Merge BWP local rows: they take precedence for any matching customer_code
-    // and contribute new stations that the Google Sheet does not list.
-    const bwpRows = await loadBwpStationRows();
+    const [bwpRows, dikRows] = await Promise.all([
+        loadBwpStationRows(),
+        loadDikStationRows()
+    ]);
     const merged = new Map();
-    for (const r of sheetRows) merged.set(r.customer_code, r);
+    for (const r of dikRows) merged.set(r.customer_code, r);
     for (const r of bwpRows) merged.set(r.customer_code, { ...(merged.get(r.customer_code) || {}), ...r });
     return Array.from(merged.values());
 }
@@ -443,5 +390,6 @@ module.exports = {
     NotificationWebSocketServer,
     NotificationService,
     fetchStationSheetRows,
-    loadBwpStationRows
+    loadBwpStationRows,
+    loadDikStationRows
 };
