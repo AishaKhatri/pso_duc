@@ -18,17 +18,41 @@ const {
     clearedResetsCache,
     publishMessage } = require('./mqtt-service');
 
-const { 
+const {
     startMidnightResetService,
     NotificationService,
     NotificationWebSocketServer,
-    fetchStationSheetRows } = require('./backend-services');
+    fetchStationSheetRows,
+    getClientIp,
+    logActivity,
+    setLongOutageNotificationService,
+    startLongOutageService } = require('./backend-services');
 const { log } = require('console');
 const console = require('console');
 
 const app = express();
+// Express respects X-Forwarded-For when behind a proxy so req.ip is meaningful.
+app.set('trust proxy', true);
 app.use(cors());
 app.use(express.json());
+
+// Best-effort attach the authenticated user to req for activity logging on
+// mutating routes. Failures here are silent — the actual auth gates live in
+// their own checks (/api/auth/verify); this middleware only enriches logs.
+app.use(async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (token && JWT_SECRET) {
+            const decoded = jwt.verify(token, JWT_SECRET);
+            req.authUser = {
+                id: decoded.userId || decoded.id || decoded.user_id || null,
+                username: decoded.username || null,
+                role: decoded.role || null
+            };
+        }
+    } catch (_) { /* unauthenticated or invalid — ignore */ }
+    next();
+});
 
 // Add WebSocket server initialization
 let notificationWebSocketServer;
@@ -58,15 +82,20 @@ initializeServer().then(() => {
     const PORT = 3001;
     const server = app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
-        
+
         // Initialize WebSocket server for notifications
         notificationWebSocketServer = new NotificationWebSocketServer(server);
         notificationService = new NotificationService(notificationWebSocketServer);
-        
+
         // Pass notification service to MQTT service
         setNotificationService(notificationService);
-        
+        // Give the long-outage scanner the same broadcaster.
+        setLongOutageNotificationService(notificationService);
+
         console.log('WebSocket notification server initialized');
+
+        // Start periodic 12h-disconnect detection
+        startLongOutageService();
     });
 });
 
@@ -209,30 +238,24 @@ app.get('/api/dashboard-stats', async (req, res) => {
     }
 });
 
-// Recent dispenser connect/disconnect events for the dashboard alerts panel.
-app.get('/api/connection-events', async (req, res) => {
+// Active long-outage alerts: devices that have been offline >=12h continuously
+// and have not yet reconnected. Drives the dashboard Alerts panel.
+app.get('/api/long-outages', async (req, res) => {
     try {
-        const limit = Math.min(parseInt(req.query.limit, 10) || 50, 200);
+        const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
         const [rows] = await pool.query(
-            `SELECT ch.address, ch.dispenser_id, ch.conn_status, ch.connected_at,
-                    ch.created_at, d.customer_code
-             FROM connections_history ch
-             LEFT JOIN dispensers d ON d.dispenser_id = ch.dispenser_id
-             ORDER BY ch.id DESC
+            `SELECT id, dispenser_id, address, customer_code,
+                    offline_since, created_at, cleared_at
+             FROM long_outage_alerts
+             WHERE cleared_at IS NULL
+             ORDER BY id DESC
              LIMIT ?`,
             [limit]
         );
-        res.json(rows.map(r => ({
-            address: r.address,
-            dispenser_id: r.dispenser_id,
-            customer_code: r.customer_code || '',
-            conn_status: r.conn_status,
-            connected_at: r.connected_at,
-            created_at: r.created_at
-        })));
+        res.json(rows);
     } catch (error) {
-        console.error('Error fetching connection events:', error);
-        res.status(500).json({ error: error.message || 'Failed to fetch connection events' });
+        console.error('Error fetching long-outage alerts:', error);
+        res.status(500).json({ error: error.message || 'Failed to fetch long-outage alerts' });
     }
 });
 
@@ -746,43 +769,49 @@ app.get('/api/device-info/:address', async (req, res) => {
 });
 
 app.post('/api/auth/signin', async (req, res) => {
+  const ip = getClientIp(req);
   try {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        message: 'Please provide username and password' 
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide username and password'
       });
     }
 
     const [users] = await pool.query(
-      `SELECT id, username, password, role, customer_code, is_active, 
-              last_login, created_at 
-       FROM users 
+      `SELECT id, username, password, role, customer_code, is_active,
+              last_login, created_at
+       FROM users
        WHERE username = ?`,
       [username]
     );
 
     if (users.length === 0) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid username or password' 
+      logActivity(req, 'signin_failed', { username, ip_address: ip, details: { reason: 'unknown_user' } });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
       });
     }
 
     const user = users[0];
 
     if (password !== user.password) {
-      return res.status(401).json({ 
-        success: false, 
-        message: 'Invalid username or password' 
+      logActivity(req, 'signin_failed', {
+        user_id: user.id, username: user.username,
+        ip_address: ip, details: { reason: 'bad_password' }
+      });
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid username or password'
       });
     }
 
     // Generate JWT token with 4 hours expiration
     const token = jwt.sign(
-      { 
+      {
         userId: user.id,
         username: user.username,
         role: user.role,
@@ -793,11 +822,11 @@ app.post('/api/auth/signin', async (req, res) => {
     );
 
     const expiresAt = new Date(Date.now() + 4 * 60 * 60 * 1000); // 4 hours
-    
-    // Insert new session with signed_in = 1
+
+    // Insert new session with signed_in = 1 and capture client IP.
     await pool.query(
-      'INSERT INTO sessions (user_id, session_token, expires_at, signed_in) VALUES (?, ?, ?, ?)',
-      [user.id, token, expiresAt, 1]
+      'INSERT INTO sessions (user_id, ip_address, session_token, expires_at, signed_in) VALUES (?, ?, ?, ?, ?)',
+      [user.id, ip, token, expiresAt, 1]
     );
 
     // Record last login on the user — driven by successful session insert
@@ -806,6 +835,11 @@ app.post('/api/auth/signin', async (req, res) => {
       [user.id]
     );
     user.last_login = new Date();
+
+    logActivity(req, 'signin', {
+      user_id: user.id, username: user.username, ip_address: ip,
+      details: { role: user.role }
+    });
 
     const { password: _, ...userData } = user;
 
@@ -818,9 +852,9 @@ app.post('/api/auth/signin', async (req, res) => {
 
   } catch (error) {
     console.error('Sign in error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
     });
   }
 });
@@ -828,23 +862,24 @@ app.post('/api/auth/signin', async (req, res) => {
 app.post('/api/auth/signout', async (req, res) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
-    
+
     if (token) {
         await pool.query(
             'UPDATE sessions SET signed_in = 0 WHERE session_token = ?',
             [token]
       );
     }
-    
-    res.json({ 
-      success: true, 
-      message: 'Signed out successfully' 
+    logActivity(req, 'signout');
+
+    res.json({
+      success: true,
+      message: 'Signed out successfully'
     });
   } catch (error) {
     console.error('Sign out error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Server error' 
+    res.status(500).json({
+      success: false,
+      message: 'Server error'
     });
   }
 });
@@ -880,9 +915,14 @@ app.post('/api/users', async (req, res) => {
             'INSERT INTO users (username, password, role, customer_code, is_active) VALUES (?, ?, ?, ?, ?)',
             [username, password, role || 'viewer', customer_code || null, 1]
         );
-        
-        res.status(201).json({ 
-            success: true, 
+
+        logActivity(req, 'user_create', {
+            entity_type: 'user', entity_id: result.insertId,
+            details: { username, role: role || 'viewer', customer_code: customer_code || null }
+        });
+
+        res.status(201).json({
+            success: true,
             id: result.insertId,
             message: 'User created successfully'
         });
@@ -914,7 +954,12 @@ app.post('/api/stations', async (req, res) => {
              VALUES (?, ?, ?, ?, ?, ?, ?)`,
             [username, password, customer_code, station_id, city, district || null, division || null]
         );
-        
+
+        logActivity(req, 'station_create', {
+            entity_type: 'station', entity_id: customer_code,
+            details: { customer_code, station_id, city, district, division }
+        });
+
         res.status(201).json({
             success: true,
             id: result.insertId,
@@ -986,8 +1031,13 @@ app.post('/api/dispensers', async (req, res) => {
             await subscribeToTopic(topic, null);
         }
 
-        res.status(201).json({ 
-            success: true, 
+        logActivity(req, 'dispenser_create', {
+            entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
+            details: { customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles }
+        });
+
+        res.status(201).json({
+            success: true,
             id: result.insertId,
             customer_code: customer_code,
             dispenser_id: dispenser_id,
@@ -1009,6 +1059,10 @@ app.post('/api/dispensers/publish', async (req, res) => {
         }
         const payload = typeof message === 'string' ? message : JSON.stringify(message);
         await publishMessage(topic, payload, retain ? { retain: true } : {});
+        logActivity(req, 'mqtt_publish', {
+            entity_type: 'mqtt_topic', entity_id: topic,
+            details: { retain: !!retain, payload: typeof payload === 'string' && payload.length <= 512 ? payload : '[truncated]' }
+        });
         res.json({ success: true });
     } catch (error) {
         console.error('MQTT publish error:', error);
@@ -1058,17 +1112,17 @@ app.post('/api/nozzles', async (req, res) => {
         }
 
         const [result] = await pool.query(
-            `INSERT INTO nozzles 
-            (customer_code, dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status, 
-             price_per_liter, total_quantity, total_amount, total_sales_today, price, quantity) 
+            `INSERT INTO nozzles
+            (customer_code, dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status,
+             price_per_liter, total_quantity, total_amount, total_sales_today, price, quantity)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 customer_code,
-                dispenser_id, 
-                nozzle_id, 
-                product, 
-                status, 
-                lock_unlock, 
+                dispenser_id,
+                nozzle_id,
+                product,
+                status,
+                lock_unlock,
                 keypad_lock_status,
                 numericFields.price_per_liter,
                 numericFields.total_quantity,
@@ -1079,8 +1133,13 @@ app.post('/api/nozzles', async (req, res) => {
             ]
         );
 
-        res.status(201).json({ 
-            success: true, 
+        logActivity(req, 'nozzle_create', {
+            entity_type: 'nozzle', entity_id: `${customer_code}/${dispenser_id}/${nozzle_id}`,
+            details: { customer_code, dispenser_id, nozzle_id, product }
+        });
+
+        res.status(201).json({
+            success: true,
             id: result.insertId,
             message: 'Nozzle added successfully'
         });
@@ -1101,6 +1160,10 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
             'DELETE FROM nozzles WHERE dispenser_id = ?',
             [dispenser_id]
         );
+
+        logActivity(req, 'nozzle_delete_by_dispenser', {
+            entity_type: 'dispenser', entity_id: dispenser_id
+        });
 
         res.json({ success: true, message: 'Nozzles deleted successfully' });
     } catch (error) {
@@ -1151,7 +1214,18 @@ app.put('/api/users/:id', async (req, res) => {
         values.push(id);
         
         await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`, values);
-        
+
+        const changedKeys = [];
+        if (username) changedKeys.push('username');
+        if (role) changedKeys.push('role');
+        if (customer_code !== undefined) changedKeys.push('customer_code');
+        if (is_active !== undefined) changedKeys.push('is_active');
+        if (password) changedKeys.push('password');
+        logActivity(req, 'user_update', {
+            entity_type: 'user', entity_id: id,
+            details: { changed: changedKeys }
+        });
+
         res.json({ success: true, message: 'User updated successfully' });
     } catch (error) {
         console.error('Error updating user:', error);
@@ -1215,7 +1289,12 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
             return res.status(404).json({ error: 'Dispenser not found' });
         }
 
-        res.json({ 
+        logActivity(req, 'dispenser_update', {
+            entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
+            details: { fields: fields.map(f => f.replace(' = ?', '')) }
+        });
+
+        res.json({
             success: true,
             message: 'Dispenser updated successfully',
             customer_code,
@@ -1380,7 +1459,13 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
         // Clean up old entries
         setTimeout(() => recentUpdates.delete(messageHash), DEDUPE_WINDOW);
 
-        res.json({ 
+        logActivity(req, 'nozzle_update', {
+            entity_type: 'nozzle',
+            entity_id: `${customer_code}/${dispenser_id}/${decodeURIComponent(nozzle_id)}`,
+            details: { fields: fields.map(f => f.replace(' = ?', '')) }
+        });
+
+        res.json({
             success: true,
             message: 'Nozzle updated successfully'
         });
@@ -1405,9 +1490,14 @@ app.put('/api/reset-logs/mark-cleared', (req, res) => {
         
         const clearedSet = clearedResetsCache.get(dispenserAddress);
         resetIds.forEach(id => clearedSet.add(id));
-        
-        res.json({ 
-            success: true, 
+
+        logActivity(req, 'reset_logs_clear', {
+            entity_type: 'dispenser_address', entity_id: dispenserAddress,
+            details: { count: resetIds.length, ids: resetIds }
+        });
+
+        res.json({
+            success: true,
             message: `${resetIds.length} reset log(s) marked as cleared`,
             affectedRows: resetIds.length
         });
@@ -1430,9 +1520,14 @@ app.put('/api/error-log/mark-cleared', async (req, res) => {
             `UPDATE errors SET cleared = 1 WHERE id IN (${placeholders})`,
             errorIds
         );
-        
-        res.json({ 
-            success: true, 
+
+        logActivity(req, 'errors_clear', {
+            entity_type: 'errors', entity_id: errorIds.join(','),
+            details: { count: result.affectedRows }
+        });
+
+        res.json({
+            success: true,
             message: `${result.affectedRows} error(s) marked as cleared`,
             affectedRows: result.affectedRows
         });
@@ -1456,11 +1551,13 @@ app.delete('/api/users/:id', async (req, res) => {
         }
         
         const [result] = await pool.query('DELETE FROM users WHERE id = ?', [id]);
-        
+
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'User not found' });
         }
-        
+
+        logActivity(req, 'user_delete', { entity_type: 'user', entity_id: id });
+
         res.json({ success: true, message: 'User deleted successfully' });
     } catch (error) {
         console.error('Error deleting user:', error);
@@ -1471,13 +1568,15 @@ app.delete('/api/users/:id', async (req, res) => {
 app.delete('/api/stations/:id', async (req, res) => {
     try {
         const { id } = req.params;
-               
+
         const [result] = await pool.query('DELETE FROM stations WHERE id = ?', [id]);
-        
+
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Station not found' });
         }
-        
+
+        logActivity(req, 'station_delete', { entity_type: 'station', entity_id: id });
+
         res.json({ success: true, message: 'Station deleted successfully' });
     } catch (error) {
         console.error('Error deleting station:', error);
@@ -1544,14 +1643,19 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         await connection.query('SET FOREIGN_KEY_CHECKS = 1');
         
         await connection.commit();
-        
+
         if (result.affectedRows === 0) {
             return res.status(404).json({ error: 'Dispenser not found' });
         }
-        
-        res.json({ 
+
+        logActivity(req, 'dispenser_delete', {
+            entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
+            details: { delete_history: deleteHistory, address }
+        });
+
+        res.json({
             success: true,
-            message: deleteHistory 
+            message: deleteHistory
                 ? 'Dispenser and all historical records deleted successfully'
                 : 'Dispenser deleted (historical records preserved)'
         });

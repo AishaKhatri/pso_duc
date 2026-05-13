@@ -378,6 +378,136 @@ async function fetchStationSheetRows() {
     return Array.from(merged.values());
 }
 
+// Best-effort client IP extraction. Honors X-Forwarded-For when present.
+// Loopback (::1) is normalized to 127.0.0.1 for readability when the client
+// hits the server from the same machine.
+function getClientIp(req) {
+    if (!req) return null;
+    const xff = req.headers && (req.headers['x-forwarded-for'] || req.headers['X-Forwarded-For']);
+    let raw = xff
+        ? String(xff).split(',')[0].trim()
+        : (req.ip || req.socket?.remoteAddress || req.connection?.remoteAddress || '').toString();
+    raw = raw.replace(/^::ffff:/, '');
+    if (raw === '::1') raw = '127.0.0.1';
+    return raw || null;
+}
+
+// Insert a row into activity_log. Never throws — logging must not break the
+// caller. Pass `req` to auto-capture IP and authenticated user. Optional
+// overrides via `extras` (entity_type, entity_id, details, user_id, username).
+async function logActivity(req, action, extras = {}) {
+    try {
+        const ip = extras.ip_address || getClientIp(req);
+        const user_id = extras.user_id ?? req?.authUser?.id ?? null;
+        const username = extras.username ?? req?.authUser?.username ?? null;
+        const entity_type = extras.entity_type ?? null;
+        const entity_id = extras.entity_id != null ? String(extras.entity_id) : null;
+        const details = extras.details ? JSON.stringify(extras.details) : null;
+        await pool.query(
+            `INSERT INTO activity_log
+             (user_id, username, ip_address, action, entity_type, entity_id, details)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [user_id, username, ip, action, entity_type, entity_id, details]
+        );
+    } catch (err) {
+        errorWithTimestamp('Failed to write activity_log:', err.message);
+    }
+}
+
+// ===== 12-hour disconnect detection =====
+const LONG_OUTAGE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
+const LONG_OUTAGE_SCAN_INTERVAL_MS = 10 * 60 * 1000; // every 10 min
+let longOutageNotificationService = null;
+
+function setLongOutageNotificationService(svc) {
+    longOutageNotificationService = svc;
+}
+
+// Scan once for dispensers that have been continuously disconnected for at
+// least 12h. For each such device, ensure exactly one open long_outage_alerts
+// row exists; on first detection, broadcast a WS notification.
+async function scanLongOutages() {
+    try {
+        const cutoff = new Date(Date.now() - LONG_OUTAGE_THRESHOLD_MS);
+        const [rows] = await pool.query(
+            `SELECT d.dispenser_id, d.address, d.customer_code, d.connected_at
+             FROM dispensers d
+             WHERE d.conn_status = 0
+               AND d.connected_at IS NOT NULL
+               AND d.connected_at <= ?`,
+            [cutoff]
+        );
+
+        for (const r of rows) {
+            const [existing] = await pool.query(
+                `SELECT id FROM long_outage_alerts
+                 WHERE address = ? AND cleared_at IS NULL
+                 LIMIT 1`,
+                [r.address]
+            );
+            if (existing.length > 0) continue;
+
+            const [ins] = await pool.query(
+                `INSERT INTO long_outage_alerts
+                 (dispenser_id, address, customer_code, offline_since)
+                 VALUES (?, ?, ?, ?)`,
+                [r.dispenser_id, r.address, r.customer_code || null, r.connected_at]
+            );
+
+            if (longOutageNotificationService) {
+                await longOutageNotificationService.sendSystemNotification(
+                    'Long Outage',
+                    `Device D${r.address} offline for 12h+`,
+                    'error',
+                    {
+                        event: 'long_outage',
+                        id: ins.insertId,
+                        address: r.address,
+                        dispenser_id: r.dispenser_id,
+                        customer_code: r.customer_code || null,
+                        offline_since: r.connected_at
+                    }
+                );
+            }
+            logWithTimestamp(chalk.red,
+                `Long outage detected: D${r.address} offline since ${r.connected_at}`);
+        }
+    } catch (err) {
+        errorWithTimestamp('Long-outage scan failed:', err.message);
+    }
+}
+
+// Mark any open long_outage row for this address as cleared. Returns the
+// cleared row(s) so the caller can broadcast a 'long_outage_cleared' event.
+async function clearLongOutageForAddress(address) {
+    try {
+        const [open] = await pool.query(
+            `SELECT id, dispenser_id, customer_code, offline_since
+             FROM long_outage_alerts
+             WHERE address = ? AND cleared_at IS NULL`,
+            [address]
+        );
+        if (open.length === 0) return [];
+        await pool.query(
+            `UPDATE long_outage_alerts
+             SET cleared_at = CURRENT_TIMESTAMP
+             WHERE address = ? AND cleared_at IS NULL`,
+            [address]
+        );
+        return open;
+    } catch (err) {
+        errorWithTimestamp('Failed to clear long_outage_alerts:', err.message);
+        return [];
+    }
+}
+
+function startLongOutageService() {
+    logWithTimestamp(null, 'Starting long-outage (12h) detection service...');
+    // First scan after a short delay so the rest of init can settle.
+    setTimeout(scanLongOutages, 30 * 1000);
+    setInterval(scanLongOutages, LONG_OUTAGE_SCAN_INTERVAL_MS);
+}
+
 module.exports = {
     logPing,
     writeToLogFile,
@@ -391,5 +521,11 @@ module.exports = {
     NotificationService,
     fetchStationSheetRows,
     loadBwpStationRows,
-    loadDikStationRows
+    loadDikStationRows,
+    getClientIp,
+    logActivity,
+    setLongOutageNotificationService,
+    scanLongOutages,
+    clearLongOutageForAddress,
+    startLongOutageService
 };

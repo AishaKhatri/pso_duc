@@ -35,8 +35,9 @@ CREATE TABLE `users` (
 CREATE TABLE IF NOT EXISTS `sessions` (
   `id` int NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
   `session_token` varchar(255) NOT NULL,
-  `signed_in` tinyint NOT NULL DEFAULT '1', 
+  `signed_in` tinyint NOT NULL DEFAULT '1',
   `expires_at` timestamp NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -44,6 +45,41 @@ CREATE TABLE IF NOT EXISTS `sessions` (
   KEY `idx_user_id` (`user_id`),
   KEY `idx_signed_in` (`signed_in`),
   CONSTRAINT `sessions_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Activity log: server-wide audit trail of user actions (signin/out, CRUD on
+-- managed entities, MQTT publishes, clear-error/reset actions). user_id is
+-- nullable so signin failures / unauthenticated events can still be recorded.
+CREATE TABLE IF NOT EXISTS `activity_log` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `user_id` int DEFAULT NULL,
+  `username` varchar(255) DEFAULT NULL,
+  `ip_address` varchar(45) DEFAULT NULL,
+  `action` varchar(64) NOT NULL,
+  `entity_type` varchar(32) DEFAULT NULL,
+  `entity_id` varchar(128) DEFAULT NULL,
+  `details` json DEFAULT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_user_id` (`user_id`),
+  KEY `idx_action` (`action`),
+  KEY `idx_created_at` (`created_at`),
+  CONSTRAINT `activity_log_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+-- One row per long-outage event (>=12h continuously offline). cleared_at is
+-- filled when the device reconnects, so an active outage is `cleared_at IS NULL`.
+CREATE TABLE IF NOT EXISTS `long_outage_alerts` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `dispenser_id` varchar(50) NOT NULL,
+  `address` varchar(8) NOT NULL,
+  `customer_code` varchar(8) DEFAULT NULL,
+  `offline_since` timestamp NOT NULL,
+  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
+  `cleared_at` timestamp NULL DEFAULT NULL,
+  PRIMARY KEY (`id`),
+  KEY `idx_address` (`address`),
+  KEY `idx_cleared_at` (`cleared_at`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `dispensers` (
