@@ -2,7 +2,7 @@ const mqtt = require('mqtt');
 const chalk = require('chalk');
 const pool = require('./db');
 const fs = require('fs').promises;
-const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService } = require('./backend-services');
+const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress } = require('./backend-services');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -777,43 +777,26 @@ async function handleConnectionAlert(topic, alertData) {
                     [connectedAt, dispenser_id]
                 );
 
-                if (notificationService) {
-                    await notificationService.sendSystemNotification(
-                        'Connectivity Status',
-                        `Device ${clientId} ${action}`,
-                        notifType,
-                        {
-                            event: 'connectivity',
-                            address: deviceAddr,
-                            dispenser_id,
-                            customer_code,
-                            conn_status,
-                            connected_at: connectedAt
-                        }
-                    );
-
-                    // If this disconnect brought the whole station offline,
-                    // emit an additional station-level alert.
-                    if (!isConnection && customer_code) {
-                        const [counts] = await pool.query(
-                            `SELECT
-                                COUNT(*) AS total,
-                                SUM(CASE WHEN conn_status = 1 THEN 1 ELSE 0 END) AS online
-                             FROM dispensers WHERE customer_code = ?`,
-                            [customer_code]
-                        );
-                        const total = Number(counts[0]?.total) || 0;
-                        const online = Number(counts[0]?.online) || 0;
-                        if (total > 0 && online === 0) {
+                // Per-device connect/disconnect events no longer broadcast to
+                // the dashboard alerts panel — only the 12h long-outage scanner
+                // raises alerts (see backend-services.startLongOutageService).
+                // On reconnect, close any open long-outage row for this address
+                // and notify the UI so it can drop the alert.
+                if (isConnection) {
+                    const cleared = await clearLongOutageForAddress(deviceAddr);
+                    if (cleared.length > 0 && notificationService) {
+                        for (const row of cleared) {
                             await notificationService.sendSystemNotification(
-                                'Station Offline',
-                                `Station ${customer_code} all DUCs offline`,
-                                'error',
+                                'Long Outage Cleared',
+                                `Device D${deviceAddr} back online`,
+                                'success',
                                 {
-                                    event: 'station_offline',
+                                    event: 'long_outage_cleared',
+                                    id: row.id,
+                                    address: deviceAddr,
+                                    dispenser_id,
                                     customer_code,
-                                    total_ducs: total,
-                                    at: connectedAt
+                                    offline_since: row.offline_since
                                 }
                             );
                         }
