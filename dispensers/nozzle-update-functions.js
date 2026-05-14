@@ -233,10 +233,16 @@ async function sendGetCommandsForDispenser(dispenser) {
         messagesToSend.forEach((msg) => {
             setTimeout(async () => {
                 try {
+                    const userInfo = (typeof StationAuth !== 'undefined' && StationAuth.getUserInfo()) || null;
                     const resp = await fetch(`${API_BASE_URL}/dispensers/publish`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ topic: msg.topic, message: msg.message })
+                        body: JSON.stringify({
+                            topic: msg.topic,
+                            message: msg.message,
+                            userId: userInfo?.id ?? null,
+                            username: userInfo?.username ?? null
+                        })
                     });
                     if (!resp.ok) {
                         const err = await resp.json().catch(() => ({}));

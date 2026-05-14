@@ -536,10 +536,16 @@ async function sendDispenserCommand(topic, customerCode, city, message, button, 
         console.log('Message:', message);
         console.log('Timestamp:', new Date().toISOString());
 
+        const userInfo = (typeof StationAuth !== 'undefined' && StationAuth.getUserInfo()) || null;
         const response = await fetch(`${API_BASE_URL}/dispensers/publish`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ topic: publishTopic, message })
+            body: JSON.stringify({
+                topic: publishTopic,
+                message,
+                userId: userInfo?.id ?? null,
+                username: userInfo?.username ?? null
+            })
         });
 
         const result = await response.json().catch(() => ({}));

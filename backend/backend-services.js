@@ -414,6 +414,39 @@ async function logActivity(req, action, extras = {}) {
     }
 }
 
+// Derive a human-readable action label and key fields from an MQTT publish.
+// Topic shape:   pso/<city>/<customer_code>/duc/d<address>
+// Payload shape: { dis_addr, req_type, side, noz_number, msg_type, message }
+function describeMqttCommand(topic, message) {
+    const parts = String(topic || '').split('/');
+    const customer_code = parts[2] || null;
+    const dispenser_address = parts[4] || null;
+    let m = message;
+    if (typeof m === 'string') {
+        try { m = JSON.parse(m); } catch { m = {}; }
+    }
+    if (!m || typeof m !== 'object') m = {};
+
+    const isGet = Number(m.req_type) === 1;
+    const isOn = String(m.message) === '1';
+    let action;
+    switch (Number(m.msg_type)) {
+        case 0:  action = 'nozzle_status_request'; break;
+        case 1:  action = isGet ? 'price_request' : 'price_update'; break;
+        case 4:  action = isGet ? 'nozzle_lock_request' : (isOn ? 'nozzle_lock' : 'nozzle_unlock'); break;
+        case 5:  action = isGet ? 'keypad_lock_request' : (isOn ? 'keypad_lock' : 'keypad_unlock'); break;
+        case 6:  action = isGet ? 'ir_lock_request' : (isOn ? 'ir_lock' : 'ir_unlock'); break;
+        default: action = isGet ? `data_request_${m.msg_type}` : `mqtt_publish_${m.msg_type}`;
+    }
+    return {
+        action,
+        customer_code,
+        dispenser_address,
+        side: m.side ?? null,
+        nozzle_number: m.noz_number != null ? Number(m.noz_number) : null
+    };
+}
+
 // ===== 12-hour disconnect detection =====
 const LONG_OUTAGE_THRESHOLD_MS = 12 * 60 * 60 * 1000;
 const LONG_OUTAGE_SCAN_INTERVAL_MS = 10 * 60 * 1000; // every 10 min
@@ -524,6 +557,7 @@ module.exports = {
     loadDikStationRows,
     getClientIp,
     logActivity,
+    describeMqttCommand,
     setLongOutageNotificationService,
     scanLongOutages,
     clearLongOutageForAddress,

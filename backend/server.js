@@ -25,8 +25,10 @@ const {
     fetchStationSheetRows,
     getClientIp,
     logActivity,
+    describeMqttCommand,
     setLongOutageNotificationService,
     startLongOutageService } = require('./backend-services');
+
 const { log } = require('console');
 const console = require('console');
 
@@ -66,6 +68,22 @@ const recentUpdates = new Map();
 const DEDUPE_WINDOW = 5000; // 5 seconds
 const JWT_SECRET = process.env.JWT_SECRET;
 
+// Service-to-service API key. Used by external integration clients (the
+// Price Update python app, etc.) that call /api/ducs on the integration
+// port. Rotate by changing PRICE_APP_API_KEY in .env and restarting.
+const PRICE_APP_API_KEY = process.env.PRICE_APP_API_KEY;
+
+function requireApiKey(req, res, next) {
+    if (!PRICE_APP_API_KEY) {
+        return res.status(503).json({ error: 'API key not configured on server' });
+    }
+    const provided = req.headers['x-api-key'];
+    if (!provided || provided !== PRICE_APP_API_KEY) {
+        return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
+    }
+    next();
+}
+
 // Start the midnight reset service when server starts
 async function initializeServer() {
     try {
@@ -96,6 +114,14 @@ initializeServer().then(() => {
 
         // Start periodic 12h-disconnect detection
         startLongOutageService();
+    });
+
+    // Integration port: same Express app, separate listener for external
+    // service-to-service traffic (Price Update python app, etc.). Forward
+    // ONLY this port through the firewall; keep 3001 LAN-only.
+    const INTEGRATION_PORT = parseInt(process.env.INTEGRATION_PORT || '7717', 10);
+    app.listen(INTEGRATION_PORT, () => {
+        console.log(`Integration API listening on port ${INTEGRATION_PORT}`);
     });
 });
 
@@ -418,6 +444,37 @@ app.get('/api/stations', async (req, res) => {
     } catch (error) {
         console.error('Get stations error:', error);
         res.status(500).json({ error: 'Failed to fetch stations' });
+    }
+});
+
+// Service-to-service: flat list of every nozzle joined with its dispenser
+// and station. Consumed by the Price Update python app to build its DUC
+// dataframe. Protected by X-API-Key so it can be exposed on the
+// integration port without giving up the whole DB.
+app.get('/api/ducs', requireApiKey, async (req, res) => {
+    try {
+        const [rows] = await pool.query(
+            `SELECT
+                 n.id            AS sno,
+                 s.customer_code AS customer_code,
+                 s.division      AS division,
+                 s.city          AS city,
+                 d.address       AS duc_address,
+                 n.dispenser_id  AS dispenser_id,
+                 n.nozzle_id     AS nozzle_id,
+                 n.product       AS product
+             FROM nozzles n
+             JOIN dispensers d
+               ON n.customer_code = d.customer_code
+              AND n.dispenser_id  = d.dispenser_id
+             JOIN stations s
+               ON s.customer_code = n.customer_code
+             ORDER BY s.customer_code, d.address, n.nozzle_id`
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Get ducs error:', error);
+        res.status(500).json({ error: 'Failed to fetch ducs' });
     }
 });
 
@@ -1053,15 +1110,27 @@ app.post('/api/dispensers', async (req, res) => {
 // Frontend never speaks MQTT directly.
 app.post('/api/dispensers/publish', async (req, res) => {
     try {
-        const { topic, message, retain } = req.body;
+        const { topic, message, retain, userId, username } = req.body;
         if (!topic || message === undefined || message === null) {
             return res.status(400).json({ success: false, error: 'topic and message are required' });
         }
         const payload = typeof message === 'string' ? message : JSON.stringify(message);
         await publishMessage(topic, payload, retain ? { retain: true } : {});
-        logActivity(req, 'mqtt_publish', {
-            entity_type: 'mqtt_topic', entity_id: topic,
-            details: { retain: !!retain, payload: typeof payload === 'string' && payload.length <= 512 ? payload : '[truncated]' }
+
+        const meta = describeMqttCommand(topic, message);
+        logActivity(req, meta.action, {
+            user_id: userId,
+            username: username,
+            entity_type: 'mqtt_topic',
+            entity_id: topic,
+            details: {
+                customer_code: meta.customer_code,
+                dispenser_address: meta.dispenser_address,
+                side: meta.side,
+                nozzle_number: meta.nozzle_number,
+                retain: !!retain,
+                payload: typeof payload === 'string' && payload.length <= 512 ? payload : '[truncated]'
+            }
         });
         res.json({ success: true });
     } catch (error) {
