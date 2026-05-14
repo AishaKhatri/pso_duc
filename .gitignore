@@ -8,3 +8,5 @@
 
 # Ignore Temp files
 *.tmp
+
+**/.claude/
