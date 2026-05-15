@@ -16,18 +16,19 @@ const LAYOUT_CONFIG = {
         statusFontSize: '12px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
-        width: '140px',
+        width: '160px',
         minWidth: '140px',
-        maxWidth: '140px',
+        maxWidth: '160px',
         iconSize: '25px',
         fontSize: '24px',
         showKeypad: false,
         showLockStatus: false,
         showMetrics: false,
+        showPricePerLitre: true,
         showTotals: false,
         showLastUpdated: false,
         headerPadding: '2px 16px 2px',
-        sectionPadding: '10px 15px',
+        sectionPadding: '10px 10px',
         statusFontSize: '12px',
         ViewTransactionsFontSize: '12px'
     }
@@ -70,6 +71,7 @@ function createHeaderSection(fuelType, nozzleId, layoutType) {
 
 // Create status section (common)
 function createStatusSection(data, layoutType) {
+    const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
     const config = LAYOUT_CONFIG[layoutType];
     const section = document.createElement('div');
     section.style.padding = config.sectionPadding;
@@ -79,6 +81,16 @@ function createStatusSection(data, layoutType) {
     statusWrapper.style.justifyContent = 'space-between';
     statusWrapper.style.alignItems = 'center';
     statusWrapper.style.marginBottom = '12px';
+
+    // Compact price/litre (SUMMARY layout) — sits to the left of the status badge.
+    if (config.showPricePerLitre) {
+        const price = document.createElement('div');
+        price.style.fontSize = '13px';
+        price.style.fontWeight = '700';
+        price.style.color = 'var(--metric-highlight-text)';
+        price.textContent = `Rs. ${safeNumber(data.pricePerLitre).toFixed(2)}`;
+        statusWrapper.appendChild(price);
+    }
 
     // Keypad and lock/unlock icons (only for FULL layout)
     if (config.showKeypad && config.showLockStatus) {
@@ -322,7 +334,7 @@ window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYO
             const metricsSection = createMetricsSection(data);
             bodyWrapper.appendChild(metricsSection);
         }
-        
+
         // Totals footer (only for FULL layout)
         if (config.showTotals) {
             const totalsFooter = createTotalsFooter(data);
