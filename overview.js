@@ -12,7 +12,9 @@ async function renderOverview() {
     content.appendChild(loader);
 
     try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+        // /dispensers-full returns each dispenser with its nozzles[] and station
+        // attached in one round trip (avoids 1 + N nozzle fetches + S station fetches).
+        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers-full`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
         loader.remove();
@@ -37,6 +39,8 @@ async function renderOverview() {
         gridContainer.style.flexWrap = 'wrap';
         gridContainer.style.gap = '15px';
         gridContainer.style.justifyContent = 'flex-start';
+        // Attach BEFORE rendering — see the matching comment in dispenser.js for why.
+        content.appendChild(gridContainer);
 
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');
@@ -48,19 +52,15 @@ async function renderOverview() {
             await window.renderStationWiseDispensers(dispensers, gridContainer, createDispenserCard, { layoutType: window.NOZZLE_LAYOUTS.SUMMARY });
         }
 
-        content.appendChild(gridContainer);
-
         if (dispensers.length > 0) {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
-                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
+                    const updatedDispensersResponse = await fetch(`${API_BASE_URL}/dispensers-full`);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 
-                    for (const dispenser of updatedDispensers) {
-                        await updateDispenserCard(dispenser);
-                    }
+                    await Promise.all(updatedDispensers.map(updateDispenserCard));
                     refreshTimestamp();
                 } catch (error) {
                     console.error('Error during periodic update:', error);
@@ -75,12 +75,16 @@ async function renderOverview() {
 
 async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const layoutType = params.layoutType || window.NOZZLE_LAYOUTS.SUMMARY;
-    
-    const nozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
-    );
-    if (!nozzlesResponse.ok) return;
-    const nozzles = await nozzlesResponse.json();
+
+    // Prefer nozzles attached by /dispensers-full; fall back to a per-card fetch.
+    let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
+    if (!nozzles) {
+        const nozzlesResponse = await fetch(
+            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+        );
+        if (!nozzlesResponse.ok) return;
+        nozzles = await nozzlesResponse.json();
+    }
 
     if (nozzles.length === 0) return;
 
@@ -145,11 +149,15 @@ async function updateDispenserCard(dispenser) {
     }
 
     try {
-        const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
-        );
-        if (!nozzlesResponse.ok) return;
-        const nozzles = await nozzlesResponse.json();
+        // Use attached nozzles when present (from /dispensers-full), else fetch.
+        let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
+        if (!nozzles) {
+            const nozzlesResponse = await fetch(
+                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+            );
+            if (!nozzlesResponse.ok) return;
+            nozzles = await nozzlesResponse.json();
+        }
 
         nozzles.forEach(nozzle => {
             const nozzleData = window.NozzleData(nozzle);

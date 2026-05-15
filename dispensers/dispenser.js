@@ -346,9 +346,12 @@ async function renderDispenser() {
     content.appendChild(loader);
 
     try {
+        // /dispensers-full returns each dispenser with its nozzles[] and station
+        // already attached, so the page can render with one round trip instead
+        // of 1 + N (nozzles) + S (per-station info).
         const dispenserUrl = customerCodeFilter
-            ? `${API_BASE_URL}/dispensers?customer_code=${encodeURIComponent(customerCodeFilter)}`
-            : `${API_BASE_URL}/dispensers`;
+            ? `${API_BASE_URL}/dispensers-full?customer_code=${encodeURIComponent(customerCodeFilter)}`
+            : `${API_BASE_URL}/dispensers-full`;
         const dispensersResponse = await fetch(dispenserUrl);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
@@ -467,6 +470,12 @@ async function renderDispenser() {
         }
 
         gridContainer.id = 'dispenser-grid';
+        // Attach gridContainer BEFORE rendering into it. createDispenserCard
+        // schedules a setTimeout that calls document.getElementById('nozzle-…');
+        // if cards are built into a detached gridContainer they aren't visible
+        // to that lookup, which was leaving every nozzle blank until the 10-s
+        // periodic tick finally populated them.
+        content.appendChild(gridContainer);
 
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');
@@ -485,19 +494,18 @@ async function renderDispenser() {
             await window.renderStationWiseDispensers(dispensers, gridContainer, createDispenserCard, { layoutType: window.NOZZLE_LAYOUTS.FULL }, optionsContainer);
         }
 
-        content.appendChild(gridContainer);
-
         if (dispensers.length > 0) {
             updateInterval = setInterval(async () => {
                 console.log('Performing periodic update of dispenser data...');
                 try {
+                    // dispenserUrl already points at /dispensers-full so each tick
+                    // pulls dispensers + nozzles in one round trip instead of
+                    // 1 + N fetches.
                     const updatedDispensersResponse = await fetch(dispenserUrl);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 
-                    for (const dispenser of updatedDispensers) {
-                        await updateDispenserCard(dispenser);
-                    }
+                    await Promise.all(updatedDispensers.map(updateDispenserCard));
                     refreshTimestamp();
                 } catch (error) {
                     console.error('Error during periodic update:', error);
@@ -512,12 +520,17 @@ async function renderDispenser() {
 
 async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const layoutType = params.layoutType || window.NOZZLE_LAYOUTS.FULL;
-    
-    const nozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
-    );
-    if (!nozzlesResponse.ok) return;
-    const nozzles = await nozzlesResponse.json();
+
+    // Prefer the nozzles attached by /dispensers-full; fall back to a per-card
+    // fetch if a caller hasn't migrated yet.
+    let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
+    if (!nozzles) {
+        const nozzlesResponse = await fetch(
+            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+        );
+        if (!nozzlesResponse.ok) return;
+        nozzles = await nozzlesResponse.json();
+    }
 
     if (nozzles.length === 0) return;
 
@@ -617,60 +630,64 @@ async function updateDispenserCard(dispenser) {
 
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
+    const dispenserTopic = `D${dispenser.address}`;
+
     if (typeof window.updateIRStatus === 'function') {
-        const dispenserAddr = dispenser.address;
-        window.updateIRStatus(`D${dispenserAddr}`, dispenser.ir_lock_status ? 1 : 0);
+        window.updateIRStatus(dispenserTopic, dispenser.ir_lock_status ? 1 : 0);
     }
 
     if (typeof window.updateConnStatus === 'function') {
-        const dispenserAddr = dispenser.address;
-        window.updateConnStatus(`D${dispenserAddr}`, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
+        window.updateConnStatus(dispenserTopic, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
     }
 
-    // Update error count
-    const dispenserTopic = `D${dispenser.address}`;
-    if (typeof window.updateErrorCount === 'function') {
-        await window.updateErrorCount(dispenserTopic);
-    }
-
-    // Update reset count
-    if (typeof window.updateResetCount === 'function') {
-        await window.updateResetCount(dispenserTopic);
-    }
-
-    try {
-        const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
-        );
-        if (!nozzlesResponse.ok) return;
-        const nozzles = await nozzlesResponse.json();
-
-        // Fetch the error count once per dispenser (all nozzles share the same
-        // dispenserTopic, so doing it per-nozzle made N identical requests).
-        const dispenserTopicForNozzles = `D${dispenser.address}`;
-        let sharedErrorCount = 0;
-        if (typeof window.fetchErrorCount === 'function') {
-            try {
-                sharedErrorCount = await window.fetchErrorCount(dispenserTopicForNozzles);
-            } catch (error) {
-                console.error('Error fetching error count for dispenser:', dispenser.dispenser_id, error);
-            }
+    // Fetch error count ONCE per dispenser per tick; shared between badge and
+    // per-nozzle data so /error-log isn't called twice.
+    let sharedErrorCount = 0;
+    if (typeof window.fetchErrorCount === 'function') {
+        try {
+            sharedErrorCount = await window.fetchErrorCount(dispenserTopic);
+        } catch (error) {
+            console.error('Error fetching error count for dispenser:', dispenser.dispenser_id, error);
         }
-
-        nozzles.forEach((nozzle) => {
-            const nozzleData = window.NozzleData(nozzle);
-            if (!nozzleData.dispenserTopic) {
-                nozzleData.dispenserTopic = dispenserTopicForNozzles;
-            }
-            nozzleData.errorCount = sharedErrorCount;
-
-            if (typeof window.updateNozzleUI === 'function') {
-                window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
-            }
-        });
-    } catch (error) {
-        console.error('Error updating nozzle data:', error);
     }
+
+    // Prefer nozzles attached by /dispensers-full (no per-card fetch needed);
+    // fall back to fetching only if the dispenser arrived without them.
+    const nozzlesPromise = Array.isArray(dispenser.nozzles)
+        ? Promise.resolve(dispenser.nozzles)
+        : (async () => {
+            const r = await fetch(
+                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+            );
+            return r.ok ? r.json() : [];
+        })();
+
+    await Promise.all([
+        typeof window.updateErrorCount === 'function'
+            ? window.updateErrorCount(dispenserTopic, sharedErrorCount)
+            : Promise.resolve(),
+        typeof window.updateResetCount === 'function'
+            ? window.updateResetCount(dispenserTopic)
+            : Promise.resolve(),
+        (async () => {
+            try {
+                const nozzles = await nozzlesPromise;
+                nozzles.forEach((nozzle) => {
+                    const nozzleData = window.NozzleData(nozzle);
+                    if (!nozzleData.dispenserTopic) {
+                        nozzleData.dispenserTopic = dispenserTopic;
+                    }
+                    nozzleData.errorCount = sharedErrorCount;
+
+                    if (typeof window.updateNozzleUI === 'function') {
+                        window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
+                    }
+                });
+            } catch (error) {
+                console.error('Error updating nozzle data:', error);
+            }
+        })()
+    ]);
 }
 
 window.renderDispenser = renderDispenser;

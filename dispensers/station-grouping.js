@@ -104,11 +104,9 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     filterContainer.style.justifyContent = 'space-between';
     filterContainer.style.gap = '12px';
     filterContainer.style.marginBottom = '0px';
-    filterContainer.style.padding = '10px 15px';
-    filterContainer.style.backgroundColor = 'var(--bg-surface-2)';
+    filterContainer.style.backgroundColor = 'none';
     filterContainer.style.color = 'var(--text-primary)';
     filterContainer.style.borderRadius = '8px';
-    filterContainer.style.border = '1px solid var(--border)';
     filterContainer.style.width = '100%';
     filterContainer.style.flexWrap = 'wrap';
 
@@ -514,46 +512,65 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
         gridContainer.appendChild(emptyMsg);
     }
     
-    // Fetch station info for all stations first
+    // Build the station-info map. If dispensers already carry a `.station` field
+    // (from /api/dispensers-full), use that — no extra fetches needed. Otherwise
+    // fall back to fetching /stations/{code} in parallel for backward compat.
     const stationInfoMap = new Map();
+    const stationsNeedingFetch = [];
     for (const stationCode of sortedStations) {
-        try {
-            const stationResponse = await fetch(`${API_BASE_URL}/stations/${stationCode}`);
-            if (stationResponse.ok) {
+        const sampleDisp = groupedDispensers[stationCode]?.dispensers?.[0];
+        if (sampleDisp && sampleDisp.station) {
+            stationInfoMap.set(stationCode, {
+                city: sampleDisp.station.city || '',
+                station_id: sampleDisp.station.station_id || ''
+            });
+        } else {
+            stationsNeedingFetch.push(stationCode);
+        }
+    }
+    if (stationsNeedingFetch.length > 0) {
+        await Promise.all(stationsNeedingFetch.map(async (stationCode) => {
+            try {
+                const stationResponse = await fetch(`${API_BASE_URL}/stations/${stationCode}`);
+                if (!stationResponse.ok) return;
                 const stationData = await stationResponse.json();
                 stationInfoMap.set(stationCode, {
                     city: stationData.station?.city || '',
                     station_id: stationData.station?.station_id || ''
                 });
+            } catch (error) {
+                console.error('Error fetching station info:', error);
             }
-        } catch (error) {
-            console.error('Error fetching station info:', error);
-        }
+        }));
     }
-    
+
     for (const stationCode of sortedStations) {
         const stationData = groupedDispensers[stationCode];
         const stationInfo = stationInfoMap.get(stationCode) || {};
-        
+
         const { stationSection, stationGrid, scrollContainer, checkOverflow } = createStationContainer(
-            stationCode, 
+            stationCode,
             stationData.dispensers.length,
             stationInfo
         );
-    
+
         // Store grid reference for updates
         window.stationGrids[stationCode] = stationGrid;
         window.stationCheckOverflow[stationCode] = checkOverflow;
         window.stationSections[stationCode] = stationSection;
-        
+
+        // Attach BEFORE building cards inside stationGrid. createDispenserCard
+        // schedules a setTimeout that calls document.getElementById('nozzle-…') —
+        // if the section is still detached at that point, the lookup fails and
+        // the nozzle stays blank until the next periodic tick re-renders it.
+        gridContainer.appendChild(stationSection);
+
         // Create cards for each dispenser in this station
         for (const dispenser of stationData.dispensers) {
             await createCardFunction(dispenser, stationGrid, additionalParams);
         }
-        
-        gridContainer.appendChild(stationSection);
     }
-    
+
     return { filterContainer };
 }
 

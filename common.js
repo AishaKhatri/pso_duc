@@ -820,18 +820,22 @@ async function fetchErrorCount(dispenserTopic) {
     }
 }
 
-async function updateErrorCount(dispenserTopic) {
+// Update the dispenser card's error badge. If `precomputedCount` is passed in,
+// reuse it instead of re-fetching /error-log — lets callers share one fetch
+// across multiple consumers (badge + per-nozzle errorCount).
+async function updateErrorCount(dispenserTopic, precomputedCount) {
     const card = document.querySelector(`div[data-address="${dispenserTopic}"]`);
     if (!card) return;
-    
+
     const errorCountSpan = card.querySelector('.dispenser-error-count');
     const errorIcon = card.querySelector('.dispenser-error-container img');
-    
+
     if (errorCountSpan) {
-        const address = dispenserTopic.replace(/^D/, '');
-        const count = await fetchErrorCount(address);
+        const count = (typeof precomputedCount === 'number')
+            ? precomputedCount
+            : await fetchErrorCount(dispenserTopic);
         errorCountSpan.textContent = count;
-        
+
         if (count > 0) {
             errorCountSpan.style.display = 'inline-block';
             if (errorIcon) errorIcon.style.display = 'inline-block';

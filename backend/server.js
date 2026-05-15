@@ -510,21 +510,95 @@ app.get('/api/stations/:customerCode', async (req, res) => {
 app.get('/api/dispensers', async (req, res) => {
     try {
         const { customer_code } = req.query;
-        
-        let query = 'SELECT * FROM dispensers';
+
+        // Explicit columns — drops IMEI1/IMEI2/created_at from the response (only
+        // used server-side) so the payload stays small over the network.
+        let query = `SELECT id, customer_code, dispenser_id, address, conn_status,
+                            connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
+                     FROM dispensers`;
         let params = [];
-        
+
         if (customer_code) {
             query += ' WHERE customer_code = ?';
             params.push(customer_code);
         }
-        
+
         query += ' ORDER BY customer_code, dispenser_id';
-        
+
         const [rows] = await pool.query(query, params);
         res.json(rows);
     } catch (error) {
         console.error('Database error:', error);
+        res.status(500).json({ error: 'Failed to fetch dispensers' });
+    }
+});
+
+// Aggregated endpoint: returns every dispenser with its nozzles and station info
+// nested in a single response. Used by the dispensers and overview pages so
+// they can render with one round trip instead of 1 + N (per-dispenser nozzles)
+// + S (per-station info).
+app.get('/api/dispensers-full', async (req, res) => {
+    try {
+        const { customer_code } = req.query;
+        const params = [];
+        const whereCustomer = customer_code ? 'WHERE customer_code = ?' : '';
+        if (customer_code) params.push(customer_code);
+
+        const [dispensers, nozzles, stations] = await Promise.all([
+            pool.query(
+                `SELECT id, customer_code, dispenser_id, address, conn_status,
+                        connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
+                 FROM dispensers
+                 ${whereCustomer}
+                 ORDER BY customer_code, dispenser_id`,
+                params
+            ),
+            pool.query(
+                `SELECT customer_code, dispenser_id, nozzle_id, product, status,
+                        price_per_liter, total_quantity, total_amount, total_sales_today,
+                        lock_unlock, keypad_lock_status, price, quantity
+                 FROM nozzles
+                 ${whereCustomer}`,
+                params
+            ),
+            pool.query(
+                `SELECT customer_code, station_id, city, district, division
+                 FROM stations
+                 ${whereCustomer}`,
+                params
+            )
+        ]);
+
+        // Index nozzles by "customer_code|dispenser_id" and stations by customer_code.
+        const nozzlesByDispenser = new Map();
+        for (const n of nozzles[0]) {
+            const key = `${n.customer_code}|${n.dispenser_id}`;
+            if (!nozzlesByDispenser.has(key)) nozzlesByDispenser.set(key, []);
+            // Pre-coerce decimals to numbers (matches the /api/nozzles handler).
+            nozzlesByDispenser.get(key).push({
+                ...n,
+                price_per_liter: parseFloat(n.price_per_liter),
+                total_quantity: parseFloat(n.total_quantity),
+                total_amount: parseFloat(n.total_amount),
+                total_sales_today: parseFloat(n.total_sales_today),
+                price: parseFloat(n.price),
+                quantity: parseFloat(n.quantity)
+            });
+        }
+
+        const stationByCode = new Map();
+        for (const s of stations[0]) stationByCode.set(s.customer_code, s);
+
+        // Stitch nozzles + station onto each dispenser.
+        const result = dispensers[0].map(d => ({
+            ...d,
+            nozzles: nozzlesByDispenser.get(`${d.customer_code}|${d.dispenser_id}`) || [],
+            station: stationByCode.get(d.customer_code) || null
+        }));
+
+        res.json(result);
+    } catch (error) {
+        console.error('Database error in /api/dispensers-full:', error);
         res.status(500).json({ error: 'Failed to fetch dispensers' });
     }
 });
@@ -563,7 +637,11 @@ app.get('/api/nozzles', async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            'SELECT * FROM nozzles WHERE customer_code = ? AND dispenser_id = ?',
+            `SELECT customer_code, dispenser_id, nozzle_id, product, status,
+                    price_per_liter, total_quantity, total_amount, total_sales_today,
+                    lock_unlock, keypad_lock_status, price, quantity
+             FROM nozzles
+             WHERE customer_code = ? AND dispenser_id = ?`,
             [customer_code, dispenser_id]
         );
         
