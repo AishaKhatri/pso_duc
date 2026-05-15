@@ -409,6 +409,9 @@ function buildSearchControl() {
             }
         }
     });
+    // Pill-shape the input to match the filter chip buttons in the dashboard's filter bar.
+    dd.input.style.borderRadius = '16px';
+    dd.input.style.height = '32px';
     return dd.wrap;
 }
 

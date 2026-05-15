@@ -1084,8 +1084,8 @@ td {
 .filter-search {
     width: 100%;
     box-sizing: border-box;
-    padding: 6px 12px 6px 32px;
-    font-size: clamp(11px, 0.9vw, 13px);
+    padding: 6px 12px 3px 36px;
+    font-size: 14px;
     border-radius: 14px;
     border: 1px solid var(--chip-border);
     background: var(--chip-bg);

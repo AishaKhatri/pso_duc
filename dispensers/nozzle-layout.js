@@ -87,7 +87,7 @@ function createStatusSection(data, layoutType) {
         const price = document.createElement('div');
         price.style.fontSize = '13px';
         price.style.fontWeight = '700';
-        price.style.color = 'var(--metric-highlight-text)';
+        price.style.color = 'var(--text-heading)';
         price.textContent = `Rs. ${safeNumber(data.pricePerLitre).toFixed(2)}`;
         statusWrapper.appendChild(price);
     }
