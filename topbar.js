@@ -12,6 +12,14 @@ function renderTopbar(pageTitle) {
     topbarLogo.src = 'assets/graphics/stingray-logo-new.jpeg';
     topbarLogo.alt = 'Stingray Logo';
     topbarLogo.className = 'topbar-logo';
+    topbarLogo.title = 'Open menu';
+    topbarLogo.style.cursor = 'pointer';
+    // On phone widths the sidebar slides off-canvas; clicking the topbar logo
+    // (the only sidebar handle visible in that mode) toggles it back in.
+    topbarLogo.addEventListener('click', () => {
+        const sb = document.querySelector('.sidebar');
+        if (sb) sb.classList.toggle('mobile-open');
+    });
     leftSection.appendChild(topbarLogo);
 
     // Main title

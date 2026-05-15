@@ -4,7 +4,8 @@ async function showCommandDispenserPopup(options = {}) {
 
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '560px';
+    popup.style.width = '480px';
+    popup.style.height = '560px';
     popup.style.maxHeight = '80vh';
     dragPopup(overlay, popup);
 
@@ -57,6 +58,12 @@ async function showCommandDispenserPopup(options = {}) {
     selectorsContainer.appendChild(makeSelectorBlock('Select Station:', stationSelect));
     selectorsContainer.appendChild(makeSelectorBlock('Select Dispenser:', dispenserSelect));
     popup.appendChild(selectorsContainer);
+
+    // Make all four selectors typeable.
+    enhanceSelectAsSearchable(citySelect);
+    enhanceSelectAsSearchable(divisionSelect);
+    enhanceSelectAsSearchable(stationSelect);
+    enhanceSelectAsSearchable(dispenserSelect);
 
     const controlsContainer = document.createElement('div');
     controlsContainer.id = 'dispenserControls';

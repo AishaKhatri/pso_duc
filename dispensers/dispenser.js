@@ -341,6 +341,10 @@ async function renderDispenser() {
     const params = new URLSearchParams(window.location.search);
     const customerCodeFilter = (params.get('customer_code') || '').trim();
 
+    // Show a loader while the initial dispenser/nozzle data is being fetched.
+    const loader = createPageLoader('Loading dispensers…');
+    content.appendChild(loader);
+
     try {
         const dispenserUrl = customerCodeFilter
             ? `${API_BASE_URL}/dispensers?customer_code=${encodeURIComponent(customerCodeFilter)}`
@@ -348,6 +352,7 @@ async function renderDispenser() {
         const dispensersResponse = await fetch(dispenserUrl);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
+        loader.remove();
 
         let headerContainer, optionsContainer, gridContainer;
 
@@ -523,6 +528,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 
     card.id = `dispenser-${dispenser.dispenser_id}`;
     card.dataset.address = dispenserTopic;
+    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
     const irStatusContainer = document.createElement('div');
     irStatusContainer.style.position = 'absolute';
@@ -609,6 +615,8 @@ async function updateDispenserCard(dispenser) {
     const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
     if (!card) return;
 
+    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+
     if (typeof window.updateIRStatus === 'function') {
         const dispenserAddr = dispenser.address;
         window.updateIRStatus(`D${dispenserAddr}`, dispenser.ir_lock_status ? 1 : 0);
@@ -637,30 +645,29 @@ async function updateDispenserCard(dispenser) {
         if (!nozzlesResponse.ok) return;
         const nozzles = await nozzlesResponse.json();
 
-        // Use Promise.all to handle async operations in parallel
-        await Promise.all(nozzles.map(async (nozzle) => {
+        // Fetch the error count once per dispenser (all nozzles share the same
+        // dispenserTopic, so doing it per-nozzle made N identical requests).
+        const dispenserTopicForNozzles = `D${dispenser.address}`;
+        let sharedErrorCount = 0;
+        if (typeof window.fetchErrorCount === 'function') {
+            try {
+                sharedErrorCount = await window.fetchErrorCount(dispenserTopicForNozzles);
+            } catch (error) {
+                console.error('Error fetching error count for dispenser:', dispenser.dispenser_id, error);
+            }
+        }
+
+        nozzles.forEach((nozzle) => {
             const nozzleData = window.NozzleData(nozzle);
-
-            // Add dispenserTopic if it doesn't exist
             if (!nozzleData.dispenserTopic) {
-                nozzleData.dispenserTopic = `D${dispenser.address}`;
+                nozzleData.dispenserTopic = dispenserTopicForNozzles;
             }
-
-            // Handle error count fetching properly
-            if (typeof window.fetchErrorCount === 'function') {
-                try {
-                    const errorCount = await window.fetchErrorCount(nozzleData.dispenserTopic);
-                    nozzleData.errorCount = errorCount;
-                } catch (error) {
-                    console.error('Error fetching error count for nozzle:', nozzle.nozzle_id, error);
-                    nozzleData.errorCount = 0; // Default value
-                }
-            }
+            nozzleData.errorCount = sharedErrorCount;
 
             if (typeof window.updateNozzleUI === 'function') {
                 window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
             }
-        }));
+        });
     } catch (error) {
         console.error('Error updating nozzle data:', error);
     }

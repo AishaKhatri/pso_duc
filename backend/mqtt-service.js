@@ -768,13 +768,13 @@ async function handleConnectionAlert(topic, alertData) {
                 );
 
                 await pool.query(
-                    'UPDATE dispensers SET conn_status = ? WHERE dispenser_id = ?',
-                    [conn_status, dispenser_id]
+                    'UPDATE dispensers SET conn_status = ? WHERE address = ?',
+                    [conn_status, deviceAddr]
                 );
 
                 await pool.query(
-                    'UPDATE dispensers SET connected_at = ? WHERE dispenser_id = ?',
-                    [connectedAt, dispenser_id]
+                    'UPDATE dispensers SET connected_at = ? WHERE address = ?',
+                    [connectedAt, deviceAddr]
                 );
 
                 // Per-device connect/disconnect events no longer broadcast to

@@ -273,7 +273,6 @@ window.setNozzleLayoutType = setNozzleLayoutType;
 window.getNozzleLayoutType = getNozzleLayoutType;
 window.updateNozzleStatus = updateNozzleStatus;
 window.updateIRStatus = updateIRStatus;
-window.updateConnStatus = updateConnStatus;
 window.getNozzleDataFromTopic = getNozzleDataFromTopic;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;

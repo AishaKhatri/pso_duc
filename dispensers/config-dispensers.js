@@ -6,6 +6,42 @@ const PRODUCT_NAME_MAPPING = {
 
 // Global variable to store stations list
 let stationsList = [];
+let configSearchQuery = '';
+
+function getFilteredConfigDispensers() {
+    const all = window.dispensers || [];
+    const q = configSearchQuery.trim().toLowerCase();
+    if (!q) return all;
+    return all.filter(d =>
+        (d.customer_code || '').toLowerCase().includes(q) ||
+        String(d.address || '').toLowerCase().includes(q) ||
+        (d.DispenserBrand || '').toLowerCase().includes(q)
+    );
+}
+
+function buildConfigSearchControl(onChange) {
+    const dd = createSearchableDropdown({
+        placeholder: 'Search by customer code, address, or brand',
+        bgWhite: true,
+        items: () => (window.dispensers || []).map(d => ({
+            value: d.customer_code || String(d.address) || '',
+            label: d.customer_code || '',
+            secondary: [d.address ? `D${d.address}` : '', d.DispenserBrand].filter(Boolean).join(' · '),
+            search: [d.address, d.DispenserBrand]
+        })),
+        initialQuery: configSearchQuery,
+        emptyText: 'No dispensers match',
+        onInput: (q) => {
+            configSearchQuery = q;
+            if (typeof onChange === 'function') onChange();
+        },
+        onSelect: (value) => {
+            configSearchQuery = value;
+            if (typeof onChange === 'function') onChange();
+        }
+    });
+    return dd.wrap;
+}
 
 async function saveDispenserToDB(dispenser, isUpdate = false) {
   try {
@@ -228,8 +264,16 @@ async function renderConfigDispensers() {
         ? `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}`
         : 'dispensers.html';
 
-    const { content, addButton } = configPage('Configure Dispensers', 'Back to Dispensers', backTarget, 'Add Dispenser');
+    const { content, addButton } = configPage('Configure Dispensers', '← Back', backTarget, 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
+
+    // Inject a left-aligned search control into the Add-Dispenser button row.
+    const buttonRow = addButton.parentElement;
+    if (buttonRow) {
+        buttonRow.style.justifyContent = 'space-between';
+        buttonRow.style.flexWrap = 'wrap';
+        buttonRow.insertBefore(buildConfigSearchControl(() => refreshDispenserTable()), addButton);
+    }
 
     let productOptions = [];
     try {
@@ -482,7 +526,7 @@ async function renderConfigDispensers() {
         
         tbody.innerHTML = '';
         
-        const displayDispensers = window.dispensers;
+        const displayDispensers = getFilteredConfigDispensers();
 
         if (displayDispensers.length === 0) {
             const tr = document.createElement('tr');
@@ -491,13 +535,18 @@ async function renderConfigDispensers() {
             td.style.textAlign = 'center';
             td.style.borderBottom = '1px solid var(--border)';
             td.style.padding = '10px';
-            td.textContent = 'No dispensers configured';
+            td.textContent = configSearchQuery
+                ? 'No dispensers match'
+                : 'No dispensers configured';
             tr.appendChild(td);
             tbody.appendChild(tr);
             return;
         }
 
-        displayDispensers.forEach((dispenser, index) => {
+        displayDispensers.forEach((dispenser) => {
+            // Resolve back to the real index in window.dispensers so edit/delete
+            // hit the right entry even when the table is filtered.
+            const index = window.dispensers.indexOf(dispenser);
             const tr = document.createElement('tr');
             tr.style.borderBottom = '1px solid var(--border)';
 
@@ -515,7 +564,7 @@ async function renderConfigDispensers() {
 
             const divisionTd = document.createElement('td');
             divisionTd.style.padding = '12px';
-            divisionTd.textContent = station?.division ? titleCase(station.division) : '-';
+            divisionTd.textContent = station.division || '-';
             tr.appendChild(divisionTd);
 
             const addressTd = document.createElement('td');

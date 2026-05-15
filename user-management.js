@@ -6,7 +6,7 @@ const columns = ['ID', 'Username', 'Role', 'Last Login', 'Created At', 'Actions'
 const userInfo = StationAuth.getUserInfo();
 
 async function renderUserManagement() {
-    const { content, addButton } = configPage('User Management', 'Back', 'index.html', 'Create User');
+    const { content, addButton } = configPage('User Management', '← Back', 'index.html', 'Add User');
 
     const { tableContainer, tbody } = createTable(columns);
     content.appendChild(tableContainer);
