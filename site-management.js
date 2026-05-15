@@ -1,10 +1,126 @@
 let stationsList = [];
+let siteSearchQuery = '';
+let siteCityQuery = '';
+let siteDivisionQuery = '';
 
 const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'District', 'Division', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
+function getFilteredSiteStations() {
+    const q  = siteSearchQuery.trim().toLowerCase();
+    const cq = siteCityQuery.trim().toLowerCase();
+    const dq = siteDivisionQuery.trim().toLowerCase();
+    return stationsList.filter(s => {
+        if (q) {
+            const matchesMain =
+                (s.customer_code || '').toLowerCase().includes(q) ||
+                (s.username || '').toLowerCase().includes(q) ||
+                (s.station_id || '').toLowerCase().includes(q);
+            if (!matchesMain) return false;
+        }
+        if (cq && !(s.city || '').toLowerCase().includes(cq)) return false;
+        if (dq && !(s.division || '').toLowerCase().includes(dq)) return false;
+        return true;
+    });
+}
+
+// Distinct, sorted values of a station field. Used to populate field-search dropdowns.
+function uniqueStationFieldValues(fieldKey) {
+    const set = new Set();
+    for (const s of stationsList) {
+        const v = (s[fieldKey] || '').trim();
+        if (v) set.add(v);
+    }
+    return Array.from(set).sort().map(v => ({ value: v, label: v }));
+}
+
+function buildSiteCitySearchControl() {
+    // items is a function so it re-reads stationsList whenever the dropdown opens
+    // (e.g. after a station is added/edited/deleted).
+    const dd = createSearchableDropdown({
+        placeholder: 'Search by city',
+        width: '220px',
+        bgWhite: true,
+        items: () => uniqueStationFieldValues('city'),
+        initialQuery: siteCityQuery,
+        onInput: (q) => {
+            siteCityQuery = q;
+            renderStationsTable(getFilteredSiteStations());
+        },
+        onSelect: (value) => {
+            siteCityQuery = value;
+            renderStationsTable(getFilteredSiteStations());
+        }
+    });
+    return dd.wrap;
+}
+
+function buildSiteDivisionSearchControl() {
+    const dd = createSearchableDropdown({
+        placeholder: 'Search by division',
+        width: '220px',
+        bgWhite: true,
+        items: () => uniqueStationFieldValues('division'),
+        initialQuery: siteDivisionQuery,
+        onInput: (q) => {
+            siteDivisionQuery = q;
+            renderStationsTable(getFilteredSiteStations());
+        },
+        onSelect: (value) => {
+            siteDivisionQuery = value;
+            renderStationsTable(getFilteredSiteStations());
+        }
+    });
+    return dd.wrap;
+}
+
+function buildSiteSearchControl() {
+    // Customer_code is the label; station_id + username form the secondary line
+    // and are also included as search keys.
+    const dd = createSearchableDropdown({
+        placeholder: 'Search by customer code or station ID',
+        bgWhite: true,
+        items: () => stationsList.map(s => ({
+            value: s.customer_code || s.username || s.station_id || '',
+            label: s.customer_code || '',
+            secondary: [s.username, s.station_id].filter(Boolean).join(' · '),
+            search: [s.username, s.station_id]
+        })),
+        initialQuery: siteSearchQuery,
+        emptyText: 'No stations match',
+        onInput: (q) => {
+            siteSearchQuery = q;
+            renderStationsTable(getFilteredSiteStations());
+        },
+        onSelect: (value) => {
+            siteSearchQuery = value;
+            renderStationsTable(getFilteredSiteStations());
+        }
+    });
+    return dd.wrap;
+}
+
 async function renderSiteManagement() {
-    const { content, addButton } = configPage('Site Management', 'Back', 'index.html', 'Add Site');
+    const { content, addButton } = configPage('Site Management', '← Back', 'index.html', 'Add Site');
+
+    // Inject a left-aligned group of search controls into the Add-Site button row.
+    const buttonRow = addButton.parentElement;
+    if (buttonRow) {
+        buttonRow.style.justifyContent = 'space-between';
+        buttonRow.style.flexWrap = 'wrap';
+
+        const searchesGroup = document.createElement('div');
+        searchesGroup.style.display = 'flex';
+        searchesGroup.style.flexWrap = 'wrap';
+        searchesGroup.style.gap = '10px';
+        searchesGroup.style.alignItems = 'center';
+        searchesGroup.style.flex = '1 1 auto';
+        searchesGroup.appendChild(buildSiteSearchControl());
+        searchesGroup.appendChild(buildSiteCitySearchControl());
+        searchesGroup.appendChild(buildSiteDivisionSearchControl());
+
+        buttonRow.insertBefore(searchesGroup, addButton);
+    }
 
     const { tableContainer, tbody } = createTable(columns);
     content.appendChild(tableContainer);
@@ -17,7 +133,7 @@ async function renderSiteManagement() {
         return;
     }
 
-    renderStationsTable(stationsList);
+    renderStationsTable(getFilteredSiteStations());
 
     if (userInfo?.role !== 'admin') {
         addButton.style.cursor = 'not-allowed';
@@ -383,7 +499,7 @@ function showStationFormPopup(station = null) {
             alert('Station saved successfully!');
             document.body.removeChild(overlay);
             stationsList = await loadStationsFromDB();
-            renderStationsTable(stationsList);
+            renderStationsTable(getFilteredSiteStations());
             
         } catch (error) {
             console.error('Error saving station:', error);
@@ -415,7 +531,7 @@ function showDeleteStationConfirmation(station) {
             
             document.body.removeChild(overlay);
             stationsList = await loadStationsFromDB();
-            renderStationsTable(stationsList);
+            renderStationsTable(getFilteredSiteStations());
         } catch (error) {
             console.error('Error deleting station:', error);
             alert(`Error: ${error.message}`);

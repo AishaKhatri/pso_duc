@@ -8,10 +8,14 @@ async function renderOverview() {
     }
     content.innerHTML = '';
 
+    const loader = createPageLoader('Loading overview…');
+    content.appendChild(loader);
+
     try {
         const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
+        loader.remove();
 
         const topRow = document.createElement('div');
         topRow.style.display = 'flex';
@@ -87,6 +91,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 
     card.id = `dispenser-${dispenser.dispenser_id}`;
     card.dataset.address = dispenserTopic;
+    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
@@ -121,6 +126,8 @@ async function updateDispenserCard(dispenser) {
     const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
     if (!card) return;
 
+    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+
     if (typeof window.updateConnStatus === 'function') {
         const dispenserAddr = dispenser.address;
         window.updateConnStatus(`D${dispenserAddr}`, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
@@ -146,7 +153,7 @@ async function updateDispenserCard(dispenser) {
 
         nozzles.forEach(nozzle => {
             const nozzleData = window.NozzleData(nozzle);
-        
+
             if (typeof window.updateNozzleUI === 'function') {
                 window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
             }

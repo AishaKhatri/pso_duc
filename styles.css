@@ -26,6 +26,7 @@
     --status-online: #2e7d32;
     --status-partial: #f9a825;
     --status-offline: #d32f2f;
+    --status-visited: #7e57c2;
     --status-no-duc: #9e9e9e;
 
     /* Filter chips */
@@ -93,6 +94,7 @@
     --status-online: #66bb6a;
     --status-partial: #ffca28;
     --status-offline: #ef5350;
+    --status-visited: #9575cd;
     --status-no-duc: #757a83;
 
     --chip-bg: #243744;
@@ -159,10 +161,6 @@ body {
     padding: 3px;
     box-sizing: border-box;
     box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
-    display: none;
-}
-body.sidebar-collapsed .topbar-logo,
-body.sidebar-hidden .topbar-logo {
     display: inline-block;
 }
 
@@ -215,6 +213,7 @@ body.sidebar-hidden .topbar-logo {
 [data-theme="dark"] img[src*="delete-icon"],
 [data-theme="dark"] img[src*="notification-icon"],
 [data-theme="dark"] img[src*="notif-icon"],
+[data-theme="dark"] img[src*="search-icon"],
 [data-theme="dark"] img[src*="eye"] {
     filter: invert(0.85) hue-rotate(180deg);
 }
@@ -282,19 +281,19 @@ body.sidebar-hidden .topbar-logo {
 }
 
 h1 {
-    font-size: 28px;
+    font-size: clamp(20px, 2.1vw, 28px);
     color: var(--text-heading);
     margin: 0;
 }
 
 h2 {
-    font-size: 20px;
+    font-size: clamp(16px, 1.6vw, 20px);
     color: var(--text-heading);
     margin: 0;
 }
 
 h3 {
-    font-size: 16px;
+    font-size: clamp(13px, 1.2vw, 16px);
     color: var(--text-secondary);
     margin-bottom: 10px;
 }
@@ -571,9 +570,6 @@ td {
     padding: 10px 12px;
     overflow: hidden;
 }
-@media (max-width: 1100px) {
-    .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-}
 @media (max-width: 600px) {
     .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
@@ -587,7 +583,7 @@ td {
 }
 .kpi:last-child { border-right: none; }
 .kpi-label {
-    font-size: 10px;
+    font-size: clamp(10px, 0.9vw, 14px);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
@@ -598,7 +594,7 @@ td {
     text-overflow: ellipsis;
 }
 .kpi-value {
-    font-size: 22px;
+    font-size: clamp(18px, 2.6vw, 38px);
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
@@ -607,13 +603,14 @@ td {
     text-overflow: ellipsis;
 }
 .kpi-sub {
-    font-size: 11px;
+    font-size: clamp(11px, 1.1vw, 16px);
     color: var(--text-secondary);
     white-space: nowrap;
 }
 .kpi.online .kpi-value  { color: var(--status-online); }
 .kpi.partial .kpi-value { color: var(--status-partial); }
 .kpi.offline .kpi-value { color: var(--status-offline); }
+.kpi.visited .kpi-value { color: var(--status-visited); }
 .kpi.no-duc .kpi-value  { color: var(--status-no-duc); }
 .kpi.accent .kpi-value  { color: var(--text-heading); }
 
@@ -666,6 +663,56 @@ td {
 .chart-bar.has-data:hover {
     background: var(--chart-bar-hover);
 }
+/* Line-chart variant of the hourly chart */
+.chart-container-line {
+    display: block;
+    position: relative;
+    overflow: visible;
+}
+.chart-line-svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+.chart-line-area {
+    fill: var(--chart-bar);
+    fill-opacity: 0.18;
+}
+.chart-line-path {
+    stroke: var(--chart-bar);
+    stroke-width: 2;
+    stroke-linejoin: round;
+    stroke-linecap: round;
+}
+.chart-line-hit {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    cursor: pointer;
+}
+.chart-line-dot {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--chart-bar);
+    border: 2px solid var(--bg-surface);
+    box-sizing: border-box;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+}
+.chart-line-hit.has-data:hover .chart-line-dot {
+    opacity: 1;
+    background: var(--chart-bar-hover);
+}
+.chart-line-hit.is-current.has-data .chart-line-dot {
+    opacity: 1;
+}
 .chart-axis-row {
     display: flex;
     justify-content: space-between;
@@ -707,6 +754,9 @@ td {
     margin-bottom: 20px;
     align-items: stretch;
 }
+/* Stage 1 — side column narrows: KPI strip goes to a 2-row grid with smaller
+   labels, and the donut legend drops under the chart. Alerts wrap to a full-
+   width row below. Map and charts are still side-by-side. */
 @media (max-width: 1400px) {
     .dashboard-main {
         grid-template-columns: minmax(0, 1fr) 320px;
@@ -714,7 +764,15 @@ td {
     .alerts-column {
         grid-column: 1 / -1;
     }
+    /* 7 KPIs over 4 columns → 2 rows (4 + 3). */
+    .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .kpi-label { font-size: clamp(9px, 0.7vw, 11px); }
+    .kpi-value { font-size: clamp(18px, 2.2vw, 32px); }
+    .kpi-sub   { font-size: clamp(10px, 0.9vw, 13px); }
 }
+
+/* Stage 2 — everything stacks: map row, then charts (side panels), then
+   alerts. DOM order in renderDashboard already places them in this order. */
 @media (max-width: 1100px) {
     .dashboard-main {
         grid-template-columns: 1fr;
@@ -794,7 +852,7 @@ td {
     background: var(--bg-surface-2);
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: 12px;
+    font-size: clamp(11px, 0.95vw, 13px);
     line-height: 1.3;
 }
 .alert-row.success { border-left-color: var(--status-online); }
@@ -848,7 +906,7 @@ td {
     grid-template-columns: 110px 1fr 38px;
     align-items: center;
     gap: 8px;
-    font-size: 12px;
+    font-size: clamp(11px, 0.95vw, 13px);
 }
 .network-bar-row .nb-label { color: var(--text-primary); }
 .network-bar-row .nb-track {
@@ -871,6 +929,7 @@ td {
 .network-bar-row.online   .nb-fill { background: var(--status-online); }
 .network-bar-row.partial  .nb-fill { background: var(--status-partial); }
 .network-bar-row.offline  .nb-fill { background: var(--status-offline); }
+.network-bar-row.visited  .nb-fill { background: var(--status-visited); }
 .network-bar-row.no-duc   .nb-fill { background: var(--status-no-duc); }
 
 /* Donut chart */
@@ -910,7 +969,7 @@ td {
     display: flex;
     align-items: center;
     gap: 10px;
-    font-size: 18px;
+    font-size: clamp(13px, 1.3vw, 18px);
 }
 .donut-legend-row .swatch {
     width: 14px;
@@ -955,7 +1014,7 @@ td {
     align-items: center;
 }
 .filter-row .filter-label {
-    font-size: 12px;
+    font-size: clamp(10px, 0.9vw, 13px);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -968,7 +1027,7 @@ td {
     border: 1px solid var(--chip-border);
     border-radius: 14px;
     padding: 3px 10px;
-    font-size: 12px;
+    font-size: clamp(11px, 0.9vw, 13px);
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
     user-select: none;
@@ -987,6 +1046,7 @@ td {
 .filter-chip.status-online::before,
 .filter-chip.status-partial::before,
 .filter-chip.status-offline::before,
+.filter-chip.status-visited::before,
 .filter-chip.status-no-duc::before {
     content: '';
     display: inline-block;
@@ -999,7 +1059,177 @@ td {
 .filter-chip.status-online::before { background: var(--status-online); }
 .filter-chip.status-partial::before { background: var(--status-partial); }
 .filter-chip.status-offline::before { background: var(--status-offline); }
+.filter-chip.status-visited::before { background: var(--status-visited); }
 .filter-chip.status-no-duc::before { background: var(--status-no-duc); }
+
+.filter-row-search {
+    justify-content: flex-end;
+    gap: 6px;
+}
+.filter-search-wrap {
+    position: relative;
+    width: 320px;
+    max-width: 100%;
+}
+.filter-search-icon {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 18px;
+    height: 18px;
+    pointer-events: none;
+    opacity: 0.55;
+}
+.filter-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 6px 12px 6px 32px;
+    font-size: clamp(11px, 0.9vw, 13px);
+    border-radius: 14px;
+    border: 1px solid var(--chip-border);
+    background: var(--chip-bg);
+    color: var(--text-primary);
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+/* Dashboard: search lives inside the Division filter row, right-aligned. */
+.filter-row .filter-search-wrap {
+    width: clamp(180px, 20vw, 260px);
+    margin-left: auto;
+    flex: 0 0 auto;
+}
+/* Site management variant — white background in light mode. */
+.filter-search-wrap.bg-white .filter-search {
+    background: #ffffff;
+}
+[data-theme="dark"] .filter-search-wrap.bg-white .filter-search {
+    background: var(--chip-bg);
+}
+.filter-search::placeholder { color: var(--text-secondary); }
+.filter-search:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 77, 100, 0.15);
+}
+[data-theme="dark"] .filter-search:focus {
+    box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.25);
+}
+.filter-search-dropdown {
+    position: absolute;
+    top: calc(100% + 4px);
+    right: 0;
+    left: 0;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: var(--shadow-card);
+    z-index: 1100;
+}
+.filter-search-option {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px 12px;
+    cursor: pointer;
+    border-bottom: 1px solid var(--border-soft);
+}
+.filter-search-option:last-child { border-bottom: none; }
+.filter-search-option:hover {
+    background: var(--bg-sidebar-hover);
+}
+.filter-search-option .opt-code {
+    font-size: clamp(11px, 0.85vw, 13px);
+    font-weight: 700;
+    color: var(--text-heading);
+    letter-spacing: 0.3px;
+}
+.filter-search-option .opt-name {
+    font-size: clamp(10px, 0.8vw, 12px);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.filter-search-empty {
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+/* Searchable native-select replacement (used in dispenser/command-dispenser
+   filters). The underlying <select> is kept hidden as data model. */
+.searchable-select-wrap {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+}
+.searchable-select-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 26px 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--bg-surface);
+    color: var(--text-primary);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.searchable-select-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(0, 77, 100, 0.15);
+}
+[data-theme="dark"] .searchable-select-input:focus {
+    box-shadow: 0 0 0 2px rgba(79, 195, 247, 0.25);
+}
+.searchable-select-wrap::after {
+    content: '▾';
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+.searchable-select-list {
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    right: 0;
+    max-height: 240px;
+    overflow-y: auto;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-card);
+    z-index: 1200;
+}
+.searchable-select-item {
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--text-primary);
+    border-bottom: 1px solid var(--border-soft);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.searchable-select-item:last-child { border-bottom: none; }
+.searchable-select-item:hover { background: var(--bg-sidebar-hover); }
+.searchable-select-item.selected {
+    font-weight: 600;
+    color: var(--text-heading);
+}
+.searchable-select-empty {
+    padding: 8px 10px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
 
 /* ===== Station detail header (dispensers.html?customer_code=...) ===== */
 .station-header {
@@ -1035,7 +1265,7 @@ td {
 .station-header-options:empty { display: none; }
 .station-header-title {
     text-transform: uppercase;
-    font-size: 24px;
+    font-size: clamp(18px, 1.9vw, 24px);
     margin: 0 0 4px 0;
     color: var(--text-heading);
 }
@@ -1043,7 +1273,7 @@ td {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
-    font-size: 13px;
+    font-size: clamp(11px, 1vw, 13px);
     color: var(--text-secondary);
 }
 .station-header-meta-item {
@@ -1075,7 +1305,7 @@ td {
     justify-content: center;
 }
 .station-header-stat-label {
-    font-size: 12px;
+    font-size: clamp(10px, 0.9vw, 12px);
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
@@ -1084,7 +1314,7 @@ td {
     white-space: nowrap;
 }
 .station-header-stat-value {
-    font-size: 24px;
+    font-size: clamp(18px, 1.9vw, 24px);
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
@@ -1102,6 +1332,9 @@ td {
     padding: 10px;
     margin-bottom: 0;
     position: relative;
+    flex-direction: column;
+    display: flex-end;
+    height: 100%;
 }
 #station-map {
     height: 580px;
@@ -1121,13 +1354,13 @@ td {
     gap: 16px;
     flex-wrap: wrap;
     padding: 10px 4px 4px;
-    font-size: 13px;
+    font-size: clamp(12px, 1.1vw, 16px);
     color: var(--text-primary);
 }
 .legend-dot {
     display: inline-block;
-    width: 12px;
-    height: 12px;
+    width: 16px;
+    height: 16px;
     border-radius: 50%;
     margin-right: 6px;
     vertical-align: middle;
@@ -1137,6 +1370,138 @@ td {
 /* Dark-mode tweak: invert the map tiles a touch so the markers stay legible */
 [data-theme="dark"] #station-map .leaflet-tile-pane {
     filter: invert(1) hue-rotate(180deg) brightness(0.95) contrast(0.85);
+}
+
+/* ===== Dashboard responsiveness =====
+   The dashboard renders chrome (topbar 60px + fixed sidebar 220px) that the
+   sidebar JS sets via inline margin-left. Below 900px we override that inline
+   style so the sidebar slides off-canvas and the content uses the full width.
+   Above that, the existing 1400 / 1100 breakpoints continue to drive layout. */
+@media (max-width: 900px) {
+    .sidebar {
+        transform: translateX(-100%);
+        transition: transform 0.25s ease;
+        z-index: 1100;
+        box-shadow: 2px 0 12px rgba(0,0,0,0.25);
+    }
+    .sidebar.mobile-open { transform: translateX(0); }
+    .content-wrapper { margin-left: 0 !important; padding: 12px; }
+    .topbar { padding: 0 12px; }
+    .topbar-logo { display: inline-block !important; }
+    body { font-size: 14px; }
+    /* Hide the username/role block to free space; the user circle stays. */
+    .topbar > div:last-child > div:nth-child(3) { display: none !important; }
+}
+
+/* KPI strip — collapse to a denser grid earlier and tone down the value size
+   so labels don't get clipped on phones. */
+@media (max-width: 820px) {
+    .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 8px; }
+    .kpi { padding: 4px 6px; border-right: none; }
+    .kpi-value { font-size: 18px; }
+    .kpi-label { font-size: 9px; }
+}
+@media (max-width: 480px) {
+    .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .kpi-value { font-size: 16px; }
+}
+
+/* Map height shouldn't dominate the viewport on phones. */
+@media (max-width: 900px) {
+    #station-map { height: 360px; }
+}
+@media (max-width: 600px) {
+    #station-map { height: 300px; }
+}
+
+/* Filter chips: let the row scroll instead of wrapping into stacks of chips
+   that push everything else down. */
+@media (max-width: 820px) {
+    .filter-row {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: thin;
+        padding-bottom: 4px;
+    }
+    .filter-row .filter-label { position: sticky; left: 0; background: var(--bg-surface); z-index: 1; }
+    .filter-chip { flex: 0 0 auto; }
+    /* Search row keeps its full-width input — don't subject it to horizontal scroll. */
+    .filter-row-search {
+        flex-wrap: wrap;
+        overflow-x: visible;
+        justify-content: stretch;
+    }
+    .filter-search-wrap { width: 100%; }
+}
+
+/* Donut: stack the chart and legend vertically the moment the side column
+   narrows (matches the 1400px main-grid transition) so the donut isn't
+   squashed beside the legend. */
+@media (max-width: 1400px) {
+    .donut-wrapper { flex-direction: column; align-items: stretch; gap: 8px; }
+    .donut-svg { width: 200px; height: 200px; margin: 0 auto; }
+    .donut-legend { width: 100%; }
+}
+@media (max-width: 600px) {
+    .donut-svg { width: 170px; height: 170px; }
+    .donut-legend-row { font-size: 14px; }
+}
+
+/* Network breakdown rows squeeze on narrow widths — give labels less and
+   the bar more, drop count column to auto. */
+@media (max-width: 820px) {
+    .network-bar-row { grid-template-columns: 88px 1fr auto; font-size: 11px; }
+    .network-bar-row .nb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+}
+
+/* Alerts panel uses a fixed min-height that wastes space on small screens. */
+@media (max-width: 1100px) {
+    .alerts-panel { min-height: 240px; max-height: 360px; }
+}
+
+/* Hourly chart shrinks gracefully. */
+@media (max-width: 820px) {
+    .chart-card-mini .chart-container { height: 120px; }
+}
+
+/* Dashboard grid: when we already collapse to single-column at 1100px, also
+   tighten the gap so panels read closer together on tablets. */
+@media (max-width: 1100px) {
+    .dashboard-main { gap: 10px; }
+    .dashboard-side { gap: 10px; }
+}
+
+/* ===== Dashboard vertical responsiveness =====
+   Adapt panel heights to short viewports (laptop screens, landscape phones,
+   split windows) so the dashboard fits without long internal scrolls. */
+@media (max-height: 900px) {
+    #station-map { height: 500px; }
+    .alerts-panel { min-height: 320px; max-height: 540px; }
+    .chart-card-mini .chart-container { height: 140px; }
+    .donut-svg { width: 210px; height: 210px; }
+}
+@media (max-height: 760px) {
+    #station-map { height: 420px; }
+    .alerts-panel { min-height: 260px; max-height: 440px; }
+    .chart-card-mini .chart-container { height: 120px; }
+    .kpi-strip { padding: 6px 10px; }
+    .kpi-value { font-size: 28px; }
+    .kpi-label { font-size: 12px; }
+    .kpi-sub { font-size: 13px; }
+    .donut-svg { width: 190px; height: 190px; }
+    .donut-legend-row { font-size: 14px; }
+}
+@media (max-height: 620px) {
+    #station-map { height: 320px; }
+    .alerts-panel { min-height: 200px; max-height: 320px; }
+    .chart-card-mini .chart-container { height: 96px; }
+    .kpi-value { font-size: 22px; }
+    .kpi-label { font-size: 10px; }
+    .kpi-sub { font-size: 11px; }
+    .donut-svg { width: 160px; height: 160px; }
+    .map-legend { font-size: 13px; padding: 6px 4px 2px; }
+    .legend-dot { width: 12px; height: 12px; }
 }
 
 /* Leaflet popup looks native to the theme */
@@ -1170,4 +1535,27 @@ td {
     background: var(--text-secondary);
     cursor: not-allowed;
     pointer-events: none;
+}
+
+/* Shared page loader (createPageLoader in common.js) */
+.page-loader {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    padding: 60px 20px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+.page-loader .page-loader-spinner {
+    width: 36px;
+    height: 36px;
+    border: 3px solid var(--border-soft, rgba(0,0,0,0.12));
+    border-top-color: var(--accent, #004D64);
+    border-radius: 50%;
+    animation: page-loader-spin 0.9s linear infinite;
+}
+@keyframes page-loader-spin {
+    to { transform: rotate(360deg); }
 }

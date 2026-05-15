@@ -278,6 +278,183 @@ function createTable(columns) {
     return { tableContainer , tbody };
 }
 
+// Shared HTML-escape used by the searchable dropdown.
+function _escapeDropdownHtml(s) {
+    return String(s ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+}
+
+/**
+ * Searchable dropdown styled with .filter-search-wrap.
+ * This is the canonical helper for every filter/search combobox in the app —
+ * use it instead of hand-rolling another filter-search-wrap.
+ *
+ * @param {Object}    opts
+ * @param {string}    opts.placeholder
+ * @param {string}   [opts.width]               CSS width, e.g. "200px"
+ * @param {Array|Function} opts.items           [{ value, label, secondary?, search? }] or a function
+ *                                                returning that array. Pass a function when the
+ *                                                source data can change after construction (so the
+ *                                                option list stays in sync on each open/keypress).
+ *                                                secondary: optional second line in the option row
+ *                                                search:    extra strings included in the match
+ * @param {string}   [opts.initialQuery=""]     initial text in the input
+ * @param {boolean}  [opts.bgWhite=false]       adds .bg-white modifier
+ * @param {string}   [opts.emptyText="No matches"]
+ * @param {number}   [opts.maxResults=50]
+ * @param {Function} [opts.onInput]             (query) => void  — fires while typing
+ * @param {Function} [opts.onSelect]            (value, item) => void  — fires when a row is picked
+ *
+ * @returns {{
+ *   wrap: HTMLElement,
+ *   input: HTMLInputElement,
+ *   setItems: (items: Array) => void,
+ *   setQuery: (q: string) => void,
+ *   getQuery: () => string,
+ *   close: () => void
+ * }}
+ */
+function createSearchableDropdown(opts) {
+    const {
+        placeholder = '',
+        width,
+        items: initialItems = [],
+        initialQuery = '',
+        bgWhite = false,
+        emptyText = 'No matches',
+        maxResults = 50,
+        onInput,
+        onSelect
+    } = opts || {};
+
+    // items can be an array (static) or a function (re-read on every render).
+    let itemsSource = initialItems;
+    const currentItems = () => typeof itemsSource === 'function' ? (itemsSource() || []) : (itemsSource || []);
+
+    const wrap = document.createElement('div');
+    wrap.className = bgWhite ? 'filter-search-wrap bg-white' : 'filter-search-wrap';
+    if (width) wrap.style.width = width;
+
+    const icon = document.createElement('img');
+    icon.className = 'filter-search-icon';
+    icon.src = 'assets/graphics/search-icon.svg';
+    icon.alt = '';
+    wrap.appendChild(icon);
+
+    const input = document.createElement('input');
+    input.type = 'search';
+    input.className = 'filter-search';
+    input.style.height = '38px';
+    input.style.borderRadius = '6px';
+    input.placeholder = placeholder;
+    input.autocomplete = 'off';
+    input.value = initialQuery;
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'filter-search-dropdown';
+    dropdown.hidden = true;
+
+    const close = () => { dropdown.hidden = true; };
+    const open = () => { renderOptions(); dropdown.hidden = false; };
+
+    function matches(query) {
+        const q = (query || '').trim().toLowerCase();
+        const list = currentItems();
+        if (!q) return list.slice(0, maxResults);
+        return list.filter(it => {
+            if ((it.label || '').toLowerCase().includes(q)) return true;
+            if ((it.secondary || '').toLowerCase().includes(q)) return true;
+            if (Array.isArray(it.search)) {
+                for (const extra of it.search) {
+                    if ((extra || '').toString().toLowerCase().includes(q)) return true;
+                }
+            }
+            return false;
+        }).slice(0, maxResults);
+    }
+
+    function renderOptions() {
+        const results = matches(input.value);
+        dropdown.innerHTML = '';
+        if (results.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'filter-search-empty';
+            empty.textContent = emptyText;
+            dropdown.appendChild(empty);
+            return;
+        }
+        results.forEach(item => {
+            const row = document.createElement('div');
+            row.className = 'filter-search-option';
+            const codePart = `<span class="opt-code">${_escapeDropdownHtml(item.label || '')}</span>`;
+            const subPart = item.secondary
+                ? `<span class="opt-name">${_escapeDropdownHtml(item.secondary)}</span>`
+                : '';
+            row.innerHTML = codePart + subPart;
+            // mousedown so picking fires before the input's blur handler closes us.
+            row.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                input.value = item.label || '';
+                close();
+                if (typeof onSelect === 'function') onSelect(item.value, item);
+            });
+            dropdown.appendChild(row);
+        });
+    }
+
+    input.addEventListener('input', () => {
+        renderOptions();
+        dropdown.hidden = false;
+        if (typeof onInput === 'function') onInput(input.value);
+    });
+    input.addEventListener('focus', open);
+    input.addEventListener('blur', () => { setTimeout(close, 120); });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') { close(); input.blur(); }
+    });
+
+    wrap.appendChild(input);
+    wrap.appendChild(dropdown);
+
+    return {
+        wrap,
+        input,
+        setItems(newItems) {
+            itemsSource = newItems || [];
+            if (!dropdown.hidden) renderOptions();
+        },
+        setQuery(q) { input.value = q || ''; },
+        getQuery() { return input.value; },
+        close
+    };
+}
+
+/**
+ * Create a centered spinner + label element that callers can append while data
+ * is being fetched, then remove() once the content is ready.
+ *
+ * Usage:
+ *   const loader = createPageLoader();
+ *   content.appendChild(loader);
+ *   // ... await fetches ...
+ *   loader.remove();
+ */
+function createPageLoader(message = 'Loading…') {
+    const wrap = document.createElement('div');
+    wrap.className = 'page-loader';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'page-loader-spinner';
+    wrap.appendChild(spinner);
+
+    const label = document.createElement('div');
+    label.textContent = message;
+    wrap.appendChild(label);
+
+    return wrap;
+}
+
 function createDropdown(placeholderText) {
     const dropdown = document.createElement('select');
     dropdown.style.padding = '8px';
@@ -306,6 +483,137 @@ function createPlaceholder(text) {
     return placeholder;
 }
 
+// Wrap a native <select> with a typeable combobox while keeping the <select>
+// as the data model. All existing reads (.value, .options, .selectedOptions)
+// and 'change' listeners continue to work; programmatic .value writes are
+// intercepted so the visible input stays in sync, and option mutations are
+// observed so cascading repopulation reflects in the dropdown automatically.
+function enhanceSelectAsSearchable(selectEl, opts = {}) {
+    if (!selectEl || selectEl.dataset.searchableEnhanced === '1') return;
+    selectEl.dataset.searchableEnhanced = '1';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'searchable-select-wrap';
+    if (selectEl.style.width) wrap.style.width = selectEl.style.width;
+    if (selectEl.style.marginBottom) wrap.style.marginBottom = selectEl.style.marginBottom;
+
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'searchable-select-input';
+    input.autocomplete = 'off';
+
+    const list = document.createElement('div');
+    list.className = 'searchable-select-list';
+    list.hidden = true;
+
+    const parent = selectEl.parentNode;
+    if (parent) parent.insertBefore(wrap, selectEl);
+    wrap.appendChild(input);
+    wrap.appendChild(list);
+    wrap.appendChild(selectEl);
+    selectEl.style.display = 'none';
+
+    function getPlaceholderText() {
+        if (opts.placeholder) return opts.placeholder;
+        const ph = Array.from(selectEl.options).find(o => o.disabled);
+        return (ph && ph.textContent) || (selectEl.options[0]?.textContent) || 'Select…';
+    }
+
+    function syncInputFromSelect() {
+        input.placeholder = getPlaceholderText();
+        const sel = selectEl.selectedOptions[0];
+        input.value = (sel && !sel.disabled) ? (sel.textContent || '') : '';
+    }
+
+    function pickOption(opt) {
+        selectEl.value = opt.value;
+        input.value = opt.textContent || '';
+        list.hidden = true;
+        selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+    }
+
+    function renderList(filter = '') {
+        const q = (filter || '').trim().toLowerCase();
+        list.innerHTML = '';
+        const matches = [];
+        for (const opt of selectEl.options) {
+            if (opt.disabled) continue;
+            const label = (opt.textContent || '').toLowerCase();
+            const value = (opt.value || '').toLowerCase();
+            if (!q || label.includes(q) || value.includes(q)) matches.push(opt);
+        }
+        if (matches.length === 0) {
+            const empty = document.createElement('div');
+            empty.className = 'searchable-select-empty';
+            empty.textContent = 'No matches';
+            list.appendChild(empty);
+            return;
+        }
+        matches.forEach(opt => {
+            const item = document.createElement('div');
+            item.className = 'searchable-select-item';
+            if (opt.value === selectEl.value) item.classList.add('selected');
+            item.textContent = opt.textContent || '';
+            // mousedown so picking fires before the input's blur handler closes us.
+            item.addEventListener('mousedown', (e) => {
+                e.preventDefault();
+                pickOption(opt);
+            });
+            list.appendChild(item);
+        });
+    }
+
+    input.addEventListener('focus', () => {
+        input.select();
+        renderList('');
+        list.hidden = false;
+    });
+    input.addEventListener('input', () => {
+        renderList(input.value);
+        list.hidden = false;
+    });
+    input.addEventListener('blur', () => {
+        setTimeout(() => {
+            list.hidden = true;
+            syncInputFromSelect();
+        }, 140);
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            list.hidden = true;
+            input.blur();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const q = input.value.trim().toLowerCase();
+            const first = Array.from(selectEl.options).find(o =>
+                !o.disabled && ((o.textContent || '').toLowerCase().includes(q) ||
+                                (o.value || '').toLowerCase().includes(q))
+            );
+            if (first) pickOption(first);
+        }
+    });
+
+    // Intercept programmatic .value writes so the visible input stays in sync.
+    const baseDesc = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value');
+    if (baseDesc && baseDesc.get && baseDesc.set) {
+        Object.defineProperty(selectEl, 'value', {
+            configurable: true,
+            enumerable: true,
+            get() { return baseDesc.get.call(this); },
+            set(v) {
+                baseDesc.set.call(this, v);
+                syncInputFromSelect();
+            }
+        });
+    }
+
+    // Cascading code calls innerHTML='' + appendChild(opt) — observe and re-sync.
+    const observer = new MutationObserver(() => syncInputFromSelect());
+    observer.observe(selectEl, { childList: true });
+
+    syncInputFromSelect();
+}
+
 async function updateConnStatus(deviceId, connStatus, connected_at, deviceType = 'dispenser') {
     let deviceCard;
 
@@ -329,11 +637,11 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
         const connectedTime = new Date(connected_at).toLocaleString();
         
         if (connStatus === 1 && connected_at) {            
-            uptime.textContent = `Connected at: ${connectedTime}`;
             uptime.textContent = `At: ${connectedTime}`;
-        } else {
-            uptime.textContent = `At: ${connectedTime}`;
-        }
+        } 
+        // else {
+        //     uptime.textContent = `At: ${connectedTime}`;
+        // }
     } else {
         console.error(`❌ Device card not found for ${deviceType} with ID: ${deviceId}`);
     }
@@ -722,8 +1030,7 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
     // Page title now lives in the topbar; this row only carries the back button.
     const headerContainer = document.createElement('div');
     headerContainer.style.display = 'flex';
-    headerContainer.style.justifyContent = 'flex-end';
-    headerContainer.style.alignItems = 'center';
+    headerContainer.style.alignItems = 'left';
     headerContainer.style.marginBottom = '16px';
     headerContainer.style.width = '100%';
 
@@ -740,6 +1047,8 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
     buttonContainer.style.display = 'flex';
     buttonContainer.style.gap = '10px';
     buttonContainer.style.marginBottom = '20px';
+    buttonContainer.style.justifyContent = 'flex-end';
+    buttonContainer.style.alignItems = 'right';
 
     const addButton = createActionButton();
     addButton.textContent = addButtonText;

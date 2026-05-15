@@ -1,38 +1,47 @@
-const STATUS_KEYS = ['all_online', 'partial', 'all_offline', 'no_duc'];
+// `visited_no_install` is a placeholder status for sites the team has visited
+// but where DUCs couldn't be installed. The backend will tag stations as such
+// once the data source is wired up (CSV column / DB flag pending) — until then,
+// the chip + map marker color are plumbed and will simply show 0 counts.
+const STATUS_KEYS = ['all_online', 'partial', 'all_offline', 'visited_no_install', 'no_duc'];
 const STATUS_LABELS = {
-    all_online:  'Online',
-    partial:     'Partially Online',
-    all_offline: 'Offline',
-    no_duc:      'Not Installed'
+    all_online:         'Online',
+    partial:            'Partially Online',
+    all_offline:        'Offline',
+    visited_no_install: 'Visited - Not Installed',
+    no_duc:             'Not Installed'
 };
 const STATUS_CHIP_CLASS = {
-    all_online:  'status-online',
-    partial:     'status-partial',
-    all_offline: 'status-offline',
-    no_duc:      'status-no-duc'
+    all_online:         'status-online',
+    partial:            'status-partial',
+    all_offline:        'status-offline',
+    visited_no_install: 'status-visited',
+    no_duc:             'status-no-duc'
 };
 const STATUS_BAR_CLASS = {
-    all_online:  'online',
-    partial:     'partial',
-    all_offline: 'offline',
-    no_duc:      'no-duc'
+    all_online:         'online',
+    partial:            'partial',
+    all_offline:        'offline',
+    visited_no_install: 'visited',
+    no_duc:             'no-duc'
 };
 const FALLBACK_PRODUCT_COLORS = ['#26a69a', '#7e57c2', '#ec407a', '#5c6bc0', '#9ccc65', '#ffa726'];
 
 const MAP_MARKER_COLORS = {
-    all_online:  '#00e676',
-    partial:     '#ffab00',
-    all_offline: '#ff1744',
-    no_duc:      '#90a4ae'
+    all_online:         '#00e676',
+    partial:             '#ffab00',
+    all_offline:         '#ff1744',
+    visited_no_install:  '#7e57c2',
+    no_duc:              '#90a4ae'
 };
 
 function statusColor(key) {
     const css = getComputedStyle(document.documentElement);
     const map = {
-        all_online:  '--status-online',
-        partial:     '--status-partial',
-        all_offline: '--status-offline',
-        no_duc:      '--status-no-duc'
+        all_online:         '--status-online',
+        partial:            '--status-partial',
+        all_offline:        '--status-offline',
+        visited_no_install: '--status-visited',
+        no_duc:             '--status-no-duc'
     };
     return css.getPropertyValue(map[key] || '--status-no-duc').trim() || '#9e9e9e';
 }
@@ -50,6 +59,7 @@ const dashboardState = {
     selectedDivision: 'ALL',
     selectedCity: 'ALL',
     selectedStatuses: new Set(STATUS_KEYS),
+    searchQuery: '',
     map: null,
     markerLayer: null,
     kpiStrip: null,
@@ -93,7 +103,7 @@ function refreshTiles() {
 function refreshStatusChipCounts() {
     if (!dashboardState.statusChips) return;
     const scoped = getRegionScopedStations();
-    const counts = { all_online: 0, partial: 0, all_offline: 0, no_duc: 0 };
+    const counts = { all_online: 0, partial: 0, all_offline: 0, visited_no_install: 0, no_duc: 0 };
     for (const s of scoped) counts[s.status] = (counts[s.status] || 0) + 1;
     dashboardState.statusChips.forEach((chip, key) => {
         const c = chip.querySelector('.chip-count');
@@ -192,33 +202,86 @@ function buildHourlyChartPanel(hourly) {
     panel.appendChild(header);
 
     const container = document.createElement('div');
-    container.className = 'chart-container';
-    hourly.forEach(h => {
-        const amount = Number(h.amount) || 0;
-        const txCount = Number(h.tx_count) || 0;
-        const heightPct = (amount / safePeak) * 100;
-        const bar = document.createElement('div');
-        bar.className = amount > 0 ? 'chart-bar has-data' : 'chart-bar';
-        bar.style.height = heightPct.toFixed(1) + '%';
-        const hourLabel = String(h.hour).padStart(2, '0') + ':00';
+    container.className = 'chart-container chart-container-line';
 
+    const svgNS = 'http://www.w3.org/2000/svg';
+    const n = hourly.length;
+    // Only draw up to the current hour — future hours have no data yet and
+    // would otherwise pull the line down to the baseline.
+    const currentHour = new Date().getHours();
+    const points = hourly
+        .map((h, i) => {
+            const amount = Number(h.amount) || 0;
+            const txCount = Number(h.tx_count) || 0;
+            const x = n > 1 ? (i / (n - 1)) * 100 : 50;
+            // Reserve 6% top padding so the peak point doesn't kiss the top edge.
+            const y = 100 - (amount / safePeak) * 94;
+            return { x, y, amount, txCount, hour: h.hour };
+        })
+        .filter(p => p.hour <= currentHour);
+
+    const svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.setAttribute('class', 'chart-line-svg');
+
+    if (points.length > 0) {
+        const areaD =
+            `M ${points[0].x} 100 ` +
+            points.map(p => `L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ') +
+            ` L ${points[points.length - 1].x} 100 Z`;
+        const area = document.createElementNS(svgNS, 'path');
+        area.setAttribute('d', areaD);
+        area.setAttribute('class', 'chart-line-area');
+        svg.appendChild(area);
+
+        const lineD = points.map((p, i) =>
+            (i === 0 ? 'M' : 'L') + ` ${p.x.toFixed(3)} ${p.y.toFixed(3)}`
+        ).join(' ');
+        const line = document.createElementNS(svgNS, 'path');
+        line.setAttribute('d', lineD);
+        line.setAttribute('class', 'chart-line-path');
+        line.setAttribute('fill', 'none');
+        line.setAttribute('vector-effect', 'non-scaling-stroke');
+        svg.appendChild(line);
+    }
+    container.appendChild(svg);
+
+    const hitWidthPct = 100 / Math.max(n, 1);
+    points.forEach((p, idx) => {
+        const isLast = idx === points.length - 1;
+        const hit = document.createElement('div');
+        hit.className = 'chart-line-hit'
+            + (p.amount > 0 ? ' has-data' : '')
+            + (isLast ? ' is-current' : '');
+        hit.style.left = (p.x - hitWidthPct / 2).toFixed(3) + '%';
+        hit.style.width = hitWidthPct.toFixed(3) + '%';
+
+        const dot = document.createElement('div');
+        dot.className = 'chart-line-dot';
+        dot.style.bottom = `calc(${(100 - p.y).toFixed(3)}% - 5px)`;
+        hit.appendChild(dot);
+
+        const hourLabel = String(p.hour).padStart(2, '0') + ':00';
         let tip = null;
         const showTip = () => {
             if (tip) return;
             tip = document.createElement('div');
             tip.className = 'chart-tooltip';
-            tip.innerHTML = `<b>${hourLabel}</b><br>${txCount} tx · ${formatCurrencyFull(amount)}`;
-            bar.appendChild(tip);
+            tip.innerHTML = `<b>${hourLabel}</b><br>${p.txCount} tx · ${formatCurrencyFull(p.amount)}`;
+            tip.style.bottom = `calc(${(100 - p.y).toFixed(3)}% + 10px)`;
+            hit.appendChild(tip);
         };
         const hideTip = () => { if (tip) { tip.remove(); tip = null; } };
-        bar.addEventListener('mouseenter', showTip);
-        bar.addEventListener('mouseleave', hideTip);
-        bar.addEventListener('click', (e) => {
+        hit.addEventListener('mouseenter', showTip);
+        hit.addEventListener('mouseleave', hideTip);
+        hit.addEventListener('click', (e) => {
             e.stopPropagation();
             if (tip) hideTip(); else showTip();
         });
-        container.appendChild(bar);
+        container.appendChild(hit);
     });
+
     panel.appendChild(container);
 
     const axis = document.createElement('div');
@@ -280,7 +343,16 @@ function buildPopupHtml(station) {
 }
 
 function getFilteredStations() {
-    return getRegionScopedStations().filter(s => dashboardState.selectedStatuses.has(s.status));
+    const q = (dashboardState.searchQuery || '').trim().toLowerCase();
+    return getRegionScopedStations().filter(s => {
+        if (!dashboardState.selectedStatuses.has(s.status)) return false;
+        if (q) {
+            const code = (s.customer_code || '').toLowerCase();
+            const name = (s.station_name || '').toLowerCase();
+            if (!code.includes(q) && !name.includes(q)) return false;
+        }
+        return true;
+    });
 }
 
 function refreshMarkers(options = {}) {
@@ -302,6 +374,42 @@ function refreshMarkers(options = {}) {
     if (options.fit !== false && bounds.length > 0) {
         dashboardState.map.fitBounds(bounds, { padding: [12, 12], maxZoom: 16 });
     }
+}
+
+function buildSearchControl() {
+    const dd = createSearchableDropdown({
+        placeholder: 'Search site...',
+        items: () => (dashboardState.stations || []).map(s => ({
+            value: s.customer_code || '',
+            label: s.customer_code || '',
+            secondary: s.station_name || '',
+            // Carry the full record so onSelect can zoom the map / open the popup.
+            station: s
+        })),
+        initialQuery: dashboardState.searchQuery || '',
+        emptyText: 'No stations match',
+        onInput: (q) => {
+            dashboardState.searchQuery = q;
+            refreshMarkers({ fit: false });
+        },
+        onSelect: (value, item) => {
+            const s = item.station;
+            dashboardState.searchQuery = s.customer_code;
+            refreshMarkers({ fit: false });
+            if (dashboardState.map && s.lat != null && s.lng != null) {
+                dashboardState.map.setView([s.lat, s.lng], 14);
+                if (dashboardState.markerLayer) {
+                    dashboardState.markerLayer.eachLayer(m => {
+                        const ll = m.getLatLng();
+                        if (Math.abs(ll.lat - s.lat) < 1e-6 && Math.abs(ll.lng - s.lng) < 1e-6) {
+                            m.openPopup();
+                        }
+                    });
+                }
+            }
+        }
+    });
+    return dd.wrap;
 }
 
 function buildFilterBar() {
@@ -343,6 +451,8 @@ function buildFilterBar() {
         });
         divisionRow.appendChild(chip);
     });
+    // Search lives at the right edge of the division row.
+    divisionRow.appendChild(buildSearchControl());
     bar.appendChild(divisionRow);
 
     const cityRow = document.createElement('div');
@@ -445,7 +555,7 @@ function buildNetworkBreakdownPanel(stations) {
 }
 
 function populateNetworkBreakdown(bars, stations) {
-    const counts = { all_online: 0, partial: 0, all_offline: 0, no_duc: 0 };
+    const counts = { all_online: 0, partial: 0, all_offline: 0, visited_no_install: 0, no_duc: 0 };
     for (const s of stations) {
         counts[s.status] = (counts[s.status] || 0) + 1;
     }
@@ -618,70 +728,91 @@ function renderAlertsList() {
     list.appendChild(frag);
 }
 
-function alertFromNotification(payload) {
-    const data = payload.data || {};
-    const ts = payload.timestamp || data.connected_at || data.at || Date.now();
-    let device = '';
-    let status = '';
-    let type = payload.notificationType || payload.type || 'info';
+// Alerts panel only surfaces long-outage (>=12h) events now. Short-lived
+// connect/disconnect blips are deliberately ignored.
+function formatOfflineSince(ts) {
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '';
+    const hours = Math.floor((Date.now() - d.getTime()) / 3600000);
+    return `${hours}h offline`;
+}
 
-    if (data.event === 'station_offline') {
-        device = `Station ${data.customer_code || '?'}`;
-        status = 'ALL DUCS OFFLINE';
-        type = 'error';
-    } else if (data.event === 'connectivity' || data.address) {
-        device = `D${data.address || ''}`;
-        const isUp = !!data.conn_status;
-        status = isUp ? 'CONNECTED' : 'DISCONNECTED';
-        type = isUp ? 'success' : 'error';
-    } else {
-        device = payload.title || 'Alert';
-        status = payload.message || '';
-    }
+function alertFromLongOutageRow(r) {
     return {
-        id: payload.id || `${ts}-${Math.random().toString(36).slice(2, 8)}`,
-        ts, type, device, status
+        id: `outage-${r.id}`,
+        ts: r.created_at || r.offline_since,
+        type: 'error',
+        device: `D${r.address}`,
+        status: formatOfflineSince(r.offline_since),
+        address: r.address,
+        outageId: r.id
     };
 }
 
+function alertFromNotification(payload) {
+    const data = payload.data || {};
+    if (data.event === 'long_outage') {
+        return {
+            id: `outage-${data.id || data.address}-${payload.timestamp || Date.now()}`,
+            ts: payload.timestamp || data.offline_since || Date.now(),
+            type: 'error',
+            device: `D${data.address || ''}`,
+            status: formatOfflineSince(data.offline_since),
+            address: data.address,
+            outageId: data.id
+        };
+    }
+    return null; // ignore everything else
+}
+
 function addAlert(payload) {
-    if (!payload) return;
-    dashboardState.alerts.unshift(alertFromNotification(payload));
+    const alert = alertFromNotification(payload);
+    if (!alert) return;
+    // De-dupe: if an alert already exists for this address, replace it.
+    if (alert.address) {
+        dashboardState.alerts = dashboardState.alerts.filter(a => a.address !== alert.address);
+    }
+    dashboardState.alerts.unshift(alert);
     if (dashboardState.alerts.length > ALERTS_MAX) {
         dashboardState.alerts.length = ALERTS_MAX;
     }
     renderAlertsList();
 }
 
-function seedAlertsFromConnectionEvents(rows) {
-    // API returns newest first; preserve that order in the alerts list.
-    dashboardState.alerts = rows.map(r => {
-        const isUp = !!r.conn_status;
-        return {
-            id: `seed-${r.address}-${r.created_at || r.connected_at}`,
-            ts: r.created_at || r.connected_at,
-            type: isUp ? 'success' : 'error',
-            device: `D${r.address}`,
-            status: isUp ? 'CONNECTED' : 'DISCONNECTED'
-        };
-    }).slice(0, ALERTS_MAX);
+function removeAlertForAddress(address) {
+    if (!address) return;
+    const before = dashboardState.alerts.length;
+    dashboardState.alerts = dashboardState.alerts.filter(a => a.address !== address);
+    if (dashboardState.alerts.length !== before) renderAlertsList();
+}
+
+function seedAlertsFromLongOutages(rows) {
+    dashboardState.alerts = rows.map(alertFromLongOutageRow).slice(0, ALERTS_MAX);
     renderAlertsList();
 }
 
-async function fetchConnectionEvents(limit = 50) {
+async function fetchLongOutages(limit = 100) {
     try {
-        const resp = await fetch(`${API_BASE_URL}/connection-events?limit=${limit}`);
+        const resp = await fetch(`${API_BASE_URL}/long-outages?limit=${limit}`);
         if (!resp.ok) return [];
         return await resp.json();
     } catch (err) {
-        console.warn('Failed to load connection events:', err.message);
+        console.warn('Failed to load long-outage alerts:', err.message);
         return [];
     }
 }
 
 function attachAlertListener() {
     if (dashboardState.alertListenerAttached) return;
-    window.addEventListener('app-notification', (e) => addAlert(e.detail));
+    window.addEventListener('app-notification', (e) => {
+        const payload = e.detail || {};
+        const ev = payload.data?.event;
+        if (ev === 'long_outage') {
+            addAlert(payload);
+        } else if (ev === 'long_outage_cleared') {
+            removeAlertForAddress(payload.data?.address);
+        }
+    });
     dashboardState.alertListenerAttached = true;
 }
 
@@ -793,7 +924,7 @@ async function renderDashboard() {
     content.appendChild(main);
 
     attachAlertListener();
-    fetchConnectionEvents().then(seedAlertsFromConnectionEvents);
+    fetchLongOutages().then(seedAlertsFromLongOutages);
 
     dashboardState.map = L.map('station-map', { scrollWheelZoom: true })
         .setView([30.3753, 69.3451], 6);
@@ -831,9 +962,19 @@ async function refreshDashboardData() {
     dashboardState.stats = stats;
 
     if (dashboardState.filterBarEl) {
+        const oldInput = dashboardState.filterBarEl.querySelector('.filter-search');
+        const hadFocus = oldInput && document.activeElement === oldInput;
+        const caret = oldInput ? oldInput.selectionStart : null;
         const newBar = buildFilterBar();
         dashboardState.filterBarEl.replaceWith(newBar);
         dashboardState.filterBarEl = newBar;
+        if (hadFocus) {
+            const newInput = newBar.querySelector('.filter-search');
+            if (newInput) {
+                newInput.focus();
+                if (caret != null) newInput.setSelectionRange(caret, caret);
+            }
+        }
     }
 
     if (dashboardState.hourlyPanelEl) {
