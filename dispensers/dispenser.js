@@ -535,7 +535,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     if (nozzles.length === 0) return;
 
     const paddedAddress = dispenser.address;
-    const dispenserTopic = `D${paddedAddress}`;
+    const dispenserTopic = ensureDAddress(paddedAddress);
 
     const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
 
@@ -630,7 +630,7 @@ async function updateDispenserCard(dispenser) {
 
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
-    const dispenserTopic = `D${dispenser.address}`;
+    const dispenserTopic = ensureDAddress(dispenser.address);
 
     if (typeof window.updateIRStatus === 'function') {
         window.updateIRStatus(dispenserTopic, dispenser.ir_lock_status ? 1 : 0);

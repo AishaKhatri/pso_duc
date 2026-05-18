@@ -89,7 +89,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     if (nozzles.length === 0) return;
 
     const paddedAddress = dispenser.address;
-    const dispenserTopic = `D${paddedAddress}`;
+    const dispenserTopic = ensureDAddress(paddedAddress);
 
     const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
 
@@ -133,12 +133,11 @@ async function updateDispenserCard(dispenser) {
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
     if (typeof window.updateConnStatus === 'function') {
-        const dispenserAddr = dispenser.address;
-        window.updateConnStatus(`D${dispenserAddr}`, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
+        window.updateConnStatus(ensureDAddress(dispenser.address), dispenser.conn_status ? 1 : 0, dispenser.connected_at);
     }
 
     // Update error count
-    const dispenserTopic = `D${dispenser.address}`;
+    const dispenserTopic = ensureDAddress(dispenser.address);
     if (typeof window.updateErrorCount === 'function') {
         await window.updateErrorCount(dispenserTopic);
     }

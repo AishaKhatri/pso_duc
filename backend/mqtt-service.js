@@ -2,7 +2,7 @@ const mqtt = require('mqtt');
 const chalk = require('chalk');
 const pool = require('./db');
 const fs = require('fs').promises;
-const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress } = require('./backend-services');
+const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -89,22 +89,23 @@ async function initializeMQTTSubscriptions() {
     try {
         await subscribeToTopic('duc/registration', statusTopics);
 
-        // Fetch all dispensers from the database
+        // Fetch all dispensers from the database — address normalized to D-prefixed.
         const [dispensers] = await pool.query(`
-            SELECT d.dispenser_id, d.address, s.customer_code, s.city 
+            SELECT d.dispenser_id, ${addressOutSql('d')} AS address, s.customer_code, s.city
             FROM dispensers d
             JOIN stations s ON d.customer_code = s.customer_code
         `);
-        
+
         // Subscribe to each dispenser's topic and initialize nozzles
         const serverStartTime = Date.now();
         for (const dispenser of dispensers) {
-            // const topic = `S${dispenser.address}`;
-            // const topic = `pso/karachi/103088/duc/s${dispenser.address}`;
-            const topic = `pso/${dispenser.city}/${dispenser.customer_code}/duc/s${dispenser.address}`;
+            // MQTT slave topic uses the numeric portion: s<naked>
+            const addrNaked = stripDAddress(dispenser.address);
+            const addrD = ensureDAddress(dispenser.address);
+            const topic = `pso/${dispenser.city}/${dispenser.customer_code}/duc/s${addrNaked}`;
             await subscribeToTopic(topic, deviceTopics);
-            
-            const conn_stat_topic = `duc/conn_status/D${dispenser.address}`; 
+
+            const conn_stat_topic = `duc/conn_status/${addrD}`;
             await subscribeToTopic(conn_stat_topic, statusTopics);
 
             // Fetch all nozzles for this dispenser
@@ -388,40 +389,22 @@ function getWiFiStatus(dispenserAddr) {
 
 async function storeNetworkStatusInDatabase(deviceAddr, connectionType, statusData) {
     try {
-        let cleanAddr;
-        let customerCode;
-        
-        // Check if this is a dispenser device
-        if (deviceAddr.startsWith('D')) {
-            cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
-            
-            // Get customer_code from address
-            const [dispensers] = await pool.query(
-                'SELECT customer_code FROM dispensers WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (dispensers.length === 0) {
-                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                return;
-            } else {
-                customerCode = dispensers[0].customer_code;
-            }
-        } else {
-            // If not a dispenser device, try to find by address directly
-            cleanAddr = deviceAddr;
-            const [dispensers] = await pool.query(
-                'SELECT customer_code FROM dispensers WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (dispensers.length === 0) {
-                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                return;
-            } else {
-                customerCode = dispensers[0].customer_code;
-            }
+        // deviceAddr can come in as either "D01" or "01" — normalize both forms
+        // for the WHERE clause so legacy rows still match.
+        const addrD = ensureDAddress(deviceAddr);
+        const addrNaked = stripDAddress(deviceAddr);
+
+        const [dispensers] = await pool.query(
+            'SELECT customer_code FROM dispensers WHERE address IN (?, ?)',
+            [addrD, addrNaked]
+        );
+
+        if (dispensers.length === 0) {
+            errorWithTimestamp(`No dispenser found for address ${addrD}`);
+            return;
         }
+        const customerCode = dispensers[0].customer_code;
+        const cleanAddr = addrD;
 
         let apn_ssid = null;
         let ipv4 = null;
@@ -582,48 +565,28 @@ function hasErrors(dispenserAddr) {
 
 async function storeErrorInDatabase(deviceAddr, errorMessage) {
     try {
-        let cleanAddr;
-        let customerCode;
-        
-        // Check if this is a dispenser device
-        if (deviceAddr.startsWith('D')) {
-            cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
-            
-            // Get customer_code from address
-            const [dispensers] = await pool.query(
-                'SELECT customer_code FROM dispensers WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (dispensers.length === 0) {
-                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                return;
-            } else {
-                customerCode = dispensers[0].customer_code;
-            }
-        } else {
-            cleanAddr = deviceAddr;
-            const [dispensers] = await pool.query(
-                'SELECT customer_code FROM dispensers WHERE address = ?',
-                [cleanAddr]
-            );
-            
-            if (dispensers.length === 0) {
-                errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                return;
-            } else {
-                customerCode = dispensers[0].customer_code;
-            }
-        }
-        
-        await pool.query(
-            `INSERT INTO errors 
-            (customer_code, address, error_message) 
-            VALUES (?, ?, ?)`,
-            [customerCode, cleanAddr, errorMessage]
+        const addrD = ensureDAddress(deviceAddr);
+        const addrNaked = stripDAddress(deviceAddr);
+
+        const [dispensers] = await pool.query(
+            'SELECT customer_code FROM dispensers WHERE address IN (?, ?)',
+            [addrD, addrNaked]
         );
-        
-        logWithTimestamp(null, `Error stored in database: ${customerCode} ${cleanAddr} - ${errorMessage}`);
+
+        if (dispensers.length === 0) {
+            errorWithTimestamp(`No dispenser found for address ${addrD}`);
+            return;
+        }
+        const customerCode = dispensers[0].customer_code;
+
+        await pool.query(
+            `INSERT INTO errors
+            (customer_code, address, error_message)
+            VALUES (?, ?, ?)`,
+            [customerCode, addrD, errorMessage]
+        );
+
+        logWithTimestamp(null, `Error stored in database: ${customerCode} ${addrD} - ${errorMessage}`);
     } catch (error) {
         errorWithTimestamp('Error storing error in database:', error.message);
     }
@@ -672,46 +635,43 @@ async function handleDeviceInfoMessage(deviceAddr, deviceData, customerCode = nu
 
 async function storeDeviceInfoInDatabase(deviceAddr, deviceInfo, customerCode = null) {
     try {
-        let cleanAddr;
-        
-        // Handle dispenser device (starts with 'D')
-        if (deviceAddr.startsWith('D')) {
-            cleanAddr = deviceAddr.substring(1); // Remove 'D' prefix
-            
-            // If customerCode not provided, get it from database
-            let finalCustomerCode = customerCode;
-            if (!finalCustomerCode) {
-                const [dispensers] = await pool.query(
-                    'SELECT customer_code FROM dispensers WHERE address = ?',
-                    [cleanAddr]
-                );
-                
-                if (dispensers.length === 0) {
-                    errorWithTimestamp(`No dispenser found for address ${cleanAddr}`);
-                    return;
-                }
-                finalCustomerCode = dispensers[0].customer_code;
-            }
-            
-            // Insert device info record
-            const [result] = await pool.query(
-                `INSERT INTO device_info 
-                 (customer_code, address, firmware_version, hardware_version, 
-                  wifi_enable, last_die_time, wakeup_time) 
-                 VALUES (?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    finalCustomerCode,
-                    cleanAddr,
-                    deviceInfo.firmwareVersion,
-                    deviceInfo.hardwareVersion,
-                    deviceInfo.wifiEnable,
-                    deviceInfo.lastDieTime,
-                    deviceInfo.wakeupTime
-                ]
+        // Only dispenser devices ("D…") have device info to store.
+        if (!String(deviceAddr || '').startsWith('D')) return;
+
+        const addrD = ensureDAddress(deviceAddr);
+        const addrNaked = stripDAddress(deviceAddr);
+
+        let finalCustomerCode = customerCode;
+        if (!finalCustomerCode) {
+            const [dispensers] = await pool.query(
+                'SELECT customer_code FROM dispensers WHERE address IN (?, ?)',
+                [addrD, addrNaked]
             );
-            
-            logWithTimestamp(null, `Device info stored for address ${cleanAddr} - Record ID: ${result.insertId}`);
+
+            if (dispensers.length === 0) {
+                errorWithTimestamp(`No dispenser found for address ${addrD}`);
+                return;
+            }
+            finalCustomerCode = dispensers[0].customer_code;
         }
+
+        const [result] = await pool.query(
+            `INSERT INTO device_info
+             (customer_code, address, firmware_version, hardware_version,
+              wifi_enable, last_die_time, wakeup_time)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [
+                finalCustomerCode,
+                addrD,
+                deviceInfo.firmwareVersion,
+                deviceInfo.hardwareVersion,
+                deviceInfo.wifiEnable,
+                deviceInfo.lastDieTime,
+                deviceInfo.wakeupTime
+            ]
+        );
+
+        logWithTimestamp(null, `Device info stored for address ${addrD} - Record ID: ${result.insertId}`);
     } catch (error) {
         errorWithTimestamp('Error storing device info in database:', error.message);
     }
@@ -734,7 +694,8 @@ async function handleConnectionAlert(topic, alertData) {
     // Check if this is a dispenser client (starts with 'D')
     if (clientId && (clientId.startsWith('D'))) {
         let deviceType = 'dispenser';
-        let deviceAddr = clientId.substring(1); // Remove 'D' prefix
+        const addrD = ensureDAddress(clientId);
+        const addrNaked = stripDAddress(clientId);
         let connectedAt;
 
         // Update connected_at timestamp
@@ -747,8 +708,8 @@ async function handleConnectionAlert(topic, alertData) {
         // For dispensers, update database as before
         if (deviceType === 'dispenser') {
             const [dispensers] = await pool.query(
-                'SELECT dispenser_id, customer_code FROM dispensers WHERE address = ?',
-                [deviceAddr]
+                'SELECT dispenser_id, customer_code FROM dispensers WHERE address IN (?, ?)',
+                [addrD, addrNaked]
             );
 
             if (dispensers.length > 0) {
@@ -759,7 +720,7 @@ async function handleConnectionAlert(topic, alertData) {
 
                 await pool.query(
                     'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
-                    [dispenser_id, deviceAddr, conn_status, connectedAt]
+                    [dispenser_id, addrD, conn_status, connectedAt]
                 );
 
                 await pool.query(
@@ -768,13 +729,13 @@ async function handleConnectionAlert(topic, alertData) {
                 );
 
                 await pool.query(
-                    'UPDATE dispensers SET conn_status = ? WHERE address = ?',
-                    [conn_status, deviceAddr]
+                    'UPDATE dispensers SET conn_status = ? WHERE address IN (?, ?)',
+                    [conn_status, addrD, addrNaked]
                 );
 
                 await pool.query(
-                    'UPDATE dispensers SET connected_at = ? WHERE address = ?',
-                    [connectedAt, deviceAddr]
+                    'UPDATE dispensers SET connected_at = ? WHERE address IN (?, ?)',
+                    [connectedAt, addrD, addrNaked]
                 );
 
                 // Per-device connect/disconnect events no longer broadcast to
@@ -783,17 +744,17 @@ async function handleConnectionAlert(topic, alertData) {
                 // On reconnect, close any open long-outage row for this address
                 // and notify the UI so it can drop the alert.
                 if (isConnection) {
-                    const cleared = await clearLongOutageForAddress(deviceAddr);
+                    const cleared = await clearLongOutageForAddress(addrD);
                     if (cleared.length > 0 && notificationService) {
                         for (const row of cleared) {
                             await notificationService.sendSystemNotification(
                                 'Long Outage Cleared',
-                                `Device D${deviceAddr} back online`,
+                                `Device ${addrD} back online`,
                                 'success',
                                 {
                                     event: 'long_outage_cleared',
                                     id: row.id,
-                                    address: deviceAddr,
+                                    address: addrD,
                                     dispenser_id,
                                     customer_code,
                                     offline_since: row.offline_since
@@ -803,7 +764,7 @@ async function handleConnectionAlert(topic, alertData) {
                     }
                 }
             } else {
-                logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${deviceAddr}`);
+                logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${addrD}`);
             }
         }
     }
@@ -1087,9 +1048,13 @@ async function registerNewDevice(message) {
         }
         
         // ===== 2. Check if dispenser with this address already exists =====
+        // deviceAddress comes from the device naked (e.g. "01"); accept either
+        // stored form so legacy rows still match.
+        const deviceAddressD = ensureDAddress(deviceAddress);
+        const deviceAddressNaked = stripDAddress(deviceAddress);
         const [existingDispensers] = await pool.query(
-            'SELECT customer_code, dispenser_id FROM dispensers WHERE address = ? AND customer_code = ?',
-            [deviceAddress, customerCode]
+            'SELECT customer_code, dispenser_id FROM dispensers WHERE address IN (?, ?) AND customer_code = ?',
+            [deviceAddressD, deviceAddressNaked, customerCode]
         );
         
         let finalDispenserId;
@@ -1110,16 +1075,16 @@ async function registerNewDevice(message) {
                 return;
             }
             
-            // Create new dispenser
+            // Create new dispenser — store address D-prefixed.
             await pool.query(
-                `INSERT INTO dispensers 
-                 (customer_code, dispenser_id, address, conn_status, connected_at, 
-                  ir_lock_status, number_of_nozzles, DispenserBrand, IMEI1, IMEI2) 
+                `INSERT INTO dispensers
+                 (customer_code, dispenser_id, address, conn_status, connected_at,
+                  ir_lock_status, number_of_nozzles, DispenserBrand, IMEI1, IMEI2)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     customerCode,
                     finalDispenserId,
-                    deviceAddress,
+                    deviceAddressD,
                     0, // conn_status - offline
                     null,
                     1, // ir_lock_status - unlocked
@@ -1129,12 +1094,12 @@ async function registerNewDevice(message) {
                     imei2
                 ]
             );
-            logWithTimestamp(chalk.green, `✓ New dispenser registered: ID ${finalDispenserId} (Address: ${deviceAddress})`);
-            
-            // Subscribe to MQTT topics for this dispenser
-            const topic = `pso/${city}/${customerCode}/duc/s${deviceAddress}`;
+            logWithTimestamp(chalk.green, `✓ New dispenser registered: ID ${finalDispenserId} (Address: ${deviceAddressD})`);
+
+            // Slave topic uses the naked numeric portion; conn_status uses D-prefixed.
+            const topic = `pso/${city}/${customerCode}/duc/s${deviceAddressNaked}`;
             await subscribeToTopic(topic, null);
-            const connStatTopic = `duc/conn_status/D${deviceAddress}`;
+            const connStatTopic = `duc/conn_status/${deviceAddressD}`;
             await subscribeToTopic(connStatTopic, statusTopics);
         } else {
             finalDispenserId = existingDispensers[0].dispenser_id;
@@ -1151,21 +1116,21 @@ async function registerNewDevice(message) {
                     updateFields.push('imei2 = ?');
                     updateValues.push(imei2);
                 }
-                updateValues.push(customerCode, deviceAddress);
-                
+                updateValues.push(customerCode, deviceAddressD, deviceAddressNaked);
+
                 await pool.query(
-                    `UPDATE dispensers SET ${updateFields.join(', ')} WHERE customer_code = ? AND address = ?`,
+                    `UPDATE dispensers SET ${updateFields.join(', ')} WHERE customer_code = ? AND address IN (?, ?)`,
                     updateValues
                 );
-                logWithTimestamp(chalk.blue, `✓ Updated IMEIs for existing dispenser: ${deviceAddress}`);
+                logWithTimestamp(chalk.blue, `✓ Updated IMEIs for existing dispenser: ${deviceAddressD}`);
             }
 
             logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ID ${finalDispenserId}`);
         }
-        
+
         // ===== 3. Register nozzles =====
-        // Nozzle ID format: D{address}-{side}{number}
-        const dispenserAddressForNozzle = deviceAddress;
+        // Nozzle ID format: D{naked-address}-{side}{number}
+        const dispenserAddressForNozzle = deviceAddressNaked;
         
         // Determine side-product mapping
         let sideProductMap = [];
@@ -1187,7 +1152,8 @@ async function registerNewDevice(message) {
             const product = sideConfig.product;
             
             for (let nozzleNum = 1; nozzleNum <= nozzlesPerSide; nozzleNum++) {
-                const nozzleId = `D${dispenserAddressForNozzle}-${side}${nozzleNum}`;
+                // nozzle_id is always D-prefixed, regardless of caller's form.
+                const nozzleId = `${ensureDAddress(dispenserAddressForNozzle)}-${side}${nozzleNum}`;
                 
                 const [existingNozzles] = await pool.query(
                     'SELECT id FROM nozzles WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?',
@@ -1228,10 +1194,10 @@ async function registerNewDevice(message) {
                 LastDieTime: deviceData.LastDieTime,
                 WakeUpTime: deviceData.WakeUpTime
             };
-            await handleDeviceInfoMessage(`D${deviceAddress}`, deviceInfoMessage, customerCode);
+            await handleDeviceInfoMessage(deviceAddressD, deviceInfoMessage, customerCode);
         }
-        
-        logWithTimestamp(chalk.green.bold, `✅ Registration completed! Dispenser ID: ${finalDispenserId} (Address: ${deviceAddress}) for customer ${customerCode}`);
+
+        logWithTimestamp(chalk.green.bold, `✅ Registration completed! Dispenser ID: ${finalDispenserId} (Address: ${deviceAddressD}) for customer ${customerCode}`);
         
     } catch (error) {
         errorWithTimestamp('Error registering new device:', error.message);
@@ -1299,15 +1265,17 @@ mqttClient.on('message', async (receivedTopic, message) => {
             await registerNewDevice(parsedData);
             return;
         } else {
-            // Convert Sxxxxx topic to xxxxx address for database query
-            // dbAddress = receivedTopic.replace(/^S/, ''); // Remove 'S' prefix
-            dbAddress = dispenserAddr.replace(/^D/, ''); // Remove 'D' prefix
+            // dispenserAddr from MQTT looks like "D55225"; keep both forms so
+            // the lookup matches whichever the row stores.
+            dbAddress = dispenserAddr;
         }
-        
-        // Find the corresponding dispenser in the database
+
+        // Find the corresponding dispenser in the database — match either stored form.
+        const dbAddrD = ensureDAddress(dbAddress);
+        const dbAddrNaked = stripDAddress(dbAddress);
         const [dispensers] = await pool.query(
-            'SELECT dispenser_id FROM dispensers WHERE address = ?',
-            [dbAddress]
+            'SELECT dispenser_id FROM dispensers WHERE address IN (?, ?)',
+            [dbAddrD, dbAddrNaked]
         );
         
         if (dispensers.length === 0) {
@@ -1364,8 +1332,8 @@ mqttClient.on('message', async (receivedTopic, message) => {
                     break;
                 case 7: // Transaction data (T, A, V)
                     const [dispenserInfo] = await pool.query(
-                        'SELECT customer_code FROM dispensers WHERE address = ?',
-                        [dbAddress]
+                        'SELECT customer_code FROM dispensers WHERE address IN (?, ?)',
+                        [dbAddrD, dbAddrNaked]
                     );
                     if (dispenserInfo.length > 0) {
                         const customer_code = dispenserInfo[0].customer_code;

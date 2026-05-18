@@ -392,6 +392,30 @@ function getClientIp(req) {
     return raw || null;
 }
 
+// Dispenser address normalization. The canonical on-disk form is D-prefixed
+// (e.g. "D01"). Writes go through ensureDAddress so legacy code that still
+// passes a naked numeric continues to land as "D…". Lookup helpers and SELECT
+// projections also tolerate legacy rows that pre-date this convention and
+// still contain a naked numeric.
+function ensureDAddress(addr) {
+    if (addr == null) return addr;
+    const s = String(addr);
+    if (s === '') return s;
+    return s.startsWith('D') ? s : `D${s}`;
+}
+
+function stripDAddress(addr) {
+    return String(addr ?? '').replace(/^D/, '');
+}
+
+// SQL fragment that yields the address as "Daa" regardless of whether the row
+// stores it with or without the D prefix. Inline this into SELECT lists.
+const ADDRESS_OUT_SQL = "IF(LEFT(`address`,1)='D', `address`, CONCAT('D', `address`))";
+function addressOutSql(qualifier) {
+    const col = qualifier ? `${qualifier}.address` : '`address`';
+    return `IF(LEFT(${col},1)='D', ${col}, CONCAT('D', ${col}))`;
+}
+
 // Insert a row into activity_log. Never throws — logging must not break the
 // caller. Pass `req` to auto-capture IP and authenticated user. Optional
 // overrides via `extras` (entity_type, entity_id, details, user_id, username).
@@ -463,7 +487,7 @@ async function scanLongOutages() {
     try {
         const cutoff = new Date(Date.now() - LONG_OUTAGE_THRESHOLD_MS);
         const [rows] = await pool.query(
-            `SELECT d.dispenser_id, d.address, d.customer_code, d.connected_at
+            `SELECT d.dispenser_id, ${addressOutSql('d')} AS address, d.customer_code, d.connected_at
              FROM dispensers d
              WHERE d.conn_status = 0
                AND d.connected_at IS NOT NULL
@@ -472,11 +496,13 @@ async function scanLongOutages() {
         );
 
         for (const r of rows) {
+            const addrD = ensureDAddress(r.address);
+            const addrNaked = stripDAddress(r.address);
             const [existing] = await pool.query(
                 `SELECT id FROM long_outage_alerts
-                 WHERE address = ? AND cleared_at IS NULL
+                 WHERE address IN (?, ?) AND cleared_at IS NULL
                  LIMIT 1`,
-                [r.address]
+                [addrD, addrNaked]
             );
             if (existing.length > 0) continue;
 
@@ -484,13 +510,13 @@ async function scanLongOutages() {
                 `INSERT INTO long_outage_alerts
                  (dispenser_id, address, customer_code, offline_since)
                  VALUES (?, ?, ?, ?)`,
-                [r.dispenser_id, r.address, r.customer_code || null, r.connected_at]
+                [r.dispenser_id, addrD, r.customer_code || null, r.connected_at]
             );
 
             if (longOutageNotificationService) {
                 await longOutageNotificationService.sendSystemNotification(
                     'Long Outage',
-                    `Device D${r.address} offline for 12h+`,
+                    `Device ${addrD} offline for 12h+`,
                     'error',
                     {
                         event: 'long_outage',
@@ -503,7 +529,7 @@ async function scanLongOutages() {
                 );
             }
             logWithTimestamp(chalk.red,
-                `Long outage detected: D${r.address} offline since ${r.connected_at}`);
+                `Long outage detected: ${addrD} offline since ${r.connected_at}`);
         }
     } catch (err) {
         errorWithTimestamp('Long-outage scan failed:', err.message);
@@ -514,18 +540,20 @@ async function scanLongOutages() {
 // cleared row(s) so the caller can broadcast a 'long_outage_cleared' event.
 async function clearLongOutageForAddress(address) {
     try {
+        const addrD = ensureDAddress(address);
+        const addrNaked = stripDAddress(address);
         const [open] = await pool.query(
             `SELECT id, dispenser_id, customer_code, offline_since
              FROM long_outage_alerts
-             WHERE address = ? AND cleared_at IS NULL`,
-            [address]
+             WHERE address IN (?, ?) AND cleared_at IS NULL`,
+            [addrD, addrNaked]
         );
         if (open.length === 0) return [];
         await pool.query(
             `UPDATE long_outage_alerts
              SET cleared_at = CURRENT_TIMESTAMP
-             WHERE address = ? AND cleared_at IS NULL`,
-            [address]
+             WHERE address IN (?, ?) AND cleared_at IS NULL`,
+            [addrD, addrNaked]
         );
         return open;
     } catch (err) {
@@ -557,6 +585,10 @@ module.exports = {
     loadDikStationRows,
     getClientIp,
     logActivity,
+    ensureDAddress,
+    stripDAddress,
+    ADDRESS_OUT_SQL,
+    addressOutSql,
     describeMqttCommand,
     setLongOutageNotificationService,
     scanLongOutages,

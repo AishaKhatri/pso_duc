@@ -745,7 +745,7 @@ function alertFromLongOutageRow(r) {
         id: `outage-${r.id}`,
         ts: r.created_at || r.offline_since,
         type: 'error',
-        device: `D${r.address}`,
+        device: ensureDAddress(r.address),
         status: formatOfflineSince(r.offline_since),
         address: r.address,
         outageId: r.id
@@ -759,7 +759,7 @@ function alertFromNotification(payload) {
             id: `outage-${data.id || data.address}-${payload.timestamp || Date.now()}`,
             ts: payload.timestamp || data.offline_since || Date.now(),
             type: 'error',
-            device: `D${data.address || ''}`,
+            device: ensureDAddress(data.address || ''),
             status: formatOfflineSince(data.offline_since),
             address: data.address,
             outageId: data.id

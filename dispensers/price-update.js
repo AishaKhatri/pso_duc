@@ -207,7 +207,7 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
         const [_, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
 
         const message = {
-            dis_addr: `D${dispenserAddr}`,
+            dis_addr: ensureDAddress(dispenserAddr),
             req_type: 0,
             // side: side === 'A' ? '0' : '1',
             side: side,
@@ -228,8 +228,8 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
 
         try {
             const result = await new Promise((resolve) => {
-                // publishPriceUpdate(`D${dispenserAddr}`, JSON.stringify(message), (err) => {
-                publishMessage(`D${dispenserAddr}`, JSON.stringify(message), (err) => {
+                // publishPriceUpdate(ensureDAddress(dispenserAddr), JSON.stringify(message), (err) => {
+                publishMessage(ensureDAddress(dispenserAddr), JSON.stringify(message), (err) => {
                     if (err) {
                         console.error('Publish error:', err);
                         if (statusIcon) {

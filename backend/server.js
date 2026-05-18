@@ -25,6 +25,9 @@ const {
     fetchStationSheetRows,
     getClientIp,
     logActivity,
+    ensureDAddress,
+    stripDAddress,
+    addressOutSql,
     describeMqttCommand,
     setLongOutageNotificationService,
     startLongOutageService } = require('./backend-services');
@@ -270,7 +273,7 @@ app.get('/api/long-outages', async (req, res) => {
     try {
         const limit = Math.min(parseInt(req.query.limit, 10) || 100, 500);
         const [rows] = await pool.query(
-            `SELECT id, dispenser_id, address, customer_code,
+            `SELECT id, dispenser_id, ${addressOutSql()} AS address, customer_code,
                     offline_since, created_at, cleared_at
              FROM long_outage_alerts
              WHERE cleared_at IS NULL
@@ -439,11 +442,12 @@ app.get('/api/stations', async (req, res) => {
     try {
         // GROUP_CONCAT pulls every dispenser's address for the station so the
         // sites table can show "DUCs installed" as a comma-separated list
-        // without a second round trip.
+        // without a second round trip. Each address is normalized to the
+        // D-prefixed canonical form regardless of how the row was stored.
         const [stations] = await pool.query(
             `SELECT s.id, s.customer_code, s.station_id, s.city, s.district,
                     s.division, s.username, s.created_at,
-                    GROUP_CONCAT(d.address ORDER BY d.address SEPARATOR ', ') AS duc_addresses
+                    GROUP_CONCAT(${addressOutSql('d')} ORDER BY d.address SEPARATOR ', ') AS duc_addresses
              FROM stations s
              LEFT JOIN dispensers d ON d.customer_code = s.customer_code
              GROUP BY s.id
@@ -494,7 +498,7 @@ app.get('/api/ducs', requireApiKey, async (req, res) => {
                  s.customer_code AS customer_code,
                  s.division      AS division,
                  s.city          AS city,
-                 d.address       AS duc_address,
+                 ${addressOutSql('d')} AS duc_address,
                  n.dispenser_id  AS dispenser_id,
                  n.nozzle_id     AS nozzle_id,
                  n.product       AS product
@@ -548,7 +552,7 @@ app.get('/api/dispensers', async (req, res) => {
 
         // Explicit columns — drops IMEI1/IMEI2/created_at from the response (only
         // used server-side) so the payload stays small over the network.
-        let query = `SELECT id, customer_code, dispenser_id, address, conn_status,
+        let query = `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
                             connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
                      FROM dispensers`;
         let params = [];
@@ -581,7 +585,7 @@ app.get('/api/dispensers-full', async (req, res) => {
 
         const [dispensers, nozzles, stations] = await Promise.all([
             pool.query(
-                `SELECT id, customer_code, dispenser_id, address, conn_status,
+                `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
                         connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
                  FROM dispensers
                  ${whereCustomer}
@@ -836,24 +840,26 @@ app.get('/api/cleared-resets/:dispenser_addr', (req, res) => {
 
 app.get('/api/error-log/:address', async (req, res) => {
     try {
-        let { address } = req.params;
-        address = address.replace(/^D/, '');
+        const { address: rawAddress } = req.params;
+        // Match rows whether they were stored D-prefixed (new) or numeric (legacy).
+        const addrD = ensureDAddress(rawAddress);
+        const addrNaked = stripDAddress(rawAddress);
 
         const { showCleared } = req.query;
 
         let query = `
-            SELECT 
+            SELECT
                 id,
                 customer_code,
-                error_message, 
+                error_message,
                 cleared,
-                created_at 
-            FROM errors 
-            WHERE address = ?
+                created_at
+            FROM errors
+            WHERE address IN (?, ?)
         `;
-        
-        const queryParams = [address];
-        
+
+        const queryParams = [addrD, addrNaked];
+
         // Filter by cleared status if specified
         if (showCleared === 'false' || showCleared === '0') {
             query += ' AND cleared = 0';
@@ -904,31 +910,31 @@ app.get('/api/error-log/:address', async (req, res) => {
 
 app.get('/api/device-info/:address', async (req, res) => {
     try {
-        let { address } = req.params;
-        
-        // Extract numeric address by removing any non-numeric prefix
-        address = address.replace(/^[A-Za-z]+/, '');
-        
-        if (!address || !/^\d+$/.test(address)) {
+        const { address: rawAddress } = req.params;
+
+        // Accept either "D01" or "01"; the numeric form must be digits.
+        const naked = String(rawAddress || '').replace(/^[A-Za-z]+/, '');
+        if (!naked || !/^\d+$/.test(naked)) {
             return res.json(null);
         }
-        
-        // Get the latest device info for this address
+        const addrD = `D${naked}`;
+
+        // Get the latest device info for this address — match either stored form.
         const [deviceInfo] = await pool.query(
-            `SELECT 
+            `SELECT
                 customer_code,
-                address,
+                ${addressOutSql()} AS address,
                 firmware_version,
                 hardware_version,
                 wifi_enable,
                 last_die_time,
                 wakeup_time,
                 created_at
-            FROM device_info 
-            WHERE address = ?
+            FROM device_info
+            WHERE address IN (?, ?)
             ORDER BY created_at DESC
             LIMIT 1`,
-            [address]
+            [addrD, naked]
         );
         
         res.json(deviceInfo[0] || null);
@@ -1155,6 +1161,10 @@ app.post('/api/dispensers', async (req, res) => {
             return res.status(400).json({ error: 'All fields are required: customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles' });
         }
 
+        // Canonicalize address: store with D prefix.
+        const addrD = ensureDAddress(address);
+        const addrNaked = stripDAddress(address);
+
         // Check if dispenser already exists for this customer
         const [existing] = await pool.query(
             'SELECT id FROM dispensers WHERE customer_code = ? AND dispenser_id = ?',
@@ -1165,10 +1175,10 @@ app.post('/api/dispensers', async (req, res) => {
             return res.status(400).json({ error: 'This dispenser ID already exists for this customer' });
         }
 
-        // Check if address is unique for this customer
+        // Check if address is unique for this customer — accept either stored form.
         const [existingAddress] = await pool.query(
-            'SELECT id FROM dispensers WHERE customer_code = ? AND address = ?',
-            [customer_code, address]
+            'SELECT id FROM dispensers WHERE customer_code = ? AND address IN (?, ?)',
+            [customer_code, addrD, addrNaked]
         );
 
         if (existingAddress.length > 0) {
@@ -1180,30 +1190,30 @@ app.post('/api/dispensers', async (req, res) => {
             'SELECT city FROM stations WHERE customer_code = ?',
             [customer_code]
         );
-        
+
         if (stations.length === 0) {
             return res.status(400).json({ error: 'Customer not found' });
         }
-        
+
         const city = stations[0].city;
 
-        // Insert the dispenser
+        // Insert the dispenser (D-prefixed)
         const [result] = await pool.query(
-            `INSERT INTO dispensers 
-            (customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status) 
+            `INSERT INTO dispensers
+            (customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
+            [customer_code, dispenser_id, addrD, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
         );
 
-        // Subscribe to the new dispenser's topic using new format
-        const topic = `pso/${city}/${customer_code}/duc/s${address}`;
+        // MQTT slave topic uses the numeric address (s<naked>).
+        const topic = `pso/${city}/${customer_code}/duc/s${addrNaked}`;
         if (typeof subscribeToTopic === 'function') {
             await subscribeToTopic(topic, null);
         }
 
         logActivity(req, 'dispenser_create', {
             entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
-            details: { customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles }
+            details: { customer_code, dispenser_id, address: addrD, DispenserBrand, number_of_nozzles }
         });
 
         res.status(201).json({
@@ -1435,7 +1445,7 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
         // Validate and add each field if provided
         if (address !== undefined) {
             fields.push('address = ?');
-            values.push(address);
+            values.push(ensureDAddress(address));
         }
 
         if (DispenserBrand !== undefined) {
@@ -1767,9 +1777,13 @@ app.delete('/api/stations/:id', async (req, res) => {
         const customer_code = station.customer_code;
 
         // Snapshot everything the DB-level CASCADE is about to wipe.
-        const [dispenserRows] = await connection.query(
+        const [dispenserRowsRaw] = await connection.query(
             'SELECT * FROM dispensers WHERE customer_code = ?', [customer_code]
         );
+        const dispenserRows = dispenserRowsRaw.map(d => ({
+            ...d,
+            address: ensureDAddress(d.address)
+        }));
         const [nozzleRows] = await connection.query(
             'SELECT * FROM nozzles WHERE customer_code = ?', [customer_code]
         );
@@ -1848,7 +1862,11 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         }
 
         const dispenserRow = dispenser[0];
+        // Normalize for downstream topic strings — keeps both forms callable
+        // regardless of which form the row was stored in.
+        dispenserRow.address = ensureDAddress(dispenserRow.address);
         const { address, dispenser_id } = dispenserRow;
+        const addrNaked = stripDAddress(address);
 
         // Snapshot affected nozzles + history before they get wiped (either
         // explicitly below or via CASCADE on the nozzles delete).
@@ -1943,10 +1961,10 @@ app.delete('/api/dispensers/:id', async (req, res) => {
                 : 'Dispenser deleted (historical records preserved)'
         });
 
-        // Unsubscribe from MQTT topics
+        // Unsubscribe from MQTT topics — address is canonical D-prefixed.
         if (typeof unsubscribeFromTopic === 'function') {
-            unsubscribeFromTopic(`D${address}`);
-            unsubscribeFromTopic(`duc/conn_status/D${address}`);
+            unsubscribeFromTopic(address);
+            unsubscribeFromTopic(`duc/conn_status/${address}`);
         }
                
     } catch (error) {

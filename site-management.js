@@ -180,7 +180,7 @@ function renderStationsTable(stations) {
 
             const cityTd = document.createElement('td');
             cityTd.style.padding = '12px';
-            cityTd.textContent = station.city;
+            cityTd.textContent = station.city.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || '-';
             tr.appendChild(cityTd);
 
             const districtTd = document.createElement('td');

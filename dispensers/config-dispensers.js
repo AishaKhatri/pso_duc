@@ -26,7 +26,7 @@ function buildConfigSearchControl(onChange) {
         items: () => (window.dispensers || []).map(d => ({
             value: d.customer_code || String(d.address) || '',
             label: d.customer_code || '',
-            secondary: [d.address ? `D${d.address}` : '', d.DispenserBrand].filter(Boolean).join(' · '),
+            secondary: [d.address ? ensureDAddress(d.address) : '', d.DispenserBrand].filter(Boolean).join(' · '),
             search: [d.address, d.DispenserBrand]
         })),
         initialQuery: configSearchQuery,
@@ -89,7 +89,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       const newNozzles = dispenser.nozzles.map(nozzle => ({
         customer_code: dispenser.customer_code,
         dispenser_id: dbDispenser.dispenser_id,
-        nozzle_id: `D${dbDispenser.address}-${nozzle.nozzleId.split('-')[1]}`,
+        nozzle_id: `${ensureDAddress(dbDispenser.address)}-${nozzle.nozzleId.split('-')[1]}`,
         product: nozzle.product,
         status: 0,
         lock_unlock: 0,
@@ -626,7 +626,8 @@ async function renderConfigDispensers() {
         if (dispenser.customer_code) {
             form.customer_code.value = dispenser.customer_code;
         }
-        form.address.value = dispenser.address || '';
+        // Input expects naked numeric; backend re-prepends D on save.
+        form.address.value = stripDAddress(dispenser.address || '');
         form.DispenserBrand.value = dispenser.DispenserBrand || '';
 
         nozzleOptions.forEach(nozzle => {
@@ -671,9 +672,13 @@ async function renderConfigDispensers() {
                 return;
             }
 
-            // Check for duplicate address within same customer
-            const isDuplicate = window.dispensers.some((d, i) => 
-                i !== index && d.customer_code === customerCode && d.address === addressInput);
+            // Check for duplicate address within same customer. Compare in
+            // canonical D-prefixed form so a user typing "01" still matches a
+            // row stored as "D01".
+            const newAddrCanon = ensureDAddress(addressInput);
+            const isDuplicate = window.dispensers.some((d, i) =>
+                i !== index && d.customer_code === customerCode &&
+                ensureDAddress(d.address) === newAddrCanon);
             if (isDuplicate) {
                 alert('Dispenser address must be unique for this customer');
                 return;
@@ -713,7 +718,7 @@ async function renderConfigDispensers() {
                 dispenser_id: dispenser_id,
                 ir_lock_status: dispenser.ir_lock_status || 1,
                 nozzles: selectedNozzles.map(nozzle => ({
-                    nozzleId: `D${address}-${nozzle}`,
+                    nozzleId: `${ensureDAddress(address)}-${nozzle}`,
                     product: form[`product-${nozzle}`].value
                 }))
             };

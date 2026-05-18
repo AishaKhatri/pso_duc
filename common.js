@@ -20,6 +20,20 @@ const productColorConfig = {
 
 const DASHBOARD_REFRESH_MS = 30 * 1000;
 
+// Dispenser address normalization. Canonical form is D-prefixed (e.g. "D01").
+// Helpers tolerate either input so legacy code paths and legacy API payloads
+// keep working through the transition.
+function ensureDAddress(addr) {
+    if (addr == null) return addr;
+    const s = String(addr);
+    if (s === '') return s;
+    return s.startsWith('D') ? s : `D${s}`;
+}
+
+function stripDAddress(addr) {
+    return String(addr ?? '').replace(/^D/, '');
+}
+
 function renderApp(pageTitle) {
     const app = document.getElementById('app');
     app.innerHTML = `
@@ -807,7 +821,7 @@ async function createCard(address, customer_code) {
 
 async function fetchErrorCount(dispenserTopic) {
     try {
-        const address = dispenserTopic.replace(/^D/, '');
+        const address = stripDAddress(dispenserTopic);
         const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
         if (response.ok) {
             const errors = await response.json();

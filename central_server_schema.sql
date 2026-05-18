@@ -72,7 +72,7 @@ CREATE TABLE IF NOT EXISTS `activity_log` (
 CREATE TABLE IF NOT EXISTS `long_outage_alerts` (
   `id` int NOT NULL AUTO_INCREMENT,
   `dispenser_id` varchar(50) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `customer_code` varchar(8) DEFAULT NULL,
   `offline_since` timestamp NOT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP,
@@ -86,7 +86,7 @@ CREATE TABLE `dispensers` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
   `dispenser_id` varchar(50) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
   `ir_lock_status` tinyint NOT NULL DEFAULT '0',
@@ -104,7 +104,7 @@ CREATE TABLE `dispensers` (
 CREATE TABLE IF NOT EXISTS `connections_history` (
   `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
   `dispenser_id` varchar(50) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
@@ -200,7 +200,7 @@ CREATE TABLE `transactions` (
 CREATE TABLE `network_status` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `connection_type` enum('GSM','WIFI') NOT NULL,
   `apn_ssid` varchar(255) DEFAULT NULL,
   `ipv4` varchar(15) DEFAULT NULL,
@@ -216,7 +216,7 @@ CREATE TABLE `network_status` (
 CREATE TABLE `device_info` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `firmware_version` varchar(50) DEFAULT NULL,
   `hardware_version` varchar(50) DEFAULT NULL,
   `wifi_enable` tinyint DEFAULT NULL,
@@ -231,7 +231,7 @@ CREATE TABLE `device_info` (
 CREATE TABLE `errors` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
-  `address` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `error_message` json NOT NULL,
   `cleared` tinyint NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,

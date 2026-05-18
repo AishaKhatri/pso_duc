@@ -116,7 +116,7 @@ function NozzleData(nozzle) {
         fullNozzleId: nozzle.nozzle_id,
         dispenserId: nozzle.dispenser_id,
         dispenserTopic: dispenserTopic,
-        address: dispenserTopic.replace(/^D/, ''),
+        address: stripDAddress(dispenserTopic),
         fuelType: normalizeFuelType(nozzle.product),
         status: nozzle.status ? 'Active' : 'Inactive',
         price: parseFloat(nozzle.price) || 0.00,
@@ -154,7 +154,7 @@ async function updateIRStatus(dispenserId, lockStatus) {
 }
 
 async function sendGetCommandsForDispenser(dispenser) {
-    const dis_addr = `D${dispenser.address}`;
+    const dis_addr = ensureDAddress(dispenser.address);
 
     // Configuration - comment out message types you don't want to request
     const messageTypesToRequest = {
@@ -197,7 +197,7 @@ async function sendGetCommandsForDispenser(dispenser) {
         }
         if (!city) city = 'NA';
 
-        const publishTopic = `pso/${city}/${customerCode}/duc/d${dispenser.address}`;
+        const publishTopic = `pso/${city}/${customerCode}/duc/d${stripDAddress(dispenser.address)}`;
 
         const messagesToSend = [];
 

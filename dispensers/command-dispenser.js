@@ -239,7 +239,7 @@ async function showCommandDispenserPopup(options = {}) {
         dispensersToShow.forEach((dispenser, index) => {
             const option = document.createElement('option');
             option.value = dispenser.address;
-            option.textContent = `Dispenser ${index + 1} (D${dispenser.address})`;
+            option.textContent = `Dispenser ${index + 1} (${ensureDAddress(dispenser.address)})`;
             option.dataset.customerCode = dispenser.customer_code;
             option.dataset.city = stationsMap.get(dispenser.customer_code)?.city || '';
             dispenserSelect.appendChild(option);
@@ -316,7 +316,7 @@ function showDispenserControls(dispenser, customerCode, city) {
     
     controlsContainer.innerHTML = '';
 
-    const dispenserTopic = `D${dispenser.address}`;
+    const dispenserTopic = ensureDAddress(dispenser.address);
 
     createIRControlSection(dispenserTopic, controlsContainer, customerCode, city);
     createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer, customerCode, city);
@@ -533,7 +533,7 @@ async function sendDispenserCommand(topic, customerCode, city, message, button, 
     button.textContent = 'Sending...';
 
     try {
-        const address = topic.replace(/^D/, '');
+        const address = stripDAddress(topic);
         const publishTopic = `pso/${city}/${customerCode}/duc/d${address}`;
 
         console.group(`Sending ${commandName}`);

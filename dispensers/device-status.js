@@ -1072,7 +1072,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         if (popupRole === 'operator' && (defaultTab === 'errorLogs' || defaultTab === 'resetLogs')) {
             defaultTab = 'connectivity';
         }
-        const dispenserAddress = dispenserTopic.replace(/^D/, '');
+        const dispenserAddress = stripDAddress(dispenserTopic);
         
         const [gsmResponse, wifiResponse, mqttResponse, powerResponse, errorsResponse, gsmConnResponse, wifiConnResponse] = await Promise.allSettled([
             fetch(`${API_BASE_URL}/gsm-status/${dispenserTopic}`),
