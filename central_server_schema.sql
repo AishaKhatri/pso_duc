@@ -21,7 +21,7 @@ CREATE TABLE `users` (
   `id` int NOT NULL AUTO_INCREMENT,
   `username` varchar(255) NOT NULL,
   `password` varchar(255) NOT NULL,
-  `role` enum('admin','operator','viewer') NOT NULL DEFAULT 'viewer',
+  `role` enum('super_admin','admin','operator','viewer') NOT NULL DEFAULT 'viewer',
   `customer_code` varchar(8) DEFAULT NULL,
   `is_active` tinyint NOT NULL DEFAULT '1',
   `last_login` timestamp NULL DEFAULT NULL,
@@ -156,6 +156,31 @@ CREATE TABLE `nozzle_history` (
   PRIMARY KEY (`id`),
   KEY `idx_nozzle_history` (`customer_code`,`dispenser_id`,`nozzle_id`),
   CONSTRAINT `nozzle_history_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+-- Survives station/dispenser/nozzle deletes. Server snapshots affected
+-- nozzle_history rows into this table before issuing the parent DELETE, so the
+-- historical record outlives the FK CASCADE that wipes the live table.
+CREATE TABLE IF NOT EXISTS `nozzle_history_archive` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `original_id` int DEFAULT NULL,
+  `customer_code` varchar(8) NOT NULL,
+  `dispenser_id` varchar(50) NOT NULL,
+  `nozzle_id` varchar(50) NOT NULL,
+  `product` varchar(50) NOT NULL,
+  `status` tinyint NOT NULL DEFAULT '1',
+  `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
+  `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `total_sales_today` decimal(15,2) NOT NULL DEFAULT '0.00',
+  `lock_unlock` tinyint NOT NULL DEFAULT '0',
+  `keypad_lock_status` tinyint NOT NULL DEFAULT '0',
+  `original_created_at` timestamp NULL DEFAULT NULL,
+  `archived_reason` varchar(64) DEFAULT NULL,
+  `archived_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_archive_nozzle` (`customer_code`,`dispenser_id`,`nozzle_id`),
+  KEY `idx_archived_at` (`archived_at`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `transactions` (
