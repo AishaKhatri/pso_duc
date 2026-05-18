@@ -31,7 +31,7 @@
 
             // Configuring dispensers is restricted to admin and operator
             const userInfo = StationAuth.getUserInfo();
-            if (userInfo?.role !== 'admin' && userInfo?.role !== 'operator') {
+            if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin' && userInfo?.role !== 'operator') {
                 window.location.href = '../dispensers.html';
                 return;
             }

@@ -1723,12 +1723,12 @@ app.delete('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         
-        // Don't allow deleting the last admin
-        const [admins] = await pool.query('SELECT id FROM users WHERE role = "admin"');
-        if (admins.length === 1) {
+        // Don't allow deleting the last super admin
+        const [super_admins] = await pool.query('SELECT id FROM users WHERE role = "super_admin"');
+        if (super_admins.length === 1) {
             const [user] = await pool.query('SELECT role FROM users WHERE id = ?', [id]);
-            if (user[0]?.role === 'admin') {
-                return res.status(400).json({ error: 'Cannot delete the last admin user' });
+            if (user[0]?.role === 'super_admin') {
+                return res.status(400).json({ error: 'Cannot delete the last super admin user' });
             }
         }
         

@@ -393,7 +393,7 @@ async function renderDispenser() {
 
         // Viewers cannot command or configure dispensers
         const role = window.StationAuth?.getUserInfo?.()?.role;
-        const canCommand = role === 'admin' || role === 'operator';
+        const canCommand = role === 'admin' || role === 'super_admin' || role === 'operator';
 
         if (canCommand) {
             const configButton = createMainButton();
@@ -566,7 +566,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 
     // Refresh button issues commands and is only available to admin/operator
     const cardRole = window.StationAuth?.getUserInfo?.()?.role;
-    if (cardRole === 'admin' || cardRole === 'operator') {
+    if (cardRole === 'admin' || cardRole === 'super_admin' || cardRole === 'operator') {
         const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '20px');
         refreshButton.style.position = 'absolute';
         refreshButton.style.top = '0';

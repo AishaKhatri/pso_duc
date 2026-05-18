@@ -135,7 +135,7 @@ async function renderSiteManagement() {
 
     renderStationsTable(getFilteredSiteStations());
 
-    if (userInfo?.role !== 'admin') {
+    if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
         addButton.style.cursor = 'not-allowed';
     } else {
         addButton.addEventListener('click', () => {
@@ -207,7 +207,7 @@ function renderStationsTable(stations) {
             actionTd.style.padding = '12px';
             
             const editBtn = createEditButton('Edit station');
-            if (userInfo?.role !== 'admin') {
+    if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
                 editBtn.style.cursor = 'not-allowed';
             } else {
                 editBtn.addEventListener('click', () => {
@@ -216,7 +216,7 @@ function renderStationsTable(stations) {
             }
             
             const deleteBtn = createDeleteButton('Delete station');
-            if (userInfo?.role !== 'admin') {
+            if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
                 deleteBtn.style.cursor = 'not-allowed';
             } else {
                 deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));

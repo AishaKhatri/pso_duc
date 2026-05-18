@@ -488,7 +488,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     
     // Mark as cleared button (admin-only)
     const resetMarkRole = window.StationAuth?.getUserInfo?.()?.role;
-    const canMarkResetCleared = resetMarkRole === 'admin';
+    const canMarkResetCleared = resetMarkRole === 'admin' || resetMarkRole === 'super_admin';
 
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
@@ -747,7 +747,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     
     // Mark as cleared button (admin-only)
     const errorMarkRole = window.StationAuth?.getUserInfo?.()?.role;
-    const canMarkErrorCleared = errorMarkRole === 'admin';
+    const canMarkErrorCleared = errorMarkRole === 'admin' || errorMarkRole === 'super_admin';
 
     const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
     markClearedBtn.textContent = '✓ Mark as Cleared';
