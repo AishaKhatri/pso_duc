@@ -3,6 +3,31 @@
 const host_PC_IP = 'localhost';
 const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
+// Auto-attach the auth token to every API_BASE_URL request so the backend
+// can identify the user on each call. Without this, only signin/signout
+// (which set the header explicitly) get logged with username/role.
+(function attachAuthHeaderToApiFetch() {
+    if (typeof window === 'undefined' || !window.fetch) return;
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = function (input, init) {
+        try {
+            const url = typeof input === 'string' ? input : (input && input.url) || '';
+            if (url.startsWith(API_BASE_URL)) {
+                const token = localStorage.getItem('authToken');
+                if (token) {
+                    init = init || {};
+                    const headers = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined));
+                    if (!headers.has('Authorization')) {
+                        headers.set('Authorization', `Bearer ${token}`);
+                    }
+                    init.headers = headers;
+                }
+            }
+        } catch (_) { /* never break fetch */ }
+        return originalFetch(input, init);
+    };
+})();
+
 const pages = {};
 
 const userRoles = ['super_admin', 'admin', 'operator', 'viewer'];
