@@ -1,9 +1,3 @@
-const PRODUCT_NAME_MAPPING = {
-  'premier': 'Premier',
-  'hicetane': 'Hi-Cetane Diesel',
-  'octane-plus': 'Octane Plus'
-};
-
 // Global variable to store stations list
 let stationsList = [];
 let configSearchQuery = '';
@@ -235,6 +229,7 @@ async function loadDispensersFromDB() {
         number_of_nozzles: dbDispenser.number_of_nozzles,
         dispenser_id: dbDispenser.dispenser_id,
         ir_lock_status: dbDispenser.ir_lock_status,
+        created_at: dbDispenser.created_at,
         nozzles: nozzles.map(n => ({
           nozzleId: n.nozzle_id,
           product: n.product,
@@ -294,7 +289,7 @@ async function renderConfigDispensers() {
     const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
     const nozzleOptions = ['A1', 'A2', 'B1', 'B2'];
 
-    const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Action'];
+    const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Created At', 'Action'];
 
     const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
@@ -490,7 +485,7 @@ async function renderConfigDispensers() {
                     select.style.marginBottom = '0';
                     
                     productOptions.forEach(opt => {
-                        const displayName = PRODUCT_NAME_MAPPING[opt.toLowerCase()] || opt;
+                        const displayName = opt;
                         const option = document.createElement('option');
                         option.value = opt;
                         option.textContent = displayName;
@@ -541,7 +536,11 @@ async function renderConfigDispensers() {
                 ? dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ')
                 : null;
             const productList = dispenser.nozzles?.length
-                ? dispenser.nozzles.map(n => PRODUCT_NAME_MAPPING[n.product.toLowerCase()] || n.product).join(', ')
+                ? dispenser.nozzles.map(n => n.product.toUpperCase()).join(', ')
+                : null;
+
+            const createdAt = dispenser.created_at
+                ? new Date(dispenser.created_at).toLocaleString()
                 : null;
 
             const tr = createTableRow([
@@ -551,7 +550,8 @@ async function renderConfigDispensers() {
                 dispenser.address,
                 nozzleList,
                 productList,
-                dispenser.DispenserBrand
+                dispenser.DispenserBrand,
+                createdAt
             ]);
 
             const editBtn = createEditButton('Edit this dispenser');

@@ -835,6 +835,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             checkboxTd.appendChild(checkbox);
             row.appendChild(checkboxTd);
             
+            const logTime = log.unix_time ? new Date(log.unix_time * 1000).toLocaleString() : 'N/A';
             const errorCode = log.error_code || log.Code || 'N/A';
             const severity = log.severity || log.Sev || 'N/A';
             const file = log.file || log.File || 'N/A';
@@ -843,7 +844,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             const context = log.context || log.Cntx || 'N/A';
             const status = log.cleared ? 'Cleared' : 'Active';
             
-            const cells = [log.unix_time || 'N/A', errorCode, severity, file, line, functionName, context, status];
+            const cells = [logTime, errorCode, severity, file, line, functionName, context, status];
             
             cells.forEach((cellText, cellIndex) => {
                 const td = document.createElement('td');
