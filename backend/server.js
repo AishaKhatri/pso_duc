@@ -437,13 +437,48 @@ app.get('/api/users/:id', async (req, res) => {
 // Get all stations
 app.get('/api/stations', async (req, res) => {
     try {
+        // GROUP_CONCAT pulls every dispenser's address for the station so the
+        // sites table can show "DUCs installed" as a comma-separated list
+        // without a second round trip.
         const [stations] = await pool.query(
-            'SELECT id, customer_code, station_id, city, district, division, username, created_at FROM stations ORDER BY id'
+            `SELECT s.id, s.customer_code, s.station_id, s.city, s.district,
+                    s.division, s.username, s.created_at,
+                    GROUP_CONCAT(d.address ORDER BY d.address SEPARATOR ', ') AS duc_addresses
+             FROM stations s
+             LEFT JOIN dispensers d ON d.customer_code = s.customer_code
+             GROUP BY s.id
+             ORDER BY s.id`
         );
         res.json(stations);
     } catch (error) {
         console.error('Get stations error:', error);
         res.status(500).json({ error: 'Failed to fetch stations' });
+    }
+});
+
+// Activity log feed for the super_admin Activity Logs page. Date range is
+// required (UI sends from/to before fetching) — keeps the query bounded so
+// the table never tries to render the entire history.
+app.get('/api/activity-log', async (req, res) => {
+    try {
+        const { from, to, limit } = req.query;
+        if (!from || !to) {
+            return res.status(400).json({ error: 'from and to dates are required' });
+        }
+        const cap = Math.min(parseInt(limit, 10) || 1000, 5000);
+        const [rows] = await pool.query(
+            `SELECT id, user_id, username, ip_address, action, entity_type,
+                    entity_id, details, created_at
+             FROM activity_log
+             WHERE created_at >= ? AND created_at < DATE_ADD(?, INTERVAL 1 DAY)
+             ORDER BY created_at DESC, id DESC
+             LIMIT ?`,
+            [from, to, cap]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Get activity log error:', error);
+        res.status(500).json({ error: 'Failed to fetch activity log' });
     }
 });
 
@@ -1713,21 +1748,79 @@ app.delete('/api/users/:id', async (req, res) => {
 });
 
 app.delete('/api/stations/:id', async (req, res) => {
+    const connection = await pool.getConnection();
     try {
         const { id } = req.params;
 
-        const [result] = await pool.query('DELETE FROM stations WHERE id = ?', [id]);
+        await connection.beginTransaction();
 
-        if (result.affectedRows === 0) {
+        // Look up the station row first so we can include it (and its
+        // cascade-deleted descendants) in the activity log details.
+        const [stationRows] = await connection.query(
+            'SELECT * FROM stations WHERE id = ?', [id]
+        );
+        if (stationRows.length === 0) {
+            await connection.rollback();
             return res.status(404).json({ error: 'Station not found' });
         }
+        const station = stationRows[0];
+        const customer_code = station.customer_code;
 
-        logActivity(req, 'station_delete', { entity_type: 'station', entity_id: id });
+        // Snapshot everything the DB-level CASCADE is about to wipe.
+        const [dispenserRows] = await connection.query(
+            'SELECT * FROM dispensers WHERE customer_code = ?', [customer_code]
+        );
+        const [nozzleRows] = await connection.query(
+            'SELECT * FROM nozzles WHERE customer_code = ?', [customer_code]
+        );
+        const [historyRows] = await connection.query(
+            'SELECT * FROM nozzle_history WHERE customer_code = ?', [customer_code]
+        );
+
+        // Persist history to the archive so it survives the CASCADE.
+        if (historyRows.length > 0) {
+            const archiveValues = historyRows.map(r => [
+                r.id, r.customer_code, r.dispenser_id, r.nozzle_id, r.product,
+                r.status, r.price_per_liter, r.total_quantity, r.total_amount,
+                r.total_sales_today, r.lock_unlock, r.keypad_lock_status,
+                r.created_at, 'station_delete'
+            ]);
+            await connection.query(
+                `INSERT INTO nozzle_history_archive
+                 (original_id, customer_code, dispenser_id, nozzle_id, product,
+                  status, price_per_liter, total_quantity, total_amount,
+                  total_sales_today, lock_unlock, keypad_lock_status,
+                  original_created_at, archived_reason)
+                 VALUES ?`,
+                [archiveValues]
+            );
+        }
+
+        const [result] = await connection.query('DELETE FROM stations WHERE id = ?', [id]);
+
+        await connection.commit();
+
+        logActivity(req, 'station_delete', {
+            entity_type: 'station',
+            entity_id: id,
+            details: {
+                station,
+                cascaded: {
+                    dispensers: dispenserRows,
+                    nozzles: nozzleRows,
+                    nozzle_history_count: historyRows.length,
+                    nozzle_history_archived: historyRows.length
+                }
+            }
+        });
 
         res.json({ success: true, message: 'Station deleted successfully' });
     } catch (error) {
+        await connection.rollback().catch(() => {});
         console.error('Error deleting station:', error);
         res.status(500).json({ error: 'Failed to delete station' });
+    } finally {
+        connection.release();
     }
 });
 
@@ -1745,38 +1838,71 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         }
         
         const [dispenser] = await connection.query(
-            'SELECT address, dispenser_id, customer_code FROM dispensers WHERE id = ? AND customer_code = ?', 
+            'SELECT * FROM dispensers WHERE id = ? AND customer_code = ?',
             [id, customer_code]
         );
-        
+
         if (dispenser.length === 0) {
             await connection.rollback();
             return res.status(404).json({ error: 'Dispenser not found' });
         }
-        
-        const { address, dispenser_id } = dispenser[0];
-        
+
+        const dispenserRow = dispenser[0];
+        const { address, dispenser_id } = dispenserRow;
+
+        // Snapshot affected nozzles + history before they get wiped (either
+        // explicitly below or via CASCADE on the nozzles delete).
+        const [nozzleRows] = await connection.query(
+            'SELECT * FROM nozzles WHERE customer_code = ? AND dispenser_id = ?',
+            [customer_code, dispenser_id]
+        );
+        const [historyRows] = await connection.query(
+            'SELECT * FROM nozzle_history WHERE customer_code = ? AND dispenser_id = ?',
+            [customer_code, dispenser_id]
+        );
+
+        // Always archive history before delete — keeps the audit trail even
+        // when delete_history=false, since the FK CASCADE on nozzles would
+        // otherwise wipe nozzle_history below.
+        if (historyRows.length > 0) {
+            const archiveValues = historyRows.map(r => [
+                r.id, r.customer_code, r.dispenser_id, r.nozzle_id, r.product,
+                r.status, r.price_per_liter, r.total_quantity, r.total_amount,
+                r.total_sales_today, r.lock_unlock, r.keypad_lock_status,
+                r.created_at, 'dispenser_delete'
+            ]);
+            await connection.query(
+                `INSERT INTO nozzle_history_archive
+                 (original_id, customer_code, dispenser_id, nozzle_id, product,
+                  status, price_per_liter, total_quantity, total_amount,
+                  total_sales_today, lock_unlock, keypad_lock_status,
+                  original_created_at, archived_reason)
+                 VALUES ?`,
+                [archiveValues]
+            );
+        }
+
         // Temporarily disable foreign key checks
         await connection.query('SET FOREIGN_KEY_CHECKS = 0');
-        
+
         const deleteHistory = delete_history === 'true';
-        
+
         if (deleteHistory) {
             // Delete historical data first
             await connection.query(
                 'DELETE FROM nozzle_history WHERE customer_code = ? AND dispenser_id = ?',
                 [customer_code, dispenser_id]
             );
-            
+
             await connection.query(
                 'DELETE FROM transactions WHERE customer_code = ? AND dispenser_id = ?',
                 [customer_code, dispenser_id]
             );
         }
-        
+
         // Delete nozzles
         await connection.query(
-            'DELETE FROM nozzles WHERE customer_code = ? AND dispenser_id = ?', 
+            'DELETE FROM nozzles WHERE customer_code = ? AND dispenser_id = ?',
             [customer_code, dispenser_id]
         );
         
@@ -1796,8 +1922,18 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         }
 
         logActivity(req, 'dispenser_delete', {
-            entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
-            details: { delete_history: deleteHistory, address }
+            entity_type: 'dispenser',
+            entity_id: `${customer_code}/${dispenser_id}`,
+            details: {
+                delete_history: deleteHistory,
+                address,
+                dispenser: dispenserRow,
+                cascaded: {
+                    nozzles: nozzleRows,
+                    nozzle_history_count: historyRows.length,
+                    nozzle_history_archived: historyRows.length
+                }
+            }
         });
 
         res.json({
