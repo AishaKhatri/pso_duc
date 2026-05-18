@@ -53,7 +53,7 @@ function renderSidebar() {
     }
 
     if (isSuperAdmin) {
-        items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'notification-icon.png', url: 'activity-logs.html' });
+        items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' });
     }
 
     // Determine current page based on window location
