@@ -3,7 +3,7 @@ let siteSearchQuery = '';
 let siteCityQuery = '';
 let siteDivisionQuery = '';
 
-const columns = ['ID', 'Username', 'Customer Code', 'Station ID', 'City', 'District', 'Division', 'Created At', 'Actions'];
+const columns = ['ID', 'Customer Code', 'Station ID', 'City', 'District', 'Division', 'DUCs Installed', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 function getFilteredSiteStations() {
@@ -168,11 +168,6 @@ function renderStationsTable(stations) {
             idTd.textContent = station.id;
             tr.appendChild(idTd);
 
-            const usernameTd = document.createElement('td');
-            usernameTd.style.padding = '12px';
-            usernameTd.textContent = station.username;
-            tr.appendChild(usernameTd);
-
             const customerCodeTd = document.createElement('td');
             customerCodeTd.style.padding = '12px';
             customerCodeTd.textContent = station.customer_code;
@@ -197,6 +192,11 @@ function renderStationsTable(stations) {
             divisionTd.style.padding = '12px';
             divisionTd.textContent = station.division || '-';
             tr.appendChild(divisionTd);
+
+            const ducsTd = document.createElement('td');
+            ducsTd.style.padding = '12px';
+            ducsTd.textContent = station.duc_addresses || '-';
+            tr.appendChild(ducsTd);
 
             const createdAtTd = document.createElement('td');
             createdAtTd.style.padding = '12px';

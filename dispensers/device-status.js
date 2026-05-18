@@ -843,7 +843,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             const context = log.context || log.Cntx || 'N/A';
             const status = log.cleared ? 'Cleared' : 'Active';
             
-            const cells = [log.log_time || 'N/A', errorCode, severity, file, line, functionName, context, status];
+            const cells = [log.unix_time || 'N/A', errorCode, severity, file, line, functionName, context, status];
             
             cells.forEach((cellText, cellIndex) => {
                 const td = document.createElement('td');
