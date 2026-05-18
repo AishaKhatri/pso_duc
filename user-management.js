@@ -49,57 +49,29 @@ async function renderUsersTable(users) {
             return;
         }
 
+        const canEdit = userInfo?.role === 'super_admin';
+
         users.forEach(user => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid var(--border)';
-            
-            const idTd = document.createElement('td');
-            idTd.style.padding = '12px';
-            idTd.textContent = user.id;
-            tr.appendChild(idTd);
+            const tr = createTableRow([
+                user.id,
+                user.username,
+                user.role,
+                user.last_login ? new Date(user.last_login).toLocaleString() : '-',
+                new Date(user.created_at).toLocaleString()
+            ]);
 
-            const usernameTd = document.createElement('td');
-            usernameTd.style.padding = '12px';
-            usernameTd.textContent = user.username;
-            tr.appendChild(usernameTd);
-
-            const roleTd = document.createElement('td');
-            roleTd.style.padding = '12px';
-            roleTd.textContent = user.role || '-';
-            tr.appendChild(roleTd);
-
-            const lastLoginTd = document.createElement('td');
-            lastLoginTd.style.padding = '12px';
-            lastLoginTd.textContent = user.last_login ? new Date(user.last_login).toLocaleString() : '-';
-            tr.appendChild(lastLoginTd);
-
-            const createdAtTd = document.createElement('td');
-            createdAtTd.style.padding = '12px';
-            createdAtTd.textContent = new Date(user.created_at).toLocaleString() || '-';
-            tr.appendChild(createdAtTd);
-
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '12px';
-            
             const editBtn = createEditButton('Edit user');
-            if (userInfo?.role !== 'super_admin') {
-                editBtn.style.cursor = 'not-allowed';
-            } else {
-                editBtn.addEventListener('click', () => {
-                    alert('Edit functionality coming soon');
-                });
-            }
+            if (!canEdit) editBtn.style.cursor = 'not-allowed';
+            else editBtn.addEventListener('click', () => alert('Edit functionality coming soon'));
 
             const deleteBtn = createDeleteButton('Delete user');
-            if (userInfo?.role !== 'super_admin') {
-                deleteBtn.style.cursor = 'not-allowed';
-            } else {
-                deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
-            }
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(deleteBtn);
-            
-            tr.appendChild(actionTd);
+            if (!canEdit) deleteBtn.style.cursor = 'not-allowed';
+            else deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
+
+            const actionWrap = document.createElement('div');
+            actionWrap.appendChild(editBtn);
+            actionWrap.appendChild(deleteBtn);
+            appendCell(tr, actionWrap);
             tbody.appendChild(tr);
         });
     } catch (error) {
@@ -126,125 +98,52 @@ function showUserFormPopup(user = null) {
     popup.style.maxWidth = '90vw';
 
     const header = createHeader();
-    
     const title = createTitle();
     title.textContent = user ? 'Edit User' : 'Add New User';
-
-    const closeButton = createCloseButton(overlay);
-    
     header.appendChild(title);
-    header.appendChild(closeButton);
+    header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const form = document.createElement('form');
-    form.style.display = 'flex';
-    form.style.flexDirection = 'column';
-    form.style.gap = '15px';
+    const form = createFlexColumn('15px');
 
-    // Username field
-    const usernameContainer = document.createElement('div');
-    usernameContainer.style.display = 'flex';
-    usernameContainer.style.flexDirection = 'column';
-    usernameContainer.style.gap = '5px';
-    
-    const usernameLabel = document.createElement('label');
-    usernameLabel.textContent = 'Username *';
-    usernameLabel.style.fontWeight = 'bold';
-    
-    const usernameInput = document.createElement('input');
-    usernameInput.type = 'text';
-    usernameInput.value = user ? user.username : '';
-    usernameInput.required = true;
-    usernameInput.style.padding = '8px';
-    usernameInput.style.border = '1px solid var(--border)';
-    usernameInput.style.backgroundColor = 'var(--bg-surface)';
-    usernameInput.style.color = 'var(--text-primary)';
-    usernameInput.style.borderRadius = '4px';
-    
-    usernameContainer.appendChild(usernameLabel);
-    usernameContainer.appendChild(usernameInput);
-    form.appendChild(usernameContainer);
+    const usernameInput = createTextInput({ value: user?.username || '', required: true });
+    const passwordInput = !user ? createTextInput({ type: 'password', required: true }) : null;
 
-    // Password field (only for new users)
-    let passwordInput = null;
-    if (!user) {
-        const passwordContainer = document.createElement('div');
-        passwordContainer.style.display = 'flex';
-        passwordContainer.style.flexDirection = 'column';
-        passwordContainer.style.gap = '5px';
-        
-        const passwordLabel = document.createElement('label');
-        passwordLabel.textContent = 'Password *';
-        passwordLabel.style.fontWeight = 'bold';
-        
-        passwordInput = document.createElement('input');
-        passwordInput.type = 'password';
-        passwordInput.required = true;
-        passwordInput.style.padding = '8px';
-        passwordInput.style.border = '1px solid var(--border)';
-        passwordInput.style.backgroundColor = 'var(--bg-surface)';
-        passwordInput.style.color = 'var(--text-primary)';
-        passwordInput.style.borderRadius = '4px';
-        
-        passwordContainer.appendChild(passwordLabel);
-        passwordContainer.appendChild(passwordInput);
-        form.appendChild(passwordContainer);
-    }
-
-    // Role dropdown
-    const roleContainer = document.createElement('div');
-    roleContainer.style.display = 'flex';
-    roleContainer.style.flexDirection = 'column';
-    roleContainer.style.gap = '5px';
-    
-    const roleLabel = document.createElement('label');
-    roleLabel.textContent = 'Role *';
-    roleLabel.style.fontWeight = 'bold';
-    
     const roleSelect = createDropdown('Select Role');
     roleSelect.required = true;
     roleSelect.style.width = '100%';
-    
     const roleOptions = [
         { value: 'super_admin', label: 'Super Admin' },
         { value: 'admin', label: 'Admin' },
         { value: 'operator', label: 'Operator' },
         { value: 'viewer', label: 'Viewer' }
     ];
-    
-    roleOptions.forEach(roleOption => {
-        const option = document.createElement('option');
-        option.value = roleOption.value;
-        option.textContent = roleOption.label;
-        if (user && user.role && user.role.toLowerCase() === roleOption.value) {
-            option.selected = true;
-        }
-        roleSelect.appendChild(option);
+    roleOptions.forEach(r => {
+        const opt = document.createElement('option');
+        opt.value = r.value;
+        opt.textContent = r.label;
+        if (user?.role?.toLowerCase() === r.value) opt.selected = true;
+        roleSelect.appendChild(opt);
     });
-    
-    roleContainer.appendChild(roleLabel);
-    roleContainer.appendChild(roleSelect);
-    form.appendChild(roleContainer);
+
+    form.appendChild(createLabeledField({ label: 'Username', control: usernameInput, required: true }));
+    if (passwordInput) form.appendChild(createLabeledField({ label: 'Password', control: passwordInput, required: true }));
+    form.appendChild(createLabeledField({ label: 'Role', control: roleSelect, required: true }));
 
     popup.appendChild(form);
 
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.justifyContent = 'flex-end';
-    buttonContainer.style.gap = '10px';
+    const buttonContainer = createFlexRow({ justify: 'flex-end' });
     buttonContainer.style.marginTop = '20px';
 
     const cancelButton = createActionButton('#626262', '#424242');
     cancelButton.textContent = 'Cancel';
     cancelButton.type = 'button';
-    cancelButton.addEventListener('click', () => {
-        document.body.removeChild(overlay);
-    });
+    cancelButton.addEventListener('click', () => document.body.removeChild(overlay));
 
     const submitButton = createActionButton('#004D64', '#00324C');
     submitButton.textContent = user ? 'Update User' : 'Add User';
     submitButton.type = 'button';
-    
+
     buttonContainer.appendChild(cancelButton);
     buttonContainer.appendChild(submitButton);
     popup.appendChild(buttonContainer);

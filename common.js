@@ -34,6 +34,96 @@ function stripDAddress(addr) {
     return String(addr ?? '').replace(/^D/, '');
 }
 
+function applyInputStyles(el) {
+    el.style.padding = '8px';
+    el.style.border = '1px solid var(--border)';
+    el.style.backgroundColor = 'var(--bg-surface)';
+    el.style.color = 'var(--text-primary)';
+    el.style.borderRadius = '4px';
+    return el;
+}
+
+// Build an <input> with standard styling. Pass any of {type, value,
+// placeholder, required, name}.
+function createTextInput(opts = {}) {
+    const input = document.createElement('input');
+    input.type = opts.type || 'text';
+    if (opts.value != null) input.value = opts.value;
+    if (opts.placeholder) input.placeholder = opts.placeholder;
+    if (opts.required) input.required = true;
+    if (opts.name) input.name = opts.name;
+    return applyInputStyles(input);
+}
+
+function createDateInput(value = '') {
+    return createTextInput({ type: 'date', value });
+}
+
+// Flex column ("stack") with optional gap.
+function createFlexColumn(gap = '5px') {
+    const el = document.createElement('div');
+    el.style.display = 'flex';
+    el.style.flexDirection = 'column';
+    el.style.gap = gap;
+    return el;
+}
+
+// Flex row with optional gap/justify/align.
+function createFlexRow({ gap = '10px', justify, align, wrap } = {}) {
+    const el = document.createElement('div');
+    el.style.display = 'flex';
+    el.style.gap = gap;
+    if (justify) el.style.justifyContent = justify;
+    if (align) el.style.alignItems = align;
+    if (wrap) el.style.flexWrap = wrap;
+    return el;
+}
+
+// Label + control wrapped in a flex column. `required` appends "*".
+// Returns the wrapper; the control is whatever was passed in (input,
+// select, etc.) so the caller can still hold a reference to it.
+function createLabeledField({ label, control, required = false, gap = '5px', marginTop }) {
+    const wrap = createFlexColumn(gap);
+    if (marginTop) wrap.style.marginTop = marginTop;
+    if (label) {
+        const lab = document.createElement('label');
+        lab.textContent = required ? `${label} *` : label;
+        lab.style.fontWeight = 'bold';
+        wrap.appendChild(lab);
+    }
+    if (control) wrap.appendChild(control);
+    return wrap;
+}
+
+// Append a single styled <td> with text. Returns the cell so callers can
+// tweak further if they need to.
+function appendCell(tr, text, opts = {}) {
+    const td = document.createElement('td');
+    td.style.padding = opts.padding || '12px';
+    if (opts.verticalAlign) td.style.verticalAlign = opts.verticalAlign;
+    if (opts.maxWidth) td.style.maxWidth = opts.maxWidth;
+    if (text instanceof Node) {
+        td.appendChild(text);
+    } else {
+        td.textContent = text == null || text === '' ? '-' : text;
+    }
+    tr.appendChild(td);
+    return td;
+}
+
+// Batch-append cells from an array of values (strings, numbers, or DOM nodes).
+function appendCells(tr, values, opts) {
+    values.forEach(v => appendCell(tr, v, opts));
+}
+
+// Standard table row with bottom border. Pass values to fill cells in one shot.
+function createTableRow(values) {
+    const tr = document.createElement('tr');
+    tr.style.borderBottom = '1px solid var(--border)';
+    if (Array.isArray(values)) appendCells(tr, values);
+    return tr;
+}
+
 function renderApp(pageTitle) {
     const app = document.getElementById('app');
     app.innerHTML = `

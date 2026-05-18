@@ -22,6 +22,7 @@ function getFilteredConfigDispensers() {
 function buildConfigSearchControl(onChange) {
     const dd = createSearchableDropdown({
         placeholder: 'Search by customer code, address, or brand',
+        width: '380px',
         bgWhite: true,
         items: () => (window.dispensers || []).map(d => ({
             value: d.customer_code || String(d.address) || '',
@@ -379,15 +380,7 @@ async function renderConfigDispensers() {
         addressLabel.textContent = 'Address:';
         addressLabel.style.width = '100px';
         
-        const addressInput = document.createElement('input');
-        addressInput.type = 'text';
-        addressInput.name = 'address';
-        addressInput.required = true;
-        addressInput.style.padding = '8px';
-        addressInput.style.border = '1px solid var(--border)';
-        addressInput.style.backgroundColor = 'var(--bg-surface)';
-        addressInput.style.color = 'var(--text-primary)';
-        addressInput.style.borderRadius = '4px';
+        const addressInput = createTextInput({ name: 'address', required: true });
         addressInput.style.width = '90%';
         
         addressContainer.appendChild(addressLabel);
@@ -405,14 +398,9 @@ async function renderConfigDispensers() {
         DispenserBrandLabel.textContent = 'Dispenser Brand:';
         DispenserBrandLabel.style.width = '100px';
         
-        const DispenserBrandSelect = document.createElement('select');
+        const DispenserBrandSelect = applyInputStyles(document.createElement('select'));
         DispenserBrandSelect.name = 'DispenserBrand';
         DispenserBrandSelect.required = true;
-        DispenserBrandSelect.style.padding = '8px';
-        DispenserBrandSelect.style.border = '1px solid var(--border)';
-        DispenserBrandSelect.style.backgroundColor = 'var(--bg-surface)';
-        DispenserBrandSelect.style.color = 'var(--text-primary)';
-        DispenserBrandSelect.style.borderRadius = '4px';
         DispenserBrandSelect.style.width = '100%';
         DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Dispenser Brand</option>' + 
             DispenserBrandOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
@@ -547,64 +535,35 @@ async function renderConfigDispensers() {
             // Resolve back to the real index in window.dispensers so edit/delete
             // hit the right entry even when the table is filtered.
             const index = window.dispensers.indexOf(dispenser);
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid var(--border)';
-
             const station = stationByCode.get(dispenser.customer_code);
 
-            const customerCodeTd = document.createElement('td');
-            customerCodeTd.style.padding = '12px';
-            customerCodeTd.textContent = dispenser.customer_code || '-';
-            tr.appendChild(customerCodeTd);
+            const nozzleList = dispenser.nozzles?.length
+                ? dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ')
+                : null;
+            const productList = dispenser.nozzles?.length
+                ? dispenser.nozzles.map(n => PRODUCT_NAME_MAPPING[n.product.toLowerCase()] || n.product).join(', ')
+                : null;
 
-            const cityTd = document.createElement('td');
-            cityTd.style.padding = '12px';
-            cityTd.textContent = station?.city ? titleCase(station.city) : '-';
-            tr.appendChild(cityTd);
+            const tr = createTableRow([
+                dispenser.customer_code,
+                station?.city ? titleCase(station.city) : null,
+                station?.division,
+                dispenser.address,
+                nozzleList,
+                productList,
+                dispenser.DispenserBrand
+            ]);
 
-            const divisionTd = document.createElement('td');
-            divisionTd.style.padding = '12px';
-            divisionTd.textContent = station.division || '-';
-            tr.appendChild(divisionTd);
-
-            const addressTd = document.createElement('td');
-            addressTd.style.padding = '12px';
-            addressTd.textContent = dispenser.address || '-';
-            tr.appendChild(addressTd);
-            
-            const nozzlesTd = document.createElement('td');
-            nozzlesTd.style.padding = '12px';
-            nozzlesTd.textContent = dispenser.nozzles?.length > 0 ? 
-                dispenser.nozzles.map(n => n.nozzleId.split('-')[1]).join(', ') : '-';
-            tr.appendChild(nozzlesTd);
-            
-            const productsTd = document.createElement('td');
-            productsTd.style.padding = '12px';
-            productsTd.textContent = dispenser.nozzles?.length > 0 ? 
-                dispenser.nozzles.map(n => {
-                    const productValue = n.product;
-                    return PRODUCT_NAME_MAPPING[productValue.toLowerCase()] || productValue;
-                }).join(', ') : '-';
-            tr.appendChild(productsTd);
-            
-            const DispenserBrandTd = document.createElement('td');
-            DispenserBrandTd.style.padding = '12px';
-            DispenserBrandTd.textContent = dispenser.DispenserBrand || '-';
-            tr.appendChild(DispenserBrandTd);
-            
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '12px';
-            
             const editBtn = createEditButton('Edit this dispenser');
             editBtn.addEventListener('click', () => editDispenser(index));
-            
-            const deleteBtn =  createDeleteButton('Delete this dispenser');
+
+            const deleteBtn = createDeleteButton('Delete this dispenser');
             deleteBtn.addEventListener('click', () => deleteDispenserPopup(index, tr));
 
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(deleteBtn);
-            
-            tr.appendChild(actionTd);
+            const actionWrap = document.createElement('div');
+            actionWrap.appendChild(editBtn);
+            actionWrap.appendChild(deleteBtn);
+            appendCell(tr, actionWrap);
             tbody.appendChild(tr);
         });
     }

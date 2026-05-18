@@ -159,73 +159,34 @@ function renderStationsTable(stations) {
             return;
         }
 
+        const canEdit = userInfo?.role === 'admin' || userInfo?.role === 'super_admin';
+        const titleCase = s => (s || '').split(' ')
+            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
         stations.forEach(station => {
-            const tr = document.createElement('tr');
-            tr.style.borderBottom = '1px solid var(--border)';
-            
-            const idTd = document.createElement('td');
-            idTd.style.padding = '12px';
-            idTd.textContent = station.id;
-            tr.appendChild(idTd);
+            const tr = createTableRow([
+                station.id,
+                station.customer_code,
+                station.station_id,
+                titleCase(station.city),
+                station.district,
+                station.division,
+                station.duc_addresses,
+                new Date(station.created_at).toLocaleString()
+            ]);
 
-            const customerCodeTd = document.createElement('td');
-            customerCodeTd.style.padding = '12px';
-            customerCodeTd.textContent = station.customer_code;
-            tr.appendChild(customerCodeTd);
-
-            const stationIdTd = document.createElement('td');
-            stationIdTd.style.padding = '12px';
-            stationIdTd.textContent = station.station_id;
-            tr.appendChild(stationIdTd);
-
-            const cityTd = document.createElement('td');
-            cityTd.style.padding = '12px';
-            cityTd.textContent = station.city.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ') || '-';
-            tr.appendChild(cityTd);
-
-            const districtTd = document.createElement('td');
-            districtTd.style.padding = '12px';
-            districtTd.textContent = station.district || '-';
-            tr.appendChild(districtTd);
-
-            const divisionTd = document.createElement('td');
-            divisionTd.style.padding = '12px';
-            divisionTd.textContent = station.division || '-';
-            tr.appendChild(divisionTd);
-
-            const ducsTd = document.createElement('td');
-            ducsTd.style.padding = '12px';
-            ducsTd.textContent = station.duc_addresses || '-';
-            tr.appendChild(ducsTd);
-
-            const createdAtTd = document.createElement('td');
-            createdAtTd.style.padding = '12px';
-            createdAtTd.textContent = new Date(station.created_at).toLocaleString() || '-';
-            tr.appendChild(createdAtTd);
-
-            const actionTd = document.createElement('td');
-            actionTd.style.padding = '12px';
-            
             const editBtn = createEditButton('Edit station');
-    if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
-                editBtn.style.cursor = 'not-allowed';
-            } else {
-                editBtn.addEventListener('click', () => {
-                    alert('Edit functionality coming soon');
-                });
-            }
-            
-            const deleteBtn = createDeleteButton('Delete station');
-            if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
-                deleteBtn.style.cursor = 'not-allowed';
-            } else {
-                deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));
-            }
+            if (!canEdit) editBtn.style.cursor = 'not-allowed';
+            else editBtn.addEventListener('click', () => alert('Edit functionality coming soon'));
 
-            actionTd.appendChild(editBtn);
-            actionTd.appendChild(deleteBtn);
-            
-            tr.appendChild(actionTd);
+            const deleteBtn = createDeleteButton('Delete station');
+            if (!canEdit) deleteBtn.style.cursor = 'not-allowed';
+            else deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));
+
+            const actionWrap = document.createElement('div');
+            actionWrap.appendChild(editBtn);
+            actionWrap.appendChild(deleteBtn);
+            appendCell(tr, actionWrap);
             tbody.appendChild(tr);
         });
 
@@ -254,209 +215,45 @@ function showStationFormPopup(station = null) {
     popup.style.maxWidth = '90vw';
 
     const header = createHeader();
-    
     const title = createTitle();
     title.textContent = station ? 'Edit Station' : 'Add New Station';
-
-    const closeButton = createCloseButton(overlay);
-    
     header.appendChild(title);
-    header.appendChild(closeButton);
+    header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const form = document.createElement('form');
-    form.style.display = 'flex';
-    form.style.flexDirection = 'column';
-    form.style.gap = '15px';
+    const form = createFlexColumn('15px');
+    // <form> semantics aren't load-bearing here; visual layout is what matters.
 
-    // Username field
-    const usernameContainer = document.createElement('div');
-    usernameContainer.style.display = 'flex';
-    usernameContainer.style.flexDirection = 'column';
-    usernameContainer.style.gap = '5px';
-    
-    const usernameLabel = document.createElement('label');
-    usernameLabel.textContent = 'Username *';
-    usernameLabel.style.fontWeight = 'bold';
-    
-    const usernameInput = document.createElement('input');
-    usernameInput.type = 'text';
-    usernameInput.value = station ? station.username : '';
-    usernameInput.required = true;
-    usernameInput.style.padding = '8px';
-    usernameInput.style.border = '1px solid var(--border)';
-    usernameInput.style.backgroundColor = 'var(--bg-surface)';
-    usernameInput.style.color = 'var(--text-primary)';
-    usernameInput.style.borderRadius = '4px';
-    
-    usernameContainer.appendChild(usernameLabel);
-    usernameContainer.appendChild(usernameInput);
-    form.appendChild(usernameContainer);
+    const usernameInput     = createTextInput({ value: station?.username || '', required: true });
+    const passwordInput     = !station ? createTextInput({ type: 'password', required: true }) : null;
+    const customerCodeInput = createTextInput({ value: station?.customer_code || '', required: true });
+    const stationIdInput    = createTextInput({ value: station?.station_id || '', required: true });
+    const cityInput         = createTextInput({ value: station?.city || '', required: true });
+    const districtInput     = createTextInput({ value: station?.district || '' });
+    const divisionInput     = createTextInput({ value: station?.division || '' });
 
-    // Password field (only for new users)
-    let passwordInput = null;
-    if (!station) {
-        const passwordContainer = document.createElement('div');
-        passwordContainer.style.display = 'flex';
-        passwordContainer.style.flexDirection = 'column';
-        passwordContainer.style.gap = '5px';
-        
-        const passwordLabel = document.createElement('label');
-        passwordLabel.textContent = 'Password *';
-        passwordLabel.style.fontWeight = 'bold';
-        
-        passwordInput = document.createElement('input');
-        passwordInput.type = 'password';
-        passwordInput.required = true;
-        passwordInput.style.padding = '8px';
-        passwordInput.style.border = '1px solid var(--border)';
-        passwordInput.style.backgroundColor = 'var(--bg-surface)';
-        passwordInput.style.color = 'var(--text-primary)';
-        passwordInput.style.borderRadius = '4px';
-        
-        passwordContainer.appendChild(passwordLabel);
-        passwordContainer.appendChild(passwordInput);
-        form.appendChild(passwordContainer);
-    }
-
-    // Customer code field
-    const customerCodeContainer = document.createElement('div');
-    customerCodeContainer.style.display = 'flex';
-    customerCodeContainer.style.flexDirection = 'column';
-    customerCodeContainer.style.gap = '5px';
-    customerCodeContainer.style.marginTop = '5px';
-    
-    const customerCodeLabel = document.createElement('label');
-    customerCodeLabel.textContent = 'Customer Code';
-    customerCodeLabel.style.fontWeight = 'bold';
-    
-    const customerCodeInput = document.createElement('input');
-    customerCodeInput.type = 'text';
-    customerCodeInput.value = station ? station.customer_code : '';
-    customerCodeInput.required = true;
-    customerCodeInput.style.padding = '8px';
-    customerCodeInput.style.border = '1px solid var(--border)';
-    customerCodeInput.style.backgroundColor = 'var(--bg-surface)';
-    customerCodeInput.style.color = 'var(--text-primary)';
-    customerCodeInput.style.borderRadius = '4px';
-    
-    customerCodeContainer.appendChild(customerCodeLabel);
-    customerCodeContainer.appendChild(customerCodeInput);
-    form.appendChild(customerCodeContainer);
-
-    // Station ID field
-    const stationIdContainer = document.createElement('div');
-    stationIdContainer.style.display = 'flex';
-    stationIdContainer.style.flexDirection = 'column';
-    stationIdContainer.style.gap = '5px';
-    
-    const stationIdLabel = document.createElement('label');
-    stationIdLabel.textContent = 'Station ID *';
-    stationIdLabel.style.fontWeight = 'bold';
-    
-    const stationIdInput = document.createElement('input');
-    stationIdInput.type = 'text';
-    stationIdInput.value = station ? station.station_id : '';
-    stationIdInput.required = true;
-    stationIdInput.style.padding = '8px';
-    stationIdInput.style.border = '1px solid var(--border)';
-    stationIdInput.style.backgroundColor = 'var(--bg-surface)';
-    stationIdInput.style.color = 'var(--text-primary)';
-    stationIdInput.style.borderRadius = '4px';
-    
-    stationIdContainer.appendChild(stationIdLabel);
-    stationIdContainer.appendChild(stationIdInput);
-    form.appendChild(stationIdContainer);
-
-    // City field
-    const cityContainer = document.createElement('div');
-    cityContainer.style.display = 'flex';
-    cityContainer.style.flexDirection = 'column';
-    cityContainer.style.gap = '5px';
-
-    const cityLabel = document.createElement('label');
-    cityLabel.textContent = 'City *';
-    cityLabel.style.fontWeight = 'bold';
-
-    const cityInput = document.createElement('input');
-    cityInput.type = 'text';
-    cityInput.value = station ? station.city : '';
-    cityInput.required = true;
-    cityInput.style.padding = '8px';
-    cityInput.style.border = '1px solid var(--border)';
-    cityInput.style.backgroundColor = 'var(--bg-surface)';
-    cityInput.style.color = 'var(--text-primary)';
-    cityInput.style.borderRadius = '4px';
-
-    cityContainer.appendChild(cityLabel);
-    cityContainer.appendChild(cityInput);
-    form.appendChild(cityContainer);
-
-    // District field
-    const districtContainer = document.createElement('div');
-    districtContainer.style.display = 'flex';
-    districtContainer.style.flexDirection = 'column';
-    districtContainer.style.gap = '5px';
-
-    const districtLabel = document.createElement('label');
-    districtLabel.textContent = 'District';
-    districtLabel.style.fontWeight = 'bold';
-
-    const districtInput = document.createElement('input');
-    districtInput.type = 'text';
-    districtInput.value = station && station.district ? station.district : '';
-    districtInput.style.padding = '8px';
-    districtInput.style.border = '1px solid var(--border)';
-    districtInput.style.backgroundColor = 'var(--bg-surface)';
-    districtInput.style.color = 'var(--text-primary)';
-    districtInput.style.borderRadius = '4px';
-
-    districtContainer.appendChild(districtLabel);
-    districtContainer.appendChild(districtInput);
-    form.appendChild(districtContainer);
-
-    // Division field
-    const divisionContainer = document.createElement('div');
-    divisionContainer.style.display = 'flex';
-    divisionContainer.style.flexDirection = 'column';
-    divisionContainer.style.gap = '5px';
-
-    const divisionLabel = document.createElement('label');
-    divisionLabel.textContent = 'Division';
-    divisionLabel.style.fontWeight = 'bold';
-
-    const divisionInput = document.createElement('input');
-    divisionInput.type = 'text';
-    divisionInput.value = station && station.division ? station.division : '';
-    divisionInput.style.padding = '8px';
-    divisionInput.style.border = '1px solid var(--border)';
-    divisionInput.style.backgroundColor = 'var(--bg-surface)';
-    divisionInput.style.color = 'var(--text-primary)';
-    divisionInput.style.borderRadius = '4px';
-
-    divisionContainer.appendChild(divisionLabel);
-    divisionContainer.appendChild(divisionInput);
-    form.appendChild(divisionContainer);
+    form.appendChild(createLabeledField({ label: 'Username',      control: usernameInput,     required: true }));
+    if (passwordInput) form.appendChild(createLabeledField({ label: 'Password', control: passwordInput, required: true }));
+    form.appendChild(createLabeledField({ label: 'Customer Code', control: customerCodeInput, marginTop: '5px' }));
+    form.appendChild(createLabeledField({ label: 'Station ID',    control: stationIdInput,    required: true }));
+    form.appendChild(createLabeledField({ label: 'City',          control: cityInput,         required: true }));
+    form.appendChild(createLabeledField({ label: 'District',      control: districtInput }));
+    form.appendChild(createLabeledField({ label: 'Division',      control: divisionInput }));
 
     popup.appendChild(form);
 
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.justifyContent = 'flex-end';
-    buttonContainer.style.gap = '10px';
+    const buttonContainer = createFlexRow({ justify: 'flex-end' });
     buttonContainer.style.marginTop = '20px';
 
     const cancelButton = createActionButton('#626262', '#424242');
     cancelButton.textContent = 'Cancel';
     cancelButton.type = 'button';
-    cancelButton.addEventListener('click', () => {
-        document.body.removeChild(overlay);
-    });
+    cancelButton.addEventListener('click', () => document.body.removeChild(overlay));
 
     const submitButton = createActionButton('#004D64', '#00324C');
     submitButton.textContent = station ? 'Update Station' : 'Add Station';
     submitButton.type = 'button';
-    
+
     buttonContainer.appendChild(cancelButton);
     buttonContainer.appendChild(submitButton);
     popup.appendChild(buttonContainer);

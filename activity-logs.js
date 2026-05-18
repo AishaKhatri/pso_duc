@@ -9,55 +9,13 @@ function todayLocalISO() {
     return new Date(d.getTime() - tz).toISOString().slice(0, 10);
 }
 
-function buildDateInput(value) {
-    const input = document.createElement('input');
-    input.type = 'date';
-    input.value = value;
-    input.style.padding = '8px';
-    input.style.border = '1px solid var(--border)';
-    input.style.borderRadius = '6px';
-    input.style.backgroundColor = 'var(--bg-surface)';
-    input.style.color = 'var(--text-primary)';
-    return input;
-}
-
 async function renderActivityLogs() {
     const content = document.getElementById('content');
     content.innerHTML = '';
 
-    // Filter bar
-    const filterBar = document.createElement('div');
-    filterBar.style.display = 'flex';
-    filterBar.style.flexWrap = 'wrap';
-    filterBar.style.alignItems = 'flex-end';
-    filterBar.style.gap = '12px';
-    filterBar.style.marginBottom = '16px';
-
     const today = todayLocalISO();
-    const fromInput = buildDateInput(today);
-    const toInput = buildDateInput(today);
-
-    const fromWrap = document.createElement('div');
-    fromWrap.style.display = 'flex';
-    fromWrap.style.flexDirection = 'column';
-    fromWrap.style.gap = '4px';
-    const fromLabel = document.createElement('label');
-    fromLabel.textContent = 'From';
-    fromLabel.style.fontSize = '13px';
-    fromLabel.style.color = 'var(--text-secondary)';
-    fromWrap.appendChild(fromLabel);
-    fromWrap.appendChild(fromInput);
-
-    const toWrap = document.createElement('div');
-    toWrap.style.display = 'flex';
-    toWrap.style.flexDirection = 'column';
-    toWrap.style.gap = '4px';
-    const toLabel = document.createElement('label');
-    toLabel.textContent = 'To';
-    toLabel.style.fontSize = '13px';
-    toLabel.style.color = 'var(--text-secondary)';
-    toWrap.appendChild(toLabel);
-    toWrap.appendChild(toInput);
+    const fromInput = createDateInput(today);
+    const toInput   = createDateInput(today);
 
     const fetchButton = createActionButton('#004D64', '#00324C');
     fetchButton.textContent = 'Fetch';
@@ -67,8 +25,10 @@ async function renderActivityLogs() {
     statusLine.style.fontSize = '13px';
     statusLine.style.color = 'var(--text-secondary)';
 
-    filterBar.appendChild(fromWrap);
-    filterBar.appendChild(toWrap);
+    const filterBar = createFlexRow({ gap: '12px', align: 'flex-end', wrap: 'wrap' });
+    filterBar.style.marginBottom = '16px';
+    filterBar.appendChild(createLabeledField({ label: 'From', control: fromInput, gap: '4px' }));
+    filterBar.appendChild(createLabeledField({ label: 'To',   control: toInput,   gap: '4px' }));
     filterBar.appendChild(fetchButton);
     filterBar.appendChild(statusLine);
     content.appendChild(filterBar);
@@ -140,28 +100,18 @@ function renderActivityRows(rows, usersById) {
         return;
     }
 
+    const cellOpts = { padding: '10px 12px', verticalAlign: 'top' };
     rows.forEach(row => {
-        const tr = document.createElement('tr');
-        tr.style.borderBottom = '1px solid var(--border)';
-
-        appendCell(tr, new Date(row.created_at).toLocaleString());
-        appendCell(tr, row.username || '-');
-        appendCell(tr, usersById[row.user_id]?.role || '-');
-        appendCell(tr, row.ip_address || '-');
-        appendCell(tr, row.action || '-');
-        appendCell(tr, [row.entity_type, row.entity_id].filter(Boolean).join(':') || '-');
+        const tr = createTableRow();
+        appendCell(tr, new Date(row.created_at).toLocaleString(), cellOpts);
+        appendCell(tr, row.username, cellOpts);
+        appendCell(tr, usersById[row.user_id]?.role, cellOpts);
+        appendCell(tr, row.ip_address, cellOpts);
+        appendCell(tr, row.action, cellOpts);
+        appendCell(tr, [row.entity_type, row.entity_id].filter(Boolean).join(':'), cellOpts);
         appendDetailsCell(tr, row.details);
-
         tbody.appendChild(tr);
     });
-}
-
-function appendCell(tr, text) {
-    const td = document.createElement('td');
-    td.style.padding = '10px 12px';
-    td.style.verticalAlign = 'top';
-    td.textContent = text;
-    tr.appendChild(td);
 }
 
 function appendDetailsCell(tr, details) {
