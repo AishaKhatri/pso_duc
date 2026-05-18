@@ -22,13 +22,16 @@ async function renderUserManagement() {
 
     renderUsersTable(usersList);
 
-    if (userInfo?.role !== 'admin') {
+    // Only super_admin can create users. admin/viewer get a disabled Add button.
+    if (userInfo?.role !== 'super_admin') {
         addButton.style.cursor = 'not-allowed';
+        addButton.disabled = true;
+        addButton.style.opacity = '0.6';
     } else {
         addButton.addEventListener('click', () => {
             showUserFormPopup();
         });
-    }    
+    }
 }
 
 async function renderUsersTable(users) {
@@ -79,16 +82,16 @@ async function renderUsersTable(users) {
             actionTd.style.padding = '12px';
             
             const editBtn = createEditButton('Edit user');
-            if (userInfo?.role !== 'admin') {
+            if (userInfo?.role !== 'super_admin') {
                 editBtn.style.cursor = 'not-allowed';
             } else {
                 editBtn.addEventListener('click', () => {
                     alert('Edit functionality coming soon');
                 });
             }
-            
+
             const deleteBtn = createDeleteButton('Delete user');
-            if (userInfo?.role !== 'admin') {
+            if (userInfo?.role !== 'super_admin') {
                 deleteBtn.style.cursor = 'not-allowed';
             } else {
                 deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
@@ -203,6 +206,7 @@ function showUserFormPopup(user = null) {
     roleSelect.style.width = '100%';
     
     const roleOptions = [
+        { value: 'super_admin', label: 'Super Admin' },
         { value: 'admin', label: 'Admin' },
         { value: 'operator', label: 'Operator' },
         { value: 'viewer', label: 'Viewer' }
@@ -221,71 +225,6 @@ function showUserFormPopup(user = null) {
     roleContainer.appendChild(roleLabel);
     roleContainer.appendChild(roleSelect);
     form.appendChild(roleContainer);
-
-    // Customer code dropdown
-    const customerCodeContainer = document.createElement('div');
-    customerCodeContainer.style.display = 'flex';
-    customerCodeContainer.style.flexDirection = 'column';
-    customerCodeContainer.style.gap = '5px';
-    customerCodeContainer.style.marginTop = '5px';
-    
-    const customerCodeLabel = document.createElement('label');
-    customerCodeLabel.textContent = 'Customer Code';
-    customerCodeLabel.style.fontWeight = 'bold';
-    
-    const customerCodeSelect = createDropdown('Select Customer Code');
-    customerCodeSelect.name = 'customer_code';
-    customerCodeSelect.style.width = '100%';
-    customerCodeSelect.style.padding = '8px';
-    customerCodeSelect.style.border = '1px solid var(--border)';
-    customerCodeSelect.style.backgroundColor = 'var(--bg-surface)';
-    customerCodeSelect.style.color = 'var(--text-primary)';
-    customerCodeSelect.style.borderRadius = '4px';
-    
-    const defaultOption = document.createElement('option');
-    defaultOption.value = '';
-    defaultOption.textContent = 'Select Customer Code';
-    defaultOption.disabled = true;
-    defaultOption.selected = true;
-    customerCodeSelect.appendChild(defaultOption);
-    
-    if (stationsList && stationsList.length > 0) {
-        stationsList.forEach(station => {
-            const option = document.createElement('option');
-            option.value = station.customer_code;
-            option.textContent = `${station.customer_code} - ${station.station_id || station.city || 'Unknown'}`;
-            if (user && user.customer_code === station.customer_code) {
-                option.selected = true;
-            }
-            customerCodeSelect.appendChild(option);
-        });
-    } else {
-        const noStationOption = document.createElement('option');
-        noStationOption.value = '';
-        noStationOption.textContent = 'No stations available';
-        noStationOption.disabled = true;
-        customerCodeSelect.appendChild(noStationOption);
-    }
-    
-    customerCodeContainer.appendChild(customerCodeLabel);
-    customerCodeContainer.appendChild(customerCodeSelect);
-    form.appendChild(customerCodeContainer);
-
-    const updateCustomerCodeState = () => {
-        if (roleSelect.value === 'operator') {
-            customerCodeSelect.disabled = false;
-            customerCodeSelect.style.opacity = '1';
-            customerCodeSelect.style.backgroundColor = 'var(--bg-surface)';
-        } else {
-            customerCodeSelect.disabled = true;
-            customerCodeSelect.style.opacity = '0.6';
-            customerCodeSelect.style.backgroundColor = 'var(--bg-surface-2)';
-        }
-    };
-    
-    updateCustomerCodeState();
-    
-    roleSelect.addEventListener('change', updateCustomerCodeState);
 
     popup.appendChild(form);
 
@@ -315,14 +254,6 @@ function showUserFormPopup(user = null) {
             username: usernameInput.value.trim(),
             role: roleSelect.value,
         };
-        
-        // if (roleSelect.value === 'operator') {
-        //     if (!customerCodeSelect.value) {
-        //         alert('Please select a customer code for operator role');
-        //         return;
-        //     }
-        //     userData.customer_code = customerCodeSelect.value;
-        // }
         
         if (!user && passwordInput) {
             if (!passwordInput.value) {

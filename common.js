@@ -5,7 +5,7 @@ const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
 
 const pages = {};
 
-const userRoles = ['admin', 'operator', 'viewer'];
+const userRoles = ['super_admin', 'admin', 'operator', 'viewer'];
 
 const NOZZLE_LAYOUTS = {
     FULL: 'full',      // Full layout with all metrics (for main page)

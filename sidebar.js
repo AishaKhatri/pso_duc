@@ -5,6 +5,7 @@ function renderSidebar() {
     // Get current user from localStorage
     const currentUser = StationAuth.getUserInfo();
     const role = currentUser?.role;
+    const isSuperAdmin = role === 'super_admin';
     const isAdmin = role === 'admin';
     const isOperator = role === 'operator';
 
@@ -42,13 +43,17 @@ function renderSidebar() {
     items.push({ page: 'dashboard', label: 'Dashboard', icon: 'dashboard-icon.png', url: 'index.html' });
     items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' });
 
-    if (isAdmin) {
+    if (isAdmin || isSuperAdmin) {
         items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'overview.html' });
     }
 
     if (!isOperator) {
         items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
-        items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' }); 
+        items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
+    }
+
+    if (isSuperAdmin) {
+        items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'notification-icon.png', url: 'activity-logs.html' });
     }
 
     // Determine current page based on window location
@@ -60,6 +65,7 @@ function renderSidebar() {
         'config-dispensers': 'dispensers',
         'user-management': 'users',
         'site-management': 'sites',
+        'activity-logs': 'activity-logs',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

@@ -26,7 +26,14 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
-            
+
+            // Operators have no business on this page.
+            const role = StationAuth.getUserInfo()?.role;
+            if (role === 'operator') {
+                window.location.href = 'index.html';
+                return;
+            }
+
             renderApp('User Management')
             if (typeof window.renderUserManagement === 'function') {
                 window.renderUserManagement();
