@@ -267,6 +267,121 @@ app.get('/api/dashboard-stats', async (req, res) => {
     }
 });
 
+// Time-series for the dashboard Sales chart. `range` controls bucket size:
+//   6h     -> last 6 hours, hourly buckets
+//   day    -> today's 24 hourly buckets (default)
+//   week   -> last 7 days, daily buckets
+//   month  -> last 30 days, daily buckets
+app.get('/api/sales-series', async (req, res) => {
+    try {
+        const range = (req.query.range || 'day').toLowerCase();
+        const customerCode = (req.query.customer_code || '').trim();
+        const dispenserId  = (req.query.dispenser_id  || '').toString().trim();
+        const filters = [];
+        const params  = [];
+        if (customerCode) { filters.push('customer_code = ?'); params.push(customerCode); }
+        if (dispenserId)  { filters.push('dispenser_id = ?');  params.push(dispenserId); }
+        const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
+
+        let points = [];
+
+        if (range === '6h') {
+            const [rows] = await pool.query(
+                `SELECT DATE_FORMAT(time, '%Y-%m-%d %H:00:00') AS bucket,
+                        COUNT(*) AS tx_count,
+                        COALESCE(SUM(amount), 0) AS amount,
+                        COALESCE(SUM(volume), 0) AS volume
+                   FROM transactions
+                  WHERE time >= DATE_SUB(NOW(), INTERVAL 6 HOUR) ${filterClause}
+               GROUP BY bucket
+               ORDER BY bucket ASC`,
+                params
+            );
+            const map = new Map(rows.map(r => [r.bucket.toString().slice(0, 13), r]));
+            const now = new Date();
+            for (let i = 6; i >= 0; i--) {
+                const d = new Date(now.getTime() - i * 3600000);
+                d.setMinutes(0, 0, 0);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}`;
+                const r = map.get(key);
+                points.push({
+                    label: String(d.getHours()).padStart(2, '0') + ':00',
+                    iso: d.toISOString(),
+                    tx_count: r ? Number(r.tx_count) || 0 : 0,
+                    amount:   r ? Number(r.amount)   || 0 : 0,
+                    volume:   r ? Number(r.volume)   || 0 : 0
+                });
+            }
+        } else if (range === 'week' || range === 'month') {
+            const days = range === 'week' ? 7 : 30;
+            const [rows] = await pool.query(
+                `SELECT DATE(time) AS bucket,
+                        COUNT(*) AS tx_count,
+                        COALESCE(SUM(amount), 0) AS amount,
+                        COALESCE(SUM(volume), 0) AS volume
+                   FROM transactions
+                  WHERE DATE(time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${filterClause}
+               GROUP BY DATE(time)
+               ORDER BY bucket ASC`,
+                [days - 1, ...params]
+            );
+            const map = new Map(rows.map(r => {
+                const d = new Date(r.bucket);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                return [key, r];
+            }));
+            const now = new Date();
+            for (let i = days - 1; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                const r = map.get(key);
+                const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+                points.push({
+                    label: range === 'week'
+                        ? weekdays[d.getDay()]
+                        : `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`,
+                    iso: d.toISOString(),
+                    tx_count: r ? Number(r.tx_count) || 0 : 0,
+                    amount:   r ? Number(r.amount)   || 0 : 0,
+                    volume:   r ? Number(r.volume)   || 0 : 0
+                });
+            }
+        } else {
+            // day (default): 24 hourly buckets for today, truncated at current hour
+            const [rows] = await pool.query(
+                `SELECT HOUR(time) AS hour,
+                        COUNT(*) AS tx_count,
+                        COALESCE(SUM(amount), 0) AS amount,
+                        COALESCE(SUM(volume), 0) AS volume
+                   FROM transactions
+                  WHERE DATE(time) = CURDATE() ${filterClause}
+               GROUP BY HOUR(time)`,
+                params
+            );
+            const byHour = new Map(rows.map(r => [Number(r.hour), r]));
+            const currentHour = new Date().getHours();
+            for (let h = 0; h <= currentHour; h++) {
+                const r = byHour.get(h);
+                points.push({
+                    label: String(h).padStart(2, '0') + ':00',
+                    iso: null,
+                    tx_count: r ? Number(r.tx_count) || 0 : 0,
+                    amount:   r ? Number(r.amount)   || 0 : 0,
+                    volume:   r ? Number(r.volume)   || 0 : 0
+                });
+            }
+        }
+
+        const peak  = points.reduce((m, p) => Math.max(m, p.amount), 0);
+        const total = points.reduce((s, p) => s + p.amount, 0);
+
+        res.json({ range, points, peak, total });
+    } catch (error) {
+        console.error('Error building sales series:', error);
+        res.status(500).json({ error: error.message || 'Failed to build sales series' });
+    }
+});
+
 // Active long-outage alerts: devices that have been offline >=12h continuously
 // and have not yet reconnected. Drives the dashboard Alerts panel.
 app.get('/api/long-outages', async (req, res) => {
@@ -550,10 +665,10 @@ app.get('/api/dispensers', async (req, res) => {
     try {
         const { customer_code } = req.query;
 
-        // Explicit columns — drops IMEI1/IMEI2/created_at from the response (only
+        // Explicit columns — drops IMEI1/IMEI2 from the response (only
         // used server-side) so the payload stays small over the network.
         let query = `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                            connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
+                            connected_at, ir_lock_status, number_of_nozzles, DispenserBrand, created_at
                      FROM dispensers`;
         let params = [];
 
@@ -586,7 +701,7 @@ app.get('/api/dispensers-full', async (req, res) => {
         const [dispensers, nozzles, stations] = await Promise.all([
             pool.query(
                 `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                        connected_at, ir_lock_status, number_of_nozzles, DispenserBrand
+                        connected_at, ir_lock_status, number_of_nozzles, DispenserBrand, created_at
                  FROM dispensers
                  ${whereCustomer}
                  ORDER BY customer_code, dispenser_id`,

@@ -52,26 +52,33 @@ function markerColor(key) {
 
 const ALERTS_MAX = 100;
 
+const SALES_RANGES = [
+    { key: '6h',    label: '6h' },
+    { key: 'day',   label: 'Daily' },
+    { key: 'week',  label: 'Weekly' },
+    { key: 'month', label: 'Monthly' }
+];
+
 const dashboardState = {
     stations: [],
     stats: null,
     divisions: [],
     selectedDivision: 'ALL',
-    selectedCity: 'ALL',
     selectedStatuses: new Set(STATUS_KEYS),
     searchQuery: '',
     map: null,
     markerLayer: null,
     kpiStrip: null,
-    networkBars: null,
-    cityRow: null,
     statusChips: null,
     filterBarEl: null,
-    hourlyPanelEl: null,
+    salesPanelEl: null,
+    salesRange: 'day',
+    salesSeries: null,
     donutPanelEl: null,
     lastUpdatedEl: null,
     refreshTimer: null,
     alerts: [],
+    alertsCollapsed: false,
     alertsListEl: null,
     alertsPanelEl: null,
     alertListenerAttached: false
@@ -79,23 +86,15 @@ const dashboardState = {
 
 function getRegionScopedStations() {
     const div = dashboardState.selectedDivision;
-    const city = dashboardState.selectedCity;
-    return dashboardState.stations.filter(s => {
-        const divOk = div === 'ALL'
-            || (s.division || '').toLowerCase() === div.toLowerCase();
-        const cityOk = city === 'ALL'
-            || (s.city || '').toLowerCase() === city.toLowerCase();
-        return divOk && cityOk;
-    });
+    return dashboardState.stations.filter(s =>
+        div === 'ALL' || (s.division || '').toLowerCase() === div.toLowerCase()
+    );
 }
 
 function refreshTiles() {
     const scoped = getRegionScopedStations();
     if (dashboardState.kpiStrip && dashboardState.stats) {
         populateKpiStrip(dashboardState.kpiStrip, scoped, dashboardState.stats.today);
-    }
-    if (dashboardState.networkBars) {
-        populateNetworkBreakdown(dashboardState.networkBars, scoped);
     }
     refreshStatusChipCounts();
 }
@@ -109,18 +108,6 @@ function refreshStatusChipCounts() {
         const c = chip.querySelector('.chip-count');
         if (c) c.textContent = counts[key] || 0;
     });
-}
-
-function citiesInDivision(div) {
-    if (!div || div === 'ALL') return [];
-    const target = div.toLowerCase();
-    const set = new Set();
-    for (const s of dashboardState.stations) {
-        if ((s.division || '').toLowerCase() !== target) continue;
-        const c = (s.city || '').trim();
-        if (c) set.add(c);
-    }
-    return Array.from(set).sort();
 }
 
 function formatCurrency(value) {
@@ -189,67 +176,77 @@ function populateKpiStrip(strip, stations, today) {
     });
 }
 
-function buildHourlyChartPanel(hourly) {
-    const panel = document.createElement('div');
-    panel.className = 'side-panel chart-card-mini';
+// Pick axis tick labels so we end up with ~5 evenly-spaced markers
+// regardless of how many series points the current range carries.
+function pickAxisLabels(points) {
+    if (!points.length) return [];
+    const targets = Math.min(5, points.length);
+    if (points.length <= targets) return points.map(p => p.label);
+    const out = [];
+    for (let i = 0; i < targets; i++) {
+        const idx = Math.round(i * (points.length - 1) / (targets - 1));
+        out.push(points[idx].label);
+    }
+    return out;
+}
 
-    const peak = hourly.reduce((m, h) => Math.max(m, Number(h.amount) || 0), 0);
-    const safePeak = peak > 0 ? peak : 1;
+function renderSalesChartBody(panel, points, peak, range) {
+    // Remove any prior chart body so range-switches don't accumulate elements.
+    panel.querySelectorAll('.chart-container, .chart-axis-row, .chart-empty').forEach(el => el.remove());
+    const peakEl = panel.querySelector('.chart-card-header .peak');
+    if (peakEl) peakEl.textContent = `peak ${formatCurrency(peak)}`;
 
-    const header = document.createElement('div');
-    header.className = 'chart-card-header';
-    header.innerHTML = `<span>Hourly Sales</span><span class="peak">peak ${formatCurrency(peak)}</span>`;
-    panel.appendChild(header);
+    if (!points.length) {
+        const empty = document.createElement('div');
+        empty.className = 'chart-empty';
+        empty.textContent = 'No sales data for this range.';
+        panel.appendChild(empty);
+        return;
+    }
 
     const container = document.createElement('div');
     container.className = 'chart-container chart-container-line';
 
     const svgNS = 'http://www.w3.org/2000/svg';
-    const n = hourly.length;
-    // Only draw up to the current hour — future hours have no data yet and
-    // would otherwise pull the line down to the baseline.
-    const currentHour = new Date().getHours();
-    const points = hourly
-        .map((h, i) => {
-            const amount = Number(h.amount) || 0;
-            const txCount = Number(h.tx_count) || 0;
-            const x = n > 1 ? (i / (n - 1)) * 100 : 50;
-            // Reserve 6% top padding so the peak point doesn't kiss the top edge.
-            const y = 100 - (amount / safePeak) * 94;
-            return { x, y, amount, txCount, hour: h.hour };
-        })
-        .filter(p => p.hour <= currentHour);
+    const n = points.length;
+    const safePeak = peak > 0 ? peak : 1;
+
+    const plotted = points.map((p, i) => {
+        const amount = Number(p.amount) || 0;
+        const x = n > 1 ? (i / (n - 1)) * 100 : 50;
+        // Reserve 6% top padding so the peak point doesn't kiss the top edge.
+        const y = 100 - (amount / safePeak) * 94;
+        return { x, y, amount, txCount: Number(p.tx_count) || 0, label: p.label };
+    });
 
     const svg = document.createElementNS(svgNS, 'svg');
     svg.setAttribute('viewBox', '0 0 100 100');
     svg.setAttribute('preserveAspectRatio', 'none');
     svg.setAttribute('class', 'chart-line-svg');
 
-    if (points.length > 0) {
-        const areaD =
-            `M ${points[0].x} 100 ` +
-            points.map(p => `L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ') +
-            ` L ${points[points.length - 1].x} 100 Z`;
-        const area = document.createElementNS(svgNS, 'path');
-        area.setAttribute('d', areaD);
-        area.setAttribute('class', 'chart-line-area');
-        svg.appendChild(area);
+    const areaD =
+        `M ${plotted[0].x} 100 ` +
+        plotted.map(p => `L ${p.x.toFixed(3)} ${p.y.toFixed(3)}`).join(' ') +
+        ` L ${plotted[plotted.length - 1].x} 100 Z`;
+    const area = document.createElementNS(svgNS, 'path');
+    area.setAttribute('d', areaD);
+    area.setAttribute('class', 'chart-line-area');
+    svg.appendChild(area);
 
-        const lineD = points.map((p, i) =>
-            (i === 0 ? 'M' : 'L') + ` ${p.x.toFixed(3)} ${p.y.toFixed(3)}`
-        ).join(' ');
-        const line = document.createElementNS(svgNS, 'path');
-        line.setAttribute('d', lineD);
-        line.setAttribute('class', 'chart-line-path');
-        line.setAttribute('fill', 'none');
-        line.setAttribute('vector-effect', 'non-scaling-stroke');
-        svg.appendChild(line);
-    }
+    const lineD = plotted.map((p, i) =>
+        (i === 0 ? 'M' : 'L') + ` ${p.x.toFixed(3)} ${p.y.toFixed(3)}`
+    ).join(' ');
+    const line = document.createElementNS(svgNS, 'path');
+    line.setAttribute('d', lineD);
+    line.setAttribute('class', 'chart-line-path');
+    line.setAttribute('fill', 'none');
+    line.setAttribute('vector-effect', 'non-scaling-stroke');
+    svg.appendChild(line);
     container.appendChild(svg);
 
     const hitWidthPct = 100 / Math.max(n, 1);
-    points.forEach((p, idx) => {
-        const isLast = idx === points.length - 1;
+    plotted.forEach((p, idx) => {
+        const isLast = idx === plotted.length - 1;
         const hit = document.createElement('div');
         hit.className = 'chart-line-hit'
             + (p.amount > 0 ? ' has-data' : '')
@@ -262,13 +259,12 @@ function buildHourlyChartPanel(hourly) {
         dot.style.bottom = `calc(${(100 - p.y).toFixed(3)}% - 5px)`;
         hit.appendChild(dot);
 
-        const hourLabel = String(p.hour).padStart(2, '0') + ':00';
         let tip = null;
         const showTip = () => {
             if (tip) return;
             tip = document.createElement('div');
             tip.className = 'chart-tooltip';
-            tip.innerHTML = `<b>${hourLabel}</b><br>${p.txCount} tx · ${formatCurrencyFull(p.amount)}`;
+            tip.innerHTML = `<b>${p.label}</b><br>${p.txCount} tx · ${formatCurrencyFull(p.amount)}`;
             tip.style.bottom = `calc(${(100 - p.y).toFixed(3)}% + 10px)`;
             hit.appendChild(tip);
         };
@@ -286,8 +282,61 @@ function buildHourlyChartPanel(hourly) {
 
     const axis = document.createElement('div');
     axis.className = 'chart-axis-row';
-    axis.innerHTML = '<span>00</span><span>06</span><span>12</span><span>18</span><span>23</span>';
+    axis.innerHTML = pickAxisLabels(points).map(l => `<span>${escapeHtml(l)}</span>`).join('');
     panel.appendChild(axis);
+}
+
+async function fetchSalesSeries(range) {
+    try {
+        const resp = await fetch(`${API_BASE_URL}/sales-series?range=${encodeURIComponent(range)}`);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.json();
+    } catch (err) {
+        console.warn('Failed to load sales series:', err.message);
+        return { range, points: [], peak: 0, total: 0 };
+    }
+}
+
+function buildSalesChartPanel() {
+    const panel = document.createElement('div');
+    panel.className = 'side-panel chart-card-mini sales-chart-panel';
+
+    const header = document.createElement('div');
+    header.className = 'chart-card-header';
+    header.innerHTML = `<span>Sales</span><span class="peak"></span>`;
+    panel.appendChild(header);
+
+    const tabs = document.createElement('div');
+    tabs.className = 'chart-range-tabs';
+    SALES_RANGES.forEach(r => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chart-range-tab';
+        btn.dataset.range = r.key;
+        btn.textContent = r.label;
+        if (r.key === dashboardState.salesRange) btn.classList.add('active');
+        btn.addEventListener('click', async () => {
+            if (btn.classList.contains('active')) return;
+            dashboardState.salesRange = r.key;
+            tabs.querySelectorAll('.chart-range-tab').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const data = await fetchSalesSeries(r.key);
+            dashboardState.salesSeries = data;
+            renderSalesChartBody(panel, data.points || [], data.peak || 0, r.key);
+        });
+        tabs.appendChild(btn);
+    });
+    panel.appendChild(tabs);
+
+    // Show whatever we already have cached immediately, then refresh.
+    const cached = dashboardState.salesSeries;
+    if (cached && cached.range === dashboardState.salesRange) {
+        renderSalesChartBody(panel, cached.points || [], cached.peak || 0, cached.range);
+    }
+    fetchSalesSeries(dashboardState.salesRange).then(data => {
+        dashboardState.salesSeries = data;
+        renderSalesChartBody(panel, data.points || [], data.peak || 0, data.range);
+    });
 
     return panel;
 }
@@ -309,12 +358,16 @@ function buildLegend() {
 
 function makeMarkerIcon(status) {
     const color = markerColor(status);
-    const html = `<div style="
-        width: 12px; height: 12px;
-        background: ${color};
-        border-radius: 50%;
-        box-shadow: 0 0 2px ${color}, 0 0 0 1px rgba(0,0,0,0.2);
-    "></div>`;
+    const isOffline = status === 'all_offline';
+    // Offline stations get a soft breathing halo behind the dot so they're
+    // easy to spot on a busy map. Other statuses render the same dot,
+    // unanimated, so the pulse always reads as "site is down".
+    const html = isOffline
+        ? `<div class="marker-dot-wrap" style="--dot-color: ${color}">
+               <span class="marker-pulse"></span>
+               <span class="marker-dot"></span>
+           </div>`
+        : `<div class="marker-dot" style="--dot-color: ${color}"></div>`;
     return L.divIcon({
         html,
         className: 'station-marker',
@@ -361,11 +414,19 @@ function refreshMarkers(options = {}) {
 
     const filtered = getFilteredStations();
     const bounds = [];
+    // Stack markers so the most attention-worthy status sits on top:
+    //   offline (pulsing) > installed > not-installed.
+    const Z_BY_STATUS = {
+        all_offline:        2000,
+        partial:            1500,
+        all_online:         1000,
+        visited_no_install: 500,
+        no_duc:             0
+    };
     filtered.forEach(s => {
-        const isNoDuc = s.status === 'no_duc';
         const marker = L.marker([s.lat, s.lng], {
             icon: makeMarkerIcon(s.status),
-            zIndexOffset: isNoDuc ? 0 : 1000
+            zIndexOffset: Z_BY_STATUS[s.status] ?? 0
         });
         marker.bindPopup(buildPopupHtml(s));
         marker.addTo(dashboardState.markerLayer);
@@ -445,10 +506,8 @@ function buildFilterBar() {
         chip.innerHTML = `${label}<span class="chip-count">${count}</span>`;
         chip.addEventListener('click', () => {
             dashboardState.selectedDivision = key;
-            dashboardState.selectedCity = 'ALL';
             divisionRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
-            renderCityRow();
             refreshMarkers();
             refreshTiles();
         });
@@ -457,12 +516,6 @@ function buildFilterBar() {
     // Search lives at the right edge of the division row.
     divisionRow.appendChild(buildSearchControl());
     bar.appendChild(divisionRow);
-
-    const cityRow = document.createElement('div');
-    cityRow.className = 'filter-row filter-row-city';
-    dashboardState.cityRow = cityRow;
-    bar.appendChild(cityRow);
-    renderCityRow();
 
     const statusRow = document.createElement('div');
     statusRow.className = 'filter-row';
@@ -502,82 +555,6 @@ function buildFilterBar() {
     return bar;
 }
 
-function renderCityRow() {
-    const row = dashboardState.cityRow;
-    if (!row) return;
-    row.innerHTML = '';
-
-    const cities = citiesInDivision(dashboardState.selectedDivision);
-    if (cities.length === 0) {
-        row.style.display = 'none';
-        return;
-    }
-    row.style.display = '';
-
-    const lbl = document.createElement('span');
-    lbl.className = 'filter-label';
-    lbl.textContent = 'City';
-    row.appendChild(lbl);
-
-    const divKey = dashboardState.selectedDivision;
-    const inDiv = dashboardState.stations.filter(
-        s => (s.division || '').toLowerCase() === divKey.toLowerCase()
-    );
-    const chips = [{ key: 'ALL', label: 'All' }, ...cities.map(c => ({ key: c, label: c }))];
-    chips.forEach(({ key, label }) => {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'filter-chip';
-        if (dashboardState.selectedCity === key) chip.classList.add('active');
-
-        const count = key === 'ALL'
-            ? inDiv.length
-            : inDiv.filter(s => (s.city || '').toLowerCase() === key.toLowerCase()).length;
-
-        chip.innerHTML = `${label}<span class="chip-count">${count}</span>`;
-        chip.addEventListener('click', () => {
-            dashboardState.selectedCity = key;
-            row.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
-            chip.classList.add('active');
-            refreshMarkers();
-            refreshTiles();
-        });
-        row.appendChild(chip);
-    });
-}
-
-function buildNetworkBreakdownPanel(stations) {
-    const panel = document.createElement('div');
-    panel.className = 'side-panel';
-    panel.innerHTML = `<h4>Network Status</h4>`;
-    const bars = document.createElement('div');
-    bars.className = 'network-bars';
-    panel.appendChild(bars);
-    populateNetworkBreakdown(bars, stations);
-    return panel;
-}
-
-function populateNetworkBreakdown(bars, stations) {
-    const counts = { all_online: 0, partial: 0, all_offline: 0, visited_no_install: 0, no_duc: 0 };
-    for (const s of stations) {
-        counts[s.status] = (counts[s.status] || 0) + 1;
-    }
-    const total = stations.length || 1;
-
-    bars.innerHTML = '';
-    STATUS_KEYS.forEach(key => {
-        const c = counts[key] || 0;
-        const pct = (c / total) * 100;
-        const row = document.createElement('div');
-        row.className = `network-bar-row ${STATUS_BAR_CLASS[key]}`;
-        row.innerHTML = `
-            <span class="nb-label">${STATUS_LABELS[key]}</span>
-            <span class="nb-track"><span class="nb-fill" style="width:${pct.toFixed(1)}%"></span></span>
-            <span class="nb-count">${c}</span>
-        `;
-        bars.appendChild(row);
-    });
-}
 
 function productColor(name, fallbackIdx) {
     const cfg = (typeof productColorConfig !== 'undefined') ? productColorConfig[name?.toUpperCase?.()] : null;
@@ -586,8 +563,17 @@ function productColor(name, fallbackIdx) {
 
 function buildProductDonutPanel(products) {
     const panel = document.createElement('div');
-    panel.className = 'side-panel';
+    panel.className = 'side-panel donut-panel';
     panel.innerHTML = `<h4>Sales by Product Today</h4>`;
+    renderDonutBody(panel, products);
+    return panel;
+}
+
+function renderDonutBody(panel, products) {
+    // Refresh-friendly: drop any prior body but keep the header. Calling this
+    // on the existing panel avoids the flash that replaceWith() causes when
+    // the auto-refresh fires every 30 seconds.
+    panel.querySelectorAll('.donut-wrapper, .donut-empty').forEach(el => el.remove());
 
     const total = products.reduce((s, p) => s + (Number(p.amount) || 0), 0);
 
@@ -596,7 +582,7 @@ function buildProductDonutPanel(products) {
         empty.className = 'donut-empty';
         empty.textContent = 'No sales recorded yet today.';
         panel.appendChild(empty);
-        return panel;
+        return;
     }
 
     const sorted = [...products].sort((a, b) => (b.amount || 0) - (a.amount || 0));
@@ -609,10 +595,15 @@ function buildProductDonutPanel(products) {
     svg.setAttribute('viewBox', '0 0 42 42');
     svg.setAttribute('class', 'donut-svg');
 
+    const tooltip = document.createElement('div');
+    tooltip.className = 'chart-tooltip donut-tooltip';
+    tooltip.style.display = 'none';
+
     let cumulative = 0;
     sorted.forEach((p, idx) => {
         const pct = (Number(p.amount) || 0) / total * 100;
         const color = productColor(p.product, idx);
+        const amount = Number(p.amount) || 0;
         const circle = document.createElementNS(svgNS, 'circle');
         circle.setAttribute('cx', '21');
         circle.setAttribute('cy', '21');
@@ -623,6 +614,24 @@ function buildProductDonutPanel(products) {
         circle.setAttribute('stroke-dasharray', `${pct.toFixed(3)} ${(100 - pct).toFixed(3)}`);
         circle.setAttribute('stroke-dashoffset', (-cumulative).toFixed(3));
         circle.setAttribute('transform', 'rotate(-90 21 21)');
+        circle.style.pointerEvents = 'stroke';
+        circle.style.cursor = 'pointer';
+        const label = (p.product || '').toUpperCase();
+        circle.addEventListener('mouseenter', () => {
+            tooltip.innerHTML =
+                `<b>${escapeHtml(label)}</b><br>` +
+                `${formatCurrencyFull(amount)}<br>` +
+                `${pct.toFixed(1)}%`;
+            tooltip.style.display = 'block';
+        });
+        circle.addEventListener('mousemove', (e) => {
+            const rect = wrap.getBoundingClientRect();
+            tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
+            tooltip.style.top  = (e.clientY - rect.top  - 12) + 'px';
+        });
+        circle.addEventListener('mouseleave', () => {
+            tooltip.style.display = 'none';
+        });
         svg.appendChild(circle);
         cumulative += pct;
     });
@@ -645,24 +654,32 @@ function buildProductDonutPanel(products) {
     svg.appendChild(center);
 
     wrap.appendChild(svg);
+    wrap.appendChild(tooltip);
 
     const legend = document.createElement('div');
     legend.className = 'donut-legend';
     sorted.forEach((p, idx) => {
         const amount = Number(p.amount) || 0;
+        const volume = Number(p.volume) || 0;
         const row = document.createElement('div');
         row.className = 'donut-legend-row';
         row.innerHTML = `
             <span class="swatch" style="background:${productColor(p.product, idx)}"></span>
-            <span class="name">${(p.product || '').toUpperCase()}</span>
-            <span class="amt">${formatCurrency(amount)}</span>
+            <div class="legend-text">
+                <div class="legend-top">
+                    <span class="name">${(p.product || '').toUpperCase()}</span>
+                    <span class="amt">${formatCurrency(amount)}</span>
+                </div>
+                <div class="legend-bottom">
+                    <span class="vol">${formatVolume(volume)}</span>
+                </div>
+            </div>
         `;
         legend.appendChild(row);
     });
     wrap.appendChild(legend);
 
     panel.appendChild(wrap);
-    return panel;
 }
 
 function escapeHtml(s) {
@@ -674,11 +691,17 @@ function escapeHtml(s) {
 function buildAlertsPanel() {
     const panel = document.createElement('div');
     panel.className = 'side-panel alerts-panel';
+    if (dashboardState.alertsCollapsed) panel.classList.add('alerts-collapsed');
 
     const header = document.createElement('div');
     header.className = 'alerts-header';
+
     const title = document.createElement('h4');
     title.textContent = 'Alerts';
+
+    const actions = document.createElement('div');
+    actions.className = 'alerts-actions';
+
     const clearBtn = document.createElement('button');
     clearBtn.className = 'alerts-clear';
     clearBtn.type = 'button';
@@ -687,8 +710,24 @@ function buildAlertsPanel() {
         dashboardState.alerts = [];
         renderAlertsList();
     });
+
+    const collapseBtn = document.createElement('button');
+    collapseBtn.className = 'alerts-collapse';
+    collapseBtn.type = 'button';
+    collapseBtn.setAttribute('aria-label', dashboardState.alertsCollapsed ? 'Expand alerts' : 'Collapse alerts');
+    collapseBtn.title = dashboardState.alertsCollapsed ? 'Expand' : 'Collapse';
+    collapseBtn.innerHTML = '<span class="chev"></span>';
+    collapseBtn.addEventListener('click', () => {
+        dashboardState.alertsCollapsed = !dashboardState.alertsCollapsed;
+        panel.classList.toggle('alerts-collapsed', dashboardState.alertsCollapsed);
+        collapseBtn.setAttribute('aria-label', dashboardState.alertsCollapsed ? 'Expand alerts' : 'Collapse alerts');
+        collapseBtn.title = dashboardState.alertsCollapsed ? 'Expand' : 'Collapse';
+    });
+
+    actions.appendChild(clearBtn);
+    actions.appendChild(collapseBtn);
     header.appendChild(title);
-    header.appendChild(clearBtn);
+    header.appendChild(actions);
     panel.appendChild(header);
 
     const list = document.createElement('div');
@@ -844,6 +883,7 @@ async function renderDashboard() {
     const content = document.getElementById('content');
     if (!content) return;
     content.innerHTML = '';
+    content.classList.add('dashboard-page');
 
     const loading = document.createElement('div');
     loading.textContent = 'Loading dashboard…';
@@ -906,23 +946,16 @@ async function renderDashboard() {
 
     const side = document.createElement('div');
     side.className = 'dashboard-side';
-    const hourlyPanelEl = buildHourlyChartPanel(stats.hourly);
-    dashboardState.hourlyPanelEl = hourlyPanelEl;
-    side.appendChild(hourlyPanelEl);
+    const salesPanelEl = buildSalesChartPanel();
+    dashboardState.salesPanelEl = salesPanelEl;
+    side.appendChild(salesPanelEl);
     const donutPanelEl = buildProductDonutPanel(stats.products || []);
     dashboardState.donutPanelEl = donutPanelEl;
     side.appendChild(donutPanelEl);
-    const networkPanel = buildNetworkBreakdownPanel(stations);
-    dashboardState.networkBars = networkPanel.querySelector('.network-bars');
-    side.appendChild(networkPanel);
-    main.appendChild(side);
-
-    const alertsColumn = document.createElement('div');
-    alertsColumn.className = 'alerts-column';
     const alertsPanelEl = buildAlertsPanel();
     dashboardState.alertsPanelEl = alertsPanelEl;
-    alertsColumn.appendChild(alertsPanelEl);
-    main.appendChild(alertsColumn);
+    side.appendChild(alertsPanelEl);
+    main.appendChild(side);
 
     content.appendChild(main);
 
@@ -938,6 +971,16 @@ async function renderDashboard() {
     }).addTo(dashboardState.map);
 
     dashboardState.markerLayer = L.layerGroup().addTo(dashboardState.map);
+
+    // The map container resizes with the viewport now; Leaflet only redraws
+    // tiles when told its size changed.
+    if (!dashboardState.resizeListener) {
+        dashboardState.resizeListener = () => {
+            if (dashboardState.map) dashboardState.map.invalidateSize();
+        };
+        window.addEventListener('resize', dashboardState.resizeListener);
+    }
+    requestAnimationFrame(() => dashboardState.map.invalidateSize());
 
     if (stations.length === 0) {
         const msg = document.createElement('div');
@@ -980,16 +1023,22 @@ async function refreshDashboardData() {
         }
     }
 
-    if (dashboardState.hourlyPanelEl) {
-        const newHourly = buildHourlyChartPanel(stats.hourly);
-        dashboardState.hourlyPanelEl.replaceWith(newHourly);
-        dashboardState.hourlyPanelEl = newHourly;
+    if (dashboardState.salesPanelEl) {
+        // Refresh in place: fetch first, then patch only the chart body so
+        // the tabs/header never blink to an empty state between rebuilds.
+        const data = await fetchSalesSeries(dashboardState.salesRange);
+        dashboardState.salesSeries = data;
+        renderSalesChartBody(
+            dashboardState.salesPanelEl,
+            data.points || [],
+            data.peak || 0,
+            data.range
+        );
     }
 
     if (dashboardState.donutPanelEl) {
-        const newDonut = buildProductDonutPanel(stats.products || []);
-        dashboardState.donutPanelEl.replaceWith(newDonut);
-        dashboardState.donutPanelEl = newDonut;
+        // Patch body in place — no replaceWith() so the panel never blinks.
+        renderDonutBody(dashboardState.donutPanelEl, stats.products || []);
     }
 
     refreshTiles();
