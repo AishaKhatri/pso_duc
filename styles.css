@@ -781,15 +781,12 @@ td {
 /* Map + side panel layout */
 .dashboard-main {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) 450px;
+    grid-template-columns: minmax(0, 3fr) minmax(260px, 1fr);
     gap: 12px;
     margin-bottom: 20px;
     align-items: stretch;
 }
 @media (max-width: 1400px) {
-    .dashboard-main {
-        grid-template-columns: minmax(0, 1fr) 320px;
-    }
     .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
     .kpi-label { font-size: clamp(9px, 0.7vw, 11px); }
     .kpi-value { font-size: clamp(18px, 2.2vw, 32px); }

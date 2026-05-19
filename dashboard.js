@@ -154,10 +154,10 @@ function populateKpiStrip(strip, stations, today) {
     const totalVolume = Number(today.total_volume) || 0;
 
     const kpis = [
-        { label: 'Sites',          value: formatCount(counts.total),    sub: `${counts.with_duc} with DUC`,                cls: 'accent' },
+        { label: 'Sites with DUC', value: formatCount(counts.with_duc),  sub: `of ${formatCount(counts.total)} total`,      cls: 'accent' },
         { label: 'DUCs Online',    value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
         { label: 'DUCs Offline',   value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '' },
-        { label: 'Not Installed',  value: formatCount(notInstalled),     sub: '',                                            cls: 'no-duc' },
+        { label: 'Total DUCs',     value: formatCount(totalDucs),        sub: `across ${formatCount(counts.with_duc)} sites`, cls: 'accent' },
         { label: 'Tx Today',       value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
         { label: 'Sales Today',    value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
         { label: 'Volume Today',   value: formatVolume(totalVolume),     sub: '',                                            cls: '' }
@@ -244,6 +244,12 @@ function renderSalesChartBody(panel, points, peak, range) {
     svg.appendChild(line);
     container.appendChild(svg);
 
+    // Shared "pin" state — tapping a point keeps its tooltip up until the
+    // user taps the same point again (toggle off) or another point (switch).
+    // Hover behavior is unchanged when nothing is pinned, so desktop users
+    // still get the original mouse-driven tooltips.
+    const pin = { idx: -1, hide: null };
+
     const hitWidthPct = 100 / Math.max(n, 1);
     plotted.forEach((p, idx) => {
         const isLast = idx === plotted.length - 1;
@@ -269,13 +275,37 @@ function renderSalesChartBody(panel, points, peak, range) {
             hit.appendChild(tip);
         };
         const hideTip = () => { if (tip) { tip.remove(); tip = null; } };
-        hit.addEventListener('mouseenter', showTip);
-        hit.addEventListener('mouseleave', hideTip);
+        hit.addEventListener('mouseenter', () => {
+            if (pin.idx !== -1 && pin.idx !== idx) {
+                pin.hide();
+                pin.idx = -1;
+            }
+            showTip();
+        });
+        hit.addEventListener('mouseleave', () => {
+            if (pin.idx !== idx) hideTip();
+        });
         hit.addEventListener('click', (e) => {
             e.stopPropagation();
-            if (tip) hideTip(); else showTip();
+            if (pin.idx === idx) {
+                pin.idx = -1;
+                hideTip();
+                return;
+            }
+            if (pin.idx !== -1) pin.hide();
+            pin.idx = idx;
+            pin.hide = hideTip;
+            showTip();
         });
         container.appendChild(hit);
+    });
+
+    // Tap on empty chart area releases the pinned tooltip.
+    container.addEventListener('click', () => {
+        if (pin.idx !== -1) {
+            pin.hide();
+            pin.idx = -1;
+        }
     });
 
     panel.appendChild(container);
@@ -599,6 +629,23 @@ function renderDonutBody(panel, products) {
     tooltip.className = 'chart-tooltip donut-tooltip';
     tooltip.style.display = 'none';
 
+    // Track which slice (if any) the user pinned via click/tap. Hover only
+    // moves the tooltip when nothing is pinned, so touch users can read a
+    // value without it vanishing the moment their finger lifts.
+    let pinnedIdx = -1;
+    const showFor = (idx, label, amount, pct) => {
+        tooltip.innerHTML =
+            `<b>${escapeHtml(label)}</b><br>` +
+            `${formatCurrencyFull(amount)}<br>` +
+            `${pct.toFixed(1)}%`;
+        tooltip.style.display = 'block';
+    };
+    const positionAt = (clientX, clientY) => {
+        const rect = wrap.getBoundingClientRect();
+        tooltip.style.left = (clientX - rect.left + 12) + 'px';
+        tooltip.style.top  = (clientY - rect.top  - 12) + 'px';
+    };
+
     let cumulative = 0;
     sorted.forEach((p, idx) => {
         const pct = (Number(p.amount) || 0) / total * 100;
@@ -618,22 +665,38 @@ function renderDonutBody(panel, products) {
         circle.style.cursor = 'pointer';
         const label = (p.product || '').toUpperCase();
         circle.addEventListener('mouseenter', () => {
-            tooltip.innerHTML =
-                `<b>${escapeHtml(label)}</b><br>` +
-                `${formatCurrencyFull(amount)}<br>` +
-                `${pct.toFixed(1)}%`;
-            tooltip.style.display = 'block';
+            if (pinnedIdx !== -1) return;
+            showFor(idx, label, amount, pct);
         });
         circle.addEventListener('mousemove', (e) => {
-            const rect = wrap.getBoundingClientRect();
-            tooltip.style.left = (e.clientX - rect.left + 12) + 'px';
-            tooltip.style.top  = (e.clientY - rect.top  - 12) + 'px';
+            if (pinnedIdx !== -1) return;
+            positionAt(e.clientX, e.clientY);
         });
         circle.addEventListener('mouseleave', () => {
+            if (pinnedIdx !== -1) return;
             tooltip.style.display = 'none';
+        });
+        circle.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (pinnedIdx === idx) {
+                pinnedIdx = -1;
+                tooltip.style.display = 'none';
+                return;
+            }
+            pinnedIdx = idx;
+            showFor(idx, label, amount, pct);
+            positionAt(e.clientX, e.clientY);
         });
         svg.appendChild(circle);
         cumulative += pct;
+    });
+
+    // Tapping outside the slices (on the wrap background or legend) unpins.
+    wrap.addEventListener('click', () => {
+        if (pinnedIdx !== -1) {
+            pinnedIdx = -1;
+            tooltip.style.display = 'none';
+        }
     });
 
     const center = document.createElementNS(svgNS, 'text');
