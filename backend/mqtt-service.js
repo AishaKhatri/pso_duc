@@ -18,6 +18,13 @@ const OFFLINE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 // Track last msg_type: 0 message timestamp for each nozzle
 const lastStatusMessage = new Map();
 
+// Debounce disconnect alerts: only commit a disconnect to the DB if the
+// device stays disconnected for this long. A reconnect that arrives inside
+// the window cancels the pending write, so brief MQTT flaps no longer flip
+// dispensers.conn_status to 0 or wipe nozzles.status.
+const DISCONNECT_DEBOUNCE_MS = 2 * 60 * 1000;
+const pendingDisconnects = new Map(); // addrD -> timeout handle
+
 // const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
 
 // Initialize MQTT client to connect to local EMQX via WebSocket
@@ -684,87 +691,104 @@ function getDeviceInfo(deviceAddr) {
 // Helper function to handle connection/disconnection alerts
 async function handleConnectionAlert(topic, alertData) {
     const clientId = alertData.clientid;
+    if (!clientId || !clientId.startsWith('D')) return;
 
     const isConnection = alertData.status === 'Connected';
+    const addrD = ensureDAddress(clientId);
+    const addrNaked = stripDAddress(clientId);
+    const eventAt = new Date(isConnection
+        ? alertData.connected_at
+        : alertData.disconnected_at);
+
+    if (isConnection) {
+        // If we were waiting out a debounce, this is a sub-minute flap —
+        // the disconnect was never committed, so skip the connect work too
+        // and let live state stay as it was.
+        const pending = pendingDisconnects.get(addrD);
+        if (pending) {
+            clearTimeout(pending);
+            pendingDisconnects.delete(addrD);
+            logWithTimestamp(chalk.gray, `Dispenser ${clientId} reconnected within ${DISCONNECT_DEBOUNCE_MS / 1000}s — ignoring blip`);
+            return;
+        }
+        await applyConnectionUpdate(addrD, addrNaked, clientId, true, eventAt);
+        return;
+    }
+
+    // Disconnect: defer the write. If a timer is already running for this
+    // address, leave it alone so the 1-minute clock measures from the first
+    // drop (not the latest duplicate alert).
+    if (pendingDisconnects.has(addrD)) return;
+
+    const handle = setTimeout(() => {
+        pendingDisconnects.delete(addrD);
+        applyConnectionUpdate(addrD, addrNaked, clientId, false, eventAt)
+            .catch(err => errorWithTimestamp(`Deferred disconnect write failed for ${addrD}: ${err.message}`));
+    }, DISCONNECT_DEBOUNCE_MS);
+    pendingDisconnects.set(addrD, handle);
+}
+
+async function applyConnectionUpdate(addrD, addrNaked, clientId, isConnection, eventAt) {
     const conn_status = isConnection ? 1 : 0;
     const action = isConnection ? 'connected' : 'disconnected';
     const color = isConnection ? chalk.green : chalk.red;
-    const notifType = isConnection ? 'success' : 'error';
 
-    // Check if this is a dispenser client (starts with 'D')
-    if (clientId && (clientId.startsWith('D'))) {
-        let deviceType = 'dispenser';
-        const addrD = ensureDAddress(clientId);
-        const addrNaked = stripDAddress(clientId);
-        let connectedAt;
+    const [dispensers] = await pool.query(
+        'SELECT dispenser_id, customer_code FROM dispensers WHERE address IN (?, ?)',
+        [addrD, addrNaked]
+    );
+    if (dispensers.length === 0) {
+        logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${addrD}`);
+        return;
+    }
 
-        // Update connected_at timestamp
-        if (isConnection) {
-            connectedAt = new Date(alertData.connected_at);
-        } else {
-            connectedAt = new Date(alertData.disconnected_at);
-        }
+    const { dispenser_id, customer_code } = dispensers[0];
+    const log = `Dispenser ${clientId} ${action}.`;
+    logWithTimestamp(color, log);
+    logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(eventAt)} `);
 
-        // For dispensers, update database as before
-        if (deviceType === 'dispenser') {
-            const [dispensers] = await pool.query(
-                'SELECT dispenser_id, customer_code FROM dispensers WHERE address IN (?, ?)',
-                [addrD, addrNaked]
-            );
+    await pool.query(
+        'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
+        [dispenser_id, addrD, conn_status, eventAt]
+    );
 
-            if (dispensers.length > 0) {
-                const { dispenser_id, customer_code } = dispensers[0];
-                const log = `Dispenser ${clientId} ${action}.`;
-                logWithTimestamp(color, log);
-                logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(connectedAt)} `);
+    await pool.query(
+        'UPDATE nozzles SET status = 0 WHERE dispenser_id = ?',
+        [dispenser_id]
+    );
 
-                await pool.query(
-                    'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
-                    [dispenser_id, addrD, conn_status, connectedAt]
-                );
+    await pool.query(
+        'UPDATE dispensers SET conn_status = ? WHERE address IN (?, ?)',
+        [conn_status, addrD, addrNaked]
+    );
 
-                await pool.query(
-                    'UPDATE nozzles SET status = 0 WHERE dispenser_id = ?',
-                    [dispenser_id]
-                );
+    await pool.query(
+        'UPDATE dispensers SET connected_at = ? WHERE address IN (?, ?)',
+        [eventAt, addrD, addrNaked]
+    );
 
-                await pool.query(
-                    'UPDATE dispensers SET conn_status = ? WHERE address IN (?, ?)',
-                    [conn_status, addrD, addrNaked]
-                );
-
-                await pool.query(
-                    'UPDATE dispensers SET connected_at = ? WHERE address IN (?, ?)',
-                    [connectedAt, addrD, addrNaked]
-                );
-
-                // Per-device connect/disconnect events no longer broadcast to
-                // the dashboard alerts panel — only the 12h long-outage scanner
-                // raises alerts (see backend-services.startLongOutageService).
-                // On reconnect, close any open long-outage row for this address
-                // and notify the UI so it can drop the alert.
-                if (isConnection) {
-                    const cleared = await clearLongOutageForAddress(addrD);
-                    if (cleared.length > 0 && notificationService) {
-                        for (const row of cleared) {
-                            await notificationService.sendSystemNotification(
-                                'Long Outage Cleared',
-                                `Device ${addrD} back online`,
-                                'success',
-                                {
-                                    event: 'long_outage_cleared',
-                                    id: row.id,
-                                    address: addrD,
-                                    dispenser_id,
-                                    customer_code,
-                                    offline_since: row.offline_since
-                                }
-                            );
-                        }
+    // Per-device connect/disconnect events no longer broadcast to the
+    // dashboard alerts panel — only the 12h long-outage scanner raises
+    // alerts (see backend-services.startLongOutageService). On reconnect,
+    // close any open long-outage row for this address and notify the UI so
+    // it can drop the alert.
+    if (isConnection) {
+        const cleared = await clearLongOutageForAddress(addrD);
+        if (cleared.length > 0 && notificationService) {
+            for (const row of cleared) {
+                await notificationService.sendSystemNotification(
+                    'Long Outage Cleared',
+                    `Device ${addrD} back online`,
+                    'success',
+                    {
+                        event: 'long_outage_cleared',
+                        id: row.id,
+                        address: addrD,
+                        dispenser_id,
+                        customer_code,
+                        offline_since: row.offline_since
                     }
-                }
-            } else {
-                logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${addrD}`);
+                );
             }
         }
     }
