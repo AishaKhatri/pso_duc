@@ -229,6 +229,8 @@ async function loadDispensersFromDB() {
         number_of_nozzles: dbDispenser.number_of_nozzles,
         dispenser_id: dbDispenser.dispenser_id,
         ir_lock_status: dbDispenser.ir_lock_status,
+        conn_status: dbDispenser.conn_status,
+        connected_at: dbDispenser.connected_at,
         created_at: dbDispenser.created_at,
         nozzles: nozzles.map(n => ({
           nozzleId: n.nozzle_id,
@@ -253,6 +255,29 @@ async function loadDispensersFromDB() {
   }
 }
 
+function exportConfigDispensersToCsv() {
+    const rows = getFilteredConfigDispensers();
+    const stationByCode = new Map((stationsList || []).map(s => [s.customer_code, s]));
+    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const cols = [
+        { header: 'Customer Code',     get: d => d.customer_code },
+        { header: 'Station ID',        get: d => stationByCode.get(d.customer_code)?.station_id || '' },
+        { header: 'City',              get: d => titleCase(stationByCode.get(d.customer_code)?.city || '') },
+        { header: 'District',          get: d => stationByCode.get(d.customer_code)?.district || '' },
+        { header: 'Division',          get: d => stationByCode.get(d.customer_code)?.division || '' },
+        { header: 'Dispenser ID',      get: d => d.dispenser_id },
+        { header: 'Address',           get: d => d.address },
+        { header: 'Nozzles',           get: d => (d.nozzles || []).map(n => n.nozzleId.split('-')[1]).join('; ') },
+        { header: 'Products',          get: d => (d.nozzles || []).map(n => (n.product || '').toUpperCase()).join('; ') },
+        { header: 'Dispenser Brand',   get: d => d.DispenserBrand || '' },
+        { header: 'Status',            get: d => Number(d.conn_status) === 1 ? 'Connected' : 'Disconnected' },
+        { header: 'Time',              get: d => d.connected_at ? new Date(d.connected_at).toLocaleString() : '' },
+        { header: 'Created At',        get: d => d.created_at ? new Date(d.created_at).toLocaleString() : '' }
+    ];
+    const dateTag = new Date().toISOString().split('T')[0];
+    downloadCsv(`dispensers-${dateTag}.csv`, rows, cols);
+}
+
 async function renderConfigDispensers() {
     const params = new URLSearchParams(window.location.search);
     const customerCodeFilter = (params.get('customer_code') || '').trim();
@@ -268,7 +293,26 @@ async function renderConfigDispensers() {
     if (buttonRow) {
         buttonRow.style.justifyContent = 'space-between';
         buttonRow.style.flexWrap = 'wrap';
-        buttonRow.insertBefore(buildConfigSearchControl(() => refreshDispenserTable()), addButton);
+        
+        const searchesGroup = document.createElement('div');
+        searchesGroup.style.display = 'flex';
+        searchesGroup.style.flexWrap = 'wrap';
+        searchesGroup.style.gap = '10px';
+        searchesGroup.style.alignItems = 'center';
+        searchesGroup.style.flex = '1 1 auto';
+        searchesGroup.appendChild(buildConfigSearchControl());
+
+        buttonRow.insertBefore(searchesGroup, addButton);
+        
+        // Export CSV — super-admin only.
+        const role = StationAuth.getUserInfo()?.role;
+        if (role === 'super_admin') {
+            const exportBtn = createActionButton();
+            exportBtn.textContent = 'Export to CSV';
+            exportBtn.style.marginRight = '8px';
+            exportBtn.addEventListener('click', () => exportConfigDispensersToCsv());
+            buttonRow.insertBefore(exportBtn, addButton);
+        }
     }
 
     let productOptions = [];
@@ -289,7 +333,7 @@ async function renderConfigDispensers() {
     const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
     const nozzleOptions = ['A1', 'A2', 'B1', 'B2'];
 
-    const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Created At', 'Action'];
+    const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Status', 'Created At', 'Action'];
 
     const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
@@ -543,6 +587,8 @@ async function renderConfigDispensers() {
                 ? new Date(dispenser.created_at).toLocaleString()
                 : null;
 
+            const connStatus = Number(dispenser.conn_status) === 1 ? 'Connected' : 'Disconnected';
+
             const tr = createTableRow([
                 dispenser.customer_code,
                 station?.city ? titleCase(station.city) : null,
@@ -551,6 +597,7 @@ async function renderConfigDispensers() {
                 nozzleList,
                 productList,
                 dispenser.DispenserBrand,
+                `${connStatus} - ${dispenser.connected_at ? new Date(dispenser.connected_at).toLocaleString() : 'N/A'}`,
                 createdAt
             ]);
 

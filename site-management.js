@@ -100,6 +100,24 @@ function buildSiteSearchControl() {
     return dd.wrap;
 }
 
+function exportSiteStationsToCsv() {
+    const rows = getFilteredSiteStations();
+    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    const cols = [
+        { header: 'ID',              key: 'id' },
+        { header: 'Customer Code',   key: 'customer_code' },
+        { header: 'Station ID',      key: 'station_id' },
+        { header: 'Username',        key: 'username' },
+        { header: 'City',            get: s => titleCase(s.city) },
+        { header: 'District',        key: 'district' },
+        { header: 'Division',        key: 'division' },
+        { header: 'DUCs Installed',  key: 'duc_addresses' },
+        { header: 'Created At',      get: s => s.created_at ? new Date(s.created_at).toLocaleString() : '' }
+    ];
+    const dateTag = new Date().toISOString().split('T')[0];
+    downloadCsv(`stations-${dateTag}.csv`, rows, cols);
+}
+
 async function renderSiteManagement() {
     const { content, addButton } = configPage('Site Management', '← Back', 'index.html', 'Add Site');
 
@@ -120,6 +138,15 @@ async function renderSiteManagement() {
         searchesGroup.appendChild(buildSiteDivisionSearchControl());
 
         buttonRow.insertBefore(searchesGroup, addButton);
+
+        // Export CSV — super-admin only.
+        if (userInfo?.role === 'super_admin') {
+            const exportBtn = createActionButton();
+            exportBtn.textContent = 'Export to CSV';
+            exportBtn.style.marginRight = '8px';
+            exportBtn.addEventListener('click', () => exportSiteStationsToCsv());
+            buttonRow.insertBefore(exportBtn, addButton);
+        }
     }
 
     const { tableContainer, tbody } = createTable(columns);

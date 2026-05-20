@@ -20,8 +20,13 @@ async function renderActivityLogs() {
     const fetchButton = createActionButton('#004D64', '#00324C');
     fetchButton.textContent = 'Fetch';
 
+    const exportButton = createActionButton();
+    exportButton.textContent = 'Export to CSV';
+    exportButton.disabled = true;
+    // Push Export to the far right of the filter bar.
+    exportButton.style.marginLeft = 'auto';
+
     const statusLine = document.createElement('div');
-    statusLine.style.marginLeft = 'auto';
     statusLine.style.fontSize = '13px';
     statusLine.style.color = 'var(--text-secondary)';
 
@@ -31,7 +36,10 @@ async function renderActivityLogs() {
     filterBar.appendChild(createLabeledField({ label: 'To',   control: toInput,   gap: '4px' }));
     filterBar.appendChild(fetchButton);
     filterBar.appendChild(statusLine);
+    filterBar.appendChild(exportButton);
     content.appendChild(filterBar);
+
+    let currentRows = [];
 
     const { tableContainer } = createTable(ACTIVITY_LOG_COLUMNS);
     content.appendChild(tableContainer);
@@ -61,8 +69,10 @@ async function renderActivityLogs() {
                 throw new Error(err.error || 'Failed to fetch activity log');
             }
             const rows = await res.json();
+            currentRows = rows;
             renderActivityRows(rows, usersById);
             statusLine.textContent = `${rows.length} entr${rows.length === 1 ? 'y' : 'ies'}`;
+            exportButton.disabled = rows.length === 0;
         } catch (e) {
             console.error(e);
             statusLine.textContent = 'Error: ' + e.message;
@@ -72,6 +82,27 @@ async function renderActivityLogs() {
     }
 
     fetchButton.addEventListener('click', doFetch);
+    exportButton.addEventListener('click', () => {
+        if (!currentRows.length) return;
+        const detailsStr = d => {
+            if (d == null) return '';
+            if (typeof d === 'string') return d;
+            try { return JSON.stringify(d); } catch { return String(d); }
+        };
+        const cols = [
+            { header: 'Time',    get: r => new Date(r.created_at).toLocaleString() },
+            { header: 'User',    key: 'username' },
+            { header: 'Role',   get: r => usersById[r.user_id]?.role || '' },
+            { header: 'IP',      key: 'ip_address' },
+            { header: 'Action',  key: 'action' },
+            { header: 'Entity',  get: r => [r.entity_type, r.entity_id].filter(Boolean).join(':') },
+            { header: 'Details', get: r => detailsStr(r.details) }
+        ];
+        const from = fromInput.value;
+        const to = toInput.value;
+        const range = from === to ? from : `${from}_to_${to}`;
+        downloadCsv(`activity-log-${range}.csv`, currentRows, cols);
+    });
     doFetch();
 }
 

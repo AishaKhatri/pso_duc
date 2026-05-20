@@ -1192,6 +1192,32 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
     return { content, addButton };
 }
 
+// Build a CSV string and trigger a browser download. `columns` is an array of
+// { header, get(row) | key }, `rows` is the data. Used by the per-page CSV
+// export buttons (config-dispensers, site-management).
+function downloadCsv(filename, rows, columns) {
+    const esc = v => {
+        if (v === null || v === undefined) return '';
+        const s = String(v);
+        return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const header = columns.map(c => esc(c.header)).join(',');
+    const body = rows.map(r =>
+        columns.map(c => esc(typeof c.get === 'function' ? c.get(r) : r[c.key])).join(',')
+    ).join('\n');
+    // BOM so Excel reads UTF-8 correctly.
+    const blob = new Blob(['﻿' + header + '\n' + body + (body ? '\n' : '')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+}
+
 function createIconFromImage(imagePath, titleText, height, width = null) {
     const icon = document.createElement('img');
     icon.src = imagePath;
