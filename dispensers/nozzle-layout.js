@@ -193,17 +193,19 @@ function createTotalsFooter(data) {
     footer.style.color = 'var(--text-primary)';
     footer.style.fontSize = '12px';
 
+    const formatWithCommas = (value) => safeNumber(value).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const totalQuantityDiv = document.createElement('div');
     totalQuantityDiv.style.marginBottom = '0px';
     totalQuantityDiv.innerHTML = `
         <div>Total Quantity:</div>
-        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">${safeNumber(data.totalQuantity).toFixed(2)} Ltr</div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">${formatWithCommas(data.totalQuantity)} Ltr</div>
     `;
 
     const salesTodayDiv = document.createElement('div');
     salesTodayDiv.innerHTML = `
         <div>Sales Today:</div>
-        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 22px;">${safeNumber(data.totalSalesToday).toFixed(2)}</span></div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 22px;">${formatWithCommas(data.totalSalesToday)}</span></div>
     `;
     
     footer.appendChild(totalQuantityDiv);

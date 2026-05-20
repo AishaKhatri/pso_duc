@@ -154,10 +154,10 @@ async function showTransactionLogPopup(nozzle_id) {
         // Set up filter event listeners
         const startDateInput = document.getElementById('start-date');
         const endDateInput = document.getElementById('end-date');
+        const applyFilterBtn = document.getElementById('apply-filter');
         const clearFilterBtn = document.getElementById('clear-filter');
-        
-        if (startDateInput) startDateInput.addEventListener('change', updateDisplay);
-        if (endDateInput) endDateInput.addEventListener('change', updateDisplay);
+
+        if (applyFilterBtn) applyFilterBtn.addEventListener('click', updateDisplay);
         if (clearFilterBtn) {
             clearFilterBtn.addEventListener('click', () => {
                 if (startDateInput) startDateInput.value = '';
@@ -272,16 +272,28 @@ function createDateFilterSection() {
     endDateContainer.appendChild(endLabel);
     endDateContainer.appendChild(endDateInput);
 
-    // Clear Filter Button
+    // Apply / Clear Filter Buttons
+    const buttonRow = document.createElement('div');
+    buttonRow.style.display = 'flex';
+    buttonRow.style.gap = '8px';
+    buttonRow.style.marginTop = '5px';
+
+    const applyButton = createActionButton();
+    applyButton.textContent = 'Apply';
+    applyButton.id = 'apply-filter';
+    applyButton.style.flex = '1';
+
     const clearButton = createActionButton('#6c757d', '#5a6268');
     clearButton.textContent = 'Clear Filter';
     clearButton.id = 'clear-filter';
-    clearButton.style.width = '100%';
-    clearButton.style.marginTop = '5px';
+    clearButton.style.flex = '1';
+
+    buttonRow.appendChild(applyButton);
+    buttonRow.appendChild(clearButton);
 
     filterContainer.appendChild(startDateContainer);
     filterContainer.appendChild(endDateContainer);
-    filterContainer.appendChild(clearButton);
+    filterContainer.appendChild(buttonRow);
 
     section.appendChild(filterContainer);
     return section;
