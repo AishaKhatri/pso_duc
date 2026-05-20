@@ -112,9 +112,9 @@ function refreshStatusChipCounts() {
 
 function formatCurrency(value) {
     const num = Number(value) || 0;
-    if (num >= 1_000_000) return 'Rs ' + (num / 1_000_000).toFixed(2) + 'M';
-    if (num >= 1_000) return 'Rs ' + (num / 1_000).toFixed(1) + 'k';
-    return 'Rs ' + num.toLocaleString(undefined, { maximumFractionDigits: 0 });
+    if (num >= 1_000_000) return 'Rs. ' + (num / 1_000_000).toFixed(2) + 'M';
+    if (num >= 1_000) return 'Rs. ' + (num / 1_000).toFixed(1) + 'k';
+    return 'Rs. ' + num.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
 function formatCurrencyFull(value) {
     return 'Rs ' + (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
@@ -155,8 +155,9 @@ function populateKpiStrip(strip, stations, today) {
 
     const kpis = [
         { label: 'Sites with DUC', value: formatCount(counts.with_duc),  sub: `of ${formatCount(counts.total)} total`,      cls: 'accent' },
-        { label: 'DUCs Online',    value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
-        { label: 'DUCs Offline',   value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '' },
+        { label: 'DUCs Connected',    value: formatCount(onlineDucs),       sub: `${onlinePct}% of ${formatCount(totalDucs)}`, cls: 'online' },
+        { label: 'DUCs Disconnected',   value: formatCount(offlineDucs),      sub: '',                                            cls: offlineDucs > 0 ? 'offline' : '',
+          onClick: offlineDucs > 0 ? showOfflineDucsPopup : null },
         { label: 'Total DUCs',     value: formatCount(totalDucs),        sub: `across ${formatCount(counts.with_duc)} sites`, cls: 'accent' },
         { label: 'Tx Today',       value: formatCount(txCount),          sub: '',                                            cls: 'accent' },
         { label: 'Sales Today',    value: formatCurrency(totalAmount),   sub: '',                                            cls: 'online' },
@@ -172,8 +173,136 @@ function populateKpiStrip(strip, stations, today) {
             <div class="kpi-value">${k.value}</div>
             ${k.sub ? `<div class="kpi-sub">${k.sub}</div>` : ''}
         `;
+        if (k.onClick) {
+            cell.style.cursor = 'pointer';
+            cell.title = 'Click to view list';
+            cell.addEventListener('click', k.onClick);
+        }
         strip.appendChild(cell);
     });
+}
+
+async function showOfflineDucsPopup() {
+    let dispensers = [];
+    try {
+        const resp = await fetch(`${API_BASE_URL}/dispensers`);
+        if (resp.ok) dispensers = await resp.json();
+        else console.warn(`Failed to load dispensers: HTTP ${resp.status}`);
+    } catch (err) {
+        console.warn('Failed to load dispensers:', err.message);
+    }
+
+    // Use the scoped station set so the division filter narrows the list too.
+    // We also drop any dispenser whose customer_code isn't in scope.
+    const byCode = new Map(getRegionScopedStations().map(s => [s.customer_code, s]));
+
+    const rows = dispensers
+        .filter(d => Number(d.conn_status) === 0 && byCode.has(d.customer_code))
+        .map(d => {
+            const s = byCode.get(d.customer_code) || {};
+            return {
+                address: ensureDAddress(d.address),
+                customer_code: d.customer_code,
+                station_name: s.station_name || s.station_id || '',
+                city: s.city || '',
+                division: s.division || '',
+                connected_at: d.connected_at
+            };
+        })
+        .sort((a, b) =>
+            String(a.division).localeCompare(String(b.division)) ||
+            String(a.station_name).localeCompare(String(b.station_name)) ||
+            String(a.address).localeCompare(String(b.address))
+        );
+
+    buildOfflineDucsPopup(rows);
+}
+
+function buildOfflineDucsPopup(rows) {
+    const overlay = createModalOverlay();
+    const popup = document.createElement('div');
+    popup.className = 'popup-modal';
+    popup.style.width = '760px';
+    popup.style.maxWidth = '92vw';
+    popup.style.maxHeight = '80vh';
+    popup.style.display = 'flex';
+    popup.style.flexDirection = 'column';
+
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'center';
+    header.style.marginBottom = '12px';
+
+    const title = document.createElement('h3');
+    title.style.margin = '0';
+    title.textContent = `Offline DUCs (${rows.length})`;
+
+    header.appendChild(title);
+    header.appendChild(createCloseButton(overlay));
+    popup.appendChild(header);
+
+    const tableWrap = document.createElement('div');
+    tableWrap.style.overflow = 'auto';
+    tableWrap.style.flex = '1 1 auto';
+
+    const table = document.createElement('table');
+    table.style.width = '100%';
+    table.style.borderCollapse = 'collapse';
+    table.style.fontSize = '13px';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    ['Address', 'Station', 'Customer Code', 'City', 'Division', 'Last Event'].forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        th.style.textAlign = 'left';
+        th.style.padding = '8px';
+        th.style.background = 'var(--bg-table-head)';
+        th.style.position = 'sticky';
+        th.style.top = '0';
+        headRow.appendChild(th);
+    });
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    const tbody = document.createElement('tbody');
+    if (rows.length === 0) {
+        const tr = document.createElement('tr');
+        const td = document.createElement('td');
+        td.colSpan = 6;
+        td.textContent = 'No offline DUCs in this scope.';
+        td.style.padding = '16px';
+        td.style.textAlign = 'center';
+        td.style.color = 'var(--text-secondary)';
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    } else {
+        rows.forEach(r => {
+            const tr = document.createElement('tr');
+            tr.style.borderBottom = '1px solid var(--border-soft)';
+            const cells = [
+                r.address,
+                r.station_name || '-',
+                r.customer_code,
+                r.city || '-',
+                r.division || '-',
+                r.connected_at ? new Date(r.connected_at).toLocaleString() : '-'
+            ];
+            cells.forEach(val => {
+                const td = document.createElement('td');
+                td.style.padding = '8px';
+                td.textContent = val;
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+    }
+    table.appendChild(tbody);
+    tableWrap.appendChild(table);
+    popup.appendChild(tableWrap);
+
+    dragPopup(overlay, popup);
 }
 
 // Pick axis tick labels so we end up with ~5 evenly-spaced markers
@@ -728,14 +857,10 @@ function renderDonutBody(panel, products) {
         row.className = 'donut-legend-row';
         row.innerHTML = `
             <span class="swatch" style="background:${productColor(p.product, idx)}"></span>
-            <div class="legend-text">
-                <div class="legend-top">
-                    <span class="name">${(p.product || '').toUpperCase()}</span>
-                    <span class="amt">${formatCurrency(amount)}</span>
-                </div>
-                <div class="legend-bottom">
-                    <span class="vol">${formatVolume(volume)}</span>
-                </div>
+            <span class="name">${(p.product || '').toUpperCase()}</span>
+            <div class="legend-value">
+                <span class="amt">${formatCurrency(amount)}</span>
+                <span class="vol">${formatVolume(volume)}</span>
             </div>
         `;
         legend.appendChild(row);
@@ -823,10 +948,20 @@ function renderAlertsList() {
     for (const a of dashboardState.alerts) {
         const row = document.createElement('div');
         row.className = `alert-row ${a.type || 'info'}`;
+        const stationId = stationIdForCustomerCode(a.customerCode);
+        const metaParts = [];
+        if (a.customerCode) metaParts.push(escapeHtml(a.customerCode));
+        if (stationId) metaParts.push(escapeHtml(stationId));
+        const metaHtml = metaParts.length
+            ? `<div class="alert-row-meta">${metaParts.join('<span class="alert-meta-sep">·</span>')}</div>`
+            : '';
         row.innerHTML = `
-            <span class="alert-device">${escapeHtml(a.device)}</span>
-            <span class="alert-status">${escapeHtml(a.status)}</span>
-            <span class="alert-when">${escapeHtml(formatAlertTime(a.ts))}</span>
+            <div class="alert-row-main">
+                <span class="alert-device">${escapeHtml(a.device)}</span>
+                <span class="alert-status">${escapeHtml(a.status)}</span>
+                <span class="alert-when">${escapeHtml(formatAlertTime(a.ts))}</span>
+            </div>
+            ${metaHtml}
         `;
         frag.appendChild(row);
     }
@@ -850,6 +985,7 @@ function alertFromLongOutageRow(r) {
         device: ensureDAddress(r.address),
         status: formatOfflineSince(r.offline_since),
         address: r.address,
+        customerCode: r.customer_code || '',
         outageId: r.id
     };
 }
@@ -864,10 +1000,20 @@ function alertFromNotification(payload) {
             device: ensureDAddress(data.address || ''),
             status: formatOfflineSince(data.offline_since),
             address: data.address,
+            customerCode: data.customer_code || '',
             outageId: data.id
         };
     }
     return null; // ignore everything else
+}
+
+// Human-readable station name, looked up by customer_code. The CSV-driven
+// station sheet exposes it as `station_name`; the DB `stations` table uses
+// `station_id`. Check both so this works regardless of source.
+function stationIdForCustomerCode(code) {
+    if (!code) return '';
+    const s = dashboardState.stations.find(x => x.customer_code === code);
+    return s ? (s.station_id || s.station_name || '') : '';
 }
 
 function addAlert(payload) {

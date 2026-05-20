@@ -847,11 +847,11 @@ td {
 .dashboard-page .side-panel { flex: 0 0 auto; }
 .dashboard-page .alerts-panel {
     flex: 1 1 0;
-    /* Always show enough of the panel that 'Hide' truly shrinks it. With
-       a real minimum here, collapsing is always a strict size decrease;
+    /* Floor scales with viewport height so the panel always shows ~3+ alerts
+       at any size. Hard floor (180px) keeps 'Hide' a strict size decrease;
        without it, a saturated layout would squeeze the panel to 0 and
        collapse would *grow* it to its header height (the bug). */
-    min-height: 120px;
+    min-height: clamp(180px, 28vh, 380px);
     max-height: none;
     /* Reset the base .alerts-panel rule's height: 100% — with flex-basis:auto
        (set by the collapsed rule), height:100% would make the panel try to
@@ -967,14 +967,31 @@ td {
 }
 .alert-row {
     display: flex;
-    align-items: center;
-    gap: 8px;
+    flex-direction: column;
+    gap: 2px;
     border-left: 3px solid var(--status-no-duc);
     background: var(--bg-surface-2);
     border-radius: 6px;
     padding: 6px 10px;
     font-size: clamp(11px, 0.95vw, 13px);
     line-height: 1.3;
+}
+.alert-row .alert-row-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.alert-row .alert-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    padding-left: 0;
+}
+.alert-row .alert-meta-sep {
+    color: var(--text-secondary);
+    opacity: 0.6;
 }
 .alert-row.success { border-left-color: var(--status-online); }
 .alert-row.error   { border-left-color: var(--status-offline); }
@@ -1053,12 +1070,17 @@ td {
 .network-bar-row.visited  .nb-fill { background: var(--status-visited); }
 .network-bar-row.no-duc   .nb-fill { background: var(--status-no-duc); }
 
-/* Donut chart */
+/* Donut chart — container query lets the layout react to the panel's own
+   width, not the viewport, so the legend stays beside the donut when the
+   side column has room and stacks only when it would otherwise clip. */
+.donut-panel { container-type: inline-size; }
 .donut-wrapper {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     position: relative;
+    justify-self: center;
 }
 .donut-tooltip {
     position: absolute;
@@ -1069,9 +1091,16 @@ td {
 }
 .donut-tooltip::after { display: none; }
 .donut-svg {
-    width: 235px;
-    height: 235px;
+    width: min(220px, 100%);
+    height: auto;
+    aspect-ratio: 1;
+    margin: 0 auto;
     flex-shrink: 0;
+}
+@container (min-width: 360px) {
+    .donut-wrapper { flex-direction: row; align-items: center; gap: 18px; }
+    .donut-svg { width: 200px; margin: 0; flex-shrink: 0; }
+    .donut-legend { width: auto; flex: 1; }
 }
 .donut-center {
     text-anchor: middle;
@@ -1089,53 +1118,41 @@ td {
     letter-spacing: 0.5px;
 }
 .donut-legend {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    width: 160px;
-    flex-shrink: 0;
+    display: grid;
+    grid-template-columns: auto auto auto;
+    column-gap: 12px;
+    row-gap: 12px;
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    font-size: clamp(13px, 1.2vw, 16px);
 }
-.donut-legend-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    font-size: clamp(13px, 1.3vw, 18px);
-}
+/* Row wrapper participates transparently in the parent grid so swatch / name
+   / value columns align across all products, regardless of name lengths. */
+.donut-legend-row { display: contents; }
 .donut-legend-row .swatch {
     width: 12px;
     height: 12px;
     border-radius: 3px;
-    flex-shrink: 0;
-    margin-top: 4px;
-}
-.donut-legend-row .legend-text {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-.donut-legend-row .legend-top {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
-.donut-legend-row .legend-bottom {
-    display: flex;
-    justify-content: space-between;
-    color: var(--text-secondary);
-    font-size: 0.78em;
-    font-weight: 500;
-    line-height: 1.2;
+    justify-self: center;
+    /* Nudge swatch down so its center aligns with the name/amount text line
+       rather than sitting at the very top of the row. */
+    margin-top: 5px;
 }
 .donut-legend-row .name {
     color: var(--text-primary);
     font-weight: 600;
     letter-spacing: 0.3px;
+    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    white-space: nowrap;
+}
+.donut-legend-row .legend-value {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
+    justify-self: end;
 }
 .donut-legend-row .amt {
     color: var(--text-secondary);
@@ -1144,8 +1161,13 @@ td {
     white-space: nowrap;
 }
 .donut-legend-row .vol {
-    margin-left: auto;
+    color: var(--text-secondary);
     font-variant-numeric: tabular-nums;
+    font-size: 0.85em;
+    font-weight: 500;
+    opacity: 0.85;
+    white-space: nowrap;
+    margin-top: 1px;
 }
 .donut-empty {
     color: var(--text-secondary);
@@ -1625,16 +1647,11 @@ td {
     .filter-search-wrap { width: 100%; }
 }
 
-/* Donut: stack the chart and legend vertically the moment the side column
-   narrows (matches the 1400px main-grid transition) so the donut isn't
-   squashed beside the legend. */
-@media (max-width: 1400px) {
-    .donut-wrapper { flex-direction: column; align-items: stretch; gap: 8px; }
-    .donut-svg { width: 200px; height: 200px; margin: 0 auto; }
-    .donut-legend { width: 100%; }
-}
+/* Donut chart and legend always stack vertically — the side rail is narrow
+   even on wide viewports (~25% of width), so horizontal layout would clip
+   the legend. SVG uses min() + aspect-ratio so it shrinks with the column. */
 @media (max-width: 600px) {
-    .donut-svg { width: 170px; height: 170px; }
+    .donut-svg { width: min(180px, 100%); }
     .donut-legend-row { font-size: 14px; }
 }
 
@@ -1645,7 +1662,8 @@ td {
     .network-bar-row .nb-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }
 
-/* Alerts panel uses a fixed min-height that wastes space on small screens. */
+/* Alerts panel — base (non-dashboard) usage on narrow widths. The dashboard
+   instance has its own viewport-scaled min-height rule with higher specificity. */
 @media (max-width: 1100px) {
     .alerts-panel { min-height: 240px; max-height: 360px; }
 }
@@ -1664,32 +1682,31 @@ td {
 
 /* ===== Dashboard vertical responsiveness =====
    Adapt panel heights to short viewports (laptop screens, landscape phones,
-   split windows) so the dashboard fits without long internal scrolls. */
+   split windows) so the dashboard fits without long internal scrolls.
+   Alerts uses clamp() on the .dashboard-page rule above — no override needed
+   here. Donut SVG scales via min(220px, 100%) + aspect-ratio. */
 @media (max-height: 900px) {
     #station-map { height: 500px; }
-    .alerts-panel { min-height: 320px; max-height: 540px; }
     .chart-card-mini .chart-container { height: 140px; }
-    .donut-svg { width: 210px; height: 210px; }
+    .dashboard-page .donut-svg { width: min(200px, 100%); }
 }
 @media (max-height: 760px) {
     #station-map { height: 420px; }
-    .alerts-panel { min-height: 260px; max-height: 440px; }
     .chart-card-mini .chart-container { height: 120px; }
     .kpi-strip { padding: 6px 10px; }
     .kpi-value { font-size: 28px; }
     .kpi-label { font-size: 12px; }
     .kpi-sub { font-size: 13px; }
-    .donut-svg { width: 190px; height: 190px; }
+    .dashboard-page .donut-svg { width: min(180px, 100%); }
     .donut-legend-row { font-size: 14px; }
 }
 @media (max-height: 620px) {
     #station-map { height: 320px; }
-    .alerts-panel { min-height: 200px; max-height: 320px; }
     .chart-card-mini .chart-container { height: 96px; }
     .kpi-value { font-size: 22px; }
     .kpi-label { font-size: 10px; }
     .kpi-sub { font-size: 11px; }
-    .donut-svg { width: 160px; height: 160px; }
+    .dashboard-page .donut-svg { width: min(160px, 100%); }
     .map-legend { font-size: 13px; padding: 6px 4px 2px; }
     .legend-dot { width: 12px; height: 12px; }
 }
