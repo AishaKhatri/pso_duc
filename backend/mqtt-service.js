@@ -22,7 +22,7 @@ const lastStatusMessage = new Map();
 // device stays disconnected for this long. A reconnect that arrives inside
 // the window cancels the pending write, so brief MQTT flaps no longer flip
 // dispensers.conn_status to 0 or wipe nozzles.status.
-const DISCONNECT_DEBOUNCE_MS = 2 * 60 * 1000;
+const DISCONNECT_DEBOUNCE_MS = 30 * 60 * 1000;
 const pendingDisconnects = new Map(); // addrD -> timeout handle
 
 // const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
@@ -32,17 +32,23 @@ const pendingDisconnects = new Map(); // addrD -> timeout handle
 // Initialize MQTT client to connect to HiveMQ public broker
 // const mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
 
+// Broker config comes from .env (MQTT_BROKER_URL / MQTT_USERNAME /
+// MQTT_PASSWORD / MQTT_CLIENT_ID). Transport stays plaintext TCP by design.
 // const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
 // const mqttClient = mqtt.connect('tcp://localhost:1883', {
-const mqttClient = mqtt.connect('tcp://72.255.62.111:1883', {
-    clientId: `server_local`,
+if (!process.env.MQTT_BROKER_URL || !process.env.MQTT_USERNAME || !process.env.MQTT_PASSWORD) {
+    errorWithTimestamp('MQTT_BROKER_URL / MQTT_USERNAME / MQTT_PASSWORD missing from .env');
+    throw new Error('Missing MQTT broker configuration');
+}
+const mqttClient = mqtt.connect(process.env.MQTT_BROKER_URL, {
+    clientId: process.env.MQTT_CLIENT_ID || 'server_local',
     // clientId: `server`,
     keepalive: 0.5 * 60,  // 30 seconds
     clean: true,
     reconnectPeriod: 5000,
     connectTimeout: 30 * 1000,
-    username: 'duc',
-    password: 'SRT123',
+    username: process.env.MQTT_USERNAME,
+    password: process.env.MQTT_PASSWORD,
 //     rejectUnauthorized: true, // Validate server certificate
 //     ca: fs.readFileSync('../assets/ca_cert/CAroot.crt'),
 //     cert: fs.readFileSync('../assets/ca_cert/client.crt'),
@@ -691,8 +697,6 @@ function getDeviceInfo(deviceAddr) {
 // Helper function to handle connection/disconnection alerts
 async function handleConnectionAlert(topic, alertData) {
     const clientId = alertData.clientid;
-    if (!clientId || !clientId.startsWith('D')) return;
-
     const isConnection = alertData.status === 'Connected';
     const addrD = ensureDAddress(clientId);
     const addrNaked = stripDAddress(clientId);
@@ -753,8 +757,8 @@ async function applyConnectionUpdate(addrD, addrNaked, clientId, isConnection, e
     );
 
     await pool.query(
-        'UPDATE nozzles SET status = 0 WHERE dispenser_id = ?',
-        [dispenser_id]
+        'UPDATE nozzles SET status = 0 WHERE dispenser_id = ? && customer_code = ?',
+        [dispenser_id, customer_code]
     );
 
     await pool.query(
@@ -827,20 +831,12 @@ async function updateNozzleInDatabase(dispenser_id, nozzle_id, updateData, bypas
             values.push(Math.min(parseFloat(updateData.total_amount), MAX_DECIMAL_VALUE));
         }
         if (updateData.total_sales_today !== undefined) {
-            // FIX: Use simple addition with bounds checking in JavaScript
+            // Atomic increment in one statement — a read-then-write would let
+            // two concurrent msg_type=7 messages for the same nozzle lose one
+            // increment.
             const amountToAdd = Math.min(parseFloat(updateData.total_sales_today), MAX_DECIMAL_VALUE);
-            
-            // First get the current total_sales_today from the database
-            const [currentRows] = await pool.query(
-                'SELECT total_sales_today FROM nozzles WHERE dispenser_id = ? AND nozzle_id = ?',
-                [dispenser_id, nozzle_id]
-            );
-            
-            const currentTotal = currentRows[0] ? parseFloat(currentRows[0].total_sales_today) || 0 : 0;
-            const newTotal = Math.min(currentTotal + amountToAdd, MAX_DECIMAL_VALUE);
-            
-            fields.push('total_sales_today = ?');
-            values.push(newTotal);
+            fields.push('total_sales_today = LEAST(total_sales_today + ?, ?)');
+            values.push(amountToAdd, MAX_DECIMAL_VALUE);
         }
         if (updateData.lock_unlock !== undefined) {
             fields.push('lock_unlock = ?');
@@ -1230,19 +1226,23 @@ async function registerNewDevice(message) {
 }
 
 // MQTT event handlers
+// Intervals are once-per-process — MQTT reconnects must NOT re-arm them, or
+// every flap leaves another offline-checker and history-snapshotter running.
+let backgroundTimersStarted = false;
 mqttClient.on('connect', () => {
     logPing(`${getFormattedTimestamp()} Server connected to EMQX`);
     logWithTimestamp(null, 'MQTT client connected to broker');
     deviceTopics.clear(); // Clear subscriptions on new connection
+    statusTopics.clear();
     lastStatusMessage.clear(); // Clear status tracking on new connection
     initializeMQTTSubscriptions(); // Subscribe to all dispenser topics
-    startOfflineCheck(); // Start periodic offline check
 
-    // Start the periodic history snapshot
-    setInterval(recordNozzleHistory, HISTORY_RECORD_INTERVAL);
-    
-    // Run the first snapshot immediately
-    setTimeout(recordNozzleHistory, 5000);
+    if (!backgroundTimersStarted) {
+        backgroundTimersStarted = true;
+        startOfflineCheck();
+        setInterval(recordNozzleHistory, HISTORY_RECORD_INTERVAL);
+        setTimeout(recordNozzleHistory, 5000);
+    }
 });
 
 mqttClient.on('message', async (receivedTopic, message) => {
@@ -1250,22 +1250,24 @@ mqttClient.on('message', async (receivedTopic, message) => {
     let logColor = chalk.yellow;
     let parsedData;
 
-    parsedData = JSON.parse(messageStr);
-    const logMessage = `${getFormattedTimestamp()} Received message on ${receivedTopic}: ${messageStr}`;
-
     try {
+        parsedData = JSON.parse(messageStr);
         if (parsedData.msg_type === 0) {
             logColor = chalk.green; // Use green for msg_type: 0
-            await logPing(logMessage);
         } else if (parsedData.msg_type === 10 || parsedData.msg_type === 11 || parsedData.msg_type === 12) {
-            logColor = chalk.cyan; 
-        } 
+            logColor = chalk.cyan;
+        }
         else if (parsedData.msg_type === 16 ) {
-            logColor = chalk.magenta; 
+            logColor = chalk.magenta;
         }
     } catch (error) {
-        errorWithTimestamp('Failed to parse message:', error.message);
+        errorWithTimestamp(`Failed to parse message on ${receivedTopic}: ${error.message}`);
         return;
+    }
+
+    const logMessage = `${getFormattedTimestamp()} Received message on ${receivedTopic}: ${messageStr}`;
+    if (parsedData.msg_type === 0) {
+        await logPing(logMessage);
     }
 
     logWithTimestamp(logColor, `Received message on ${receivedTopic}: ${messageStr}`);
@@ -1405,13 +1407,15 @@ mqttClient.on('message', async (receivedTopic, message) => {
                             notifType = 'success';
                         } else if (data.message === 'GPS_DISCONNECTED' || data.message === 'WIFI_DISCONNECTED' || data.message === 'GPRS_DISCONNECTED') {
                             notifType = 'error';
-                        }                   
-                        await notificationService.sendConnectivityNotification(
-                            dispenserAddr,
-                            'Connectivity Status',
-                            `Device ${dispenserAddr}: ${data.message}`,
-                            notifType
-                        );
+                        }
+                        if (notificationService) {
+                            await notificationService.sendConnectivityNotification(
+                                dispenserAddr,
+                                'Connectivity Status',
+                                `Device ${dispenserAddr}: ${data.message}`,
+                                notifType
+                            );
+                        }
                     } catch (parseError) {
                         errorWithTimestamp('Failed to parse device status message:', parseError.message);
                     }
@@ -1451,6 +1455,20 @@ mqttClient.on('offline', () => {
     logWithTimestamp(null, 'MQTT client is offline');
 });
 
+// Stop the MQTT client cleanly. Cancels any pending disconnect debounce
+// timers (they'd otherwise keep the event loop alive after server.close),
+// then asks the mqtt client to send DISCONNECT and close its socket.
+function shutdownMqtt() {
+    for (const handle of pendingDisconnects.values()) clearTimeout(handle);
+    pendingDisconnects.clear();
+    return new Promise(resolve => {
+        if (!mqttClient || mqttClient.disconnecting || mqttClient.disconnected) {
+            return resolve();
+        }
+        mqttClient.end(false, {}, () => resolve());
+    });
+}
+
 function publishMessage(topic, message, options = {}) {
     return new Promise((resolve, reject) => {
         if (!mqttClient || !mqttClient.connected) {
@@ -1484,5 +1502,6 @@ module.exports = {
     handleMqttStatusMessage,
     handlePowerOnMessage,
     handleErrorMessage,
-    publishMessage
+    publishMessage,
+    shutdownMqtt
 };

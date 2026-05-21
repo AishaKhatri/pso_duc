@@ -2,11 +2,36 @@ const pool = require('./db');
 const chalk = require('chalk');
 const WebSocket = require('ws');
 const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
+const rfs = require('rotating-file-stream');
 const { v4: uuidv4 } = require('uuid');
 
-const PING_LOG_FILE_PATH = path.join(__dirname, '../logs/ping.log');
-const LOG_FILE_PATH = path.join(__dirname, '../logs/all_messages.log');
+const LOGS_DIR = path.join(__dirname, '../logs');
+// Ensure the logs directory exists before any stream tries to write to it.
+fsSync.mkdirSync(LOGS_DIR, { recursive: true });
+
+// Rotate daily, gzip closed files, keep the last 30. Use a per-day filename
+// so the active file is always logs/<name>.log and yesterday's becomes
+// logs/<name>.log.YYYY-MM-DD.gz.
+function makeRotatingStream(name) {
+    return rfs.createStream(`${name}.log`, {
+        path: LOGS_DIR,
+        interval: '1d',
+        maxFiles: 30,
+        compress: 'gzip'
+    });
+}
+const pingLogStream = makeRotatingStream('ping');
+const allMessagesLogStream = makeRotatingStream('all_messages');
+const errorLogStream = makeRotatingStream('errors');
+
+// Surface stream-level write failures to stderr (e.g. disk full). Without
+// this listener the stream would emit an unhandled 'error' that crashes the
+// process.
+for (const s of [pingLogStream, allMessagesLogStream, errorLogStream]) {
+    s.on('error', err => console.error(chalk.red(`Log stream error: ${err.message}`)));
+}
 
 // Local CSVs with verified station coords (lat/lng/city/division). Used as the
 // source of truth for stations whose customer_code appears in them; the live
@@ -16,20 +41,12 @@ const DIK_STATIONS_CSV_PATH = path.join(__dirname, '..', 'sites', 'dik-stations.
 let bwpStationsCache = null;
 let dikStationsCache = null;
 
-async function logPing(message) {
-    try {
-        await fs.appendFile(PING_LOG_FILE_PATH, message + '\n', 'utf8');
-    } catch (error) {
-        errorWithTimestamp('Failed to log ping:', error.message);
-    }
+function logPing(message) {
+    pingLogStream.write(message + '\n');
 }
 
-async function writeToLogFile(message) {
-    try {
-        await fs.appendFile(LOG_FILE_PATH, message + '\n', 'utf8');
-    } catch (error) {
-        errorWithTimestamp('Failed to write to log file:', error.message);
-    }
+function writeToLogFile(message) {
+    allMessagesLogStream.write(message + '\n');
 }
 
 // Utility function to format timestamp
@@ -55,6 +72,7 @@ function logWithTimestamp(color = null, ...args) {
 function errorWithTimestamp(...args) {
     const message = `${getFormattedTimestamp()} ${args.join(' ')}`;
     console.error(chalk.red(message));
+    errorLogStream.write(message + '\n');
 }
 
 // Function to calculate today's sales from transactions table and update nozzles

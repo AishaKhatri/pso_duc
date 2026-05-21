@@ -1,5 +1,7 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const path = require('path');
@@ -16,7 +18,8 @@ const {
     getGsmConnectionStatus,
     getWifiConnectionStatus,
     clearedResetsCache,
-    publishMessage } = require('./mqtt-service');
+    publishMessage,
+    shutdownMqtt } = require('./mqtt-service');
 
 const {
     startMidnightResetService,
@@ -38,8 +41,40 @@ const console = require('console');
 const app = express();
 // Express respects X-Forwarded-For when behind a proxy so req.ip is meaningful.
 app.set('trust proxy', true);
-app.use(cors());
+
+// Security headers. CSP is left default — the frontend pulls Leaflet from
+// unpkg.com via <script src> tags, so a strict default-src 'self' policy
+// would break the map. Tighten this once those assets are vendored locally.
+app.use(helmet({ contentSecurityPolicy: false }));
+
+// CORS: empty CORS_ORIGINS means same-origin only (frontend and API share
+// this port). To allow other origins, set CORS_ORIGINS in .env to a
+// comma-separated list, e.g. "https://duc.example.com,http://192.168.10.51:4414".
+const corsOrigins = (process.env.CORS_ORIGINS || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+app.use(cors({
+    origin: corsOrigins.length > 0 ? corsOrigins : false,
+    credentials: true
+}));
+
 app.use(express.json());
+
+// Static frontend. The HTML/JS/CSS live one level up from backend/. With this
+// in place there is no need for a separate http-server process — the same
+// Node listener serves both the API and the dashboard.
+app.use(express.static(path.join(__dirname, '..')));
+
+// Liveness probe for monitors and reverse proxies. Reports MySQL reachability.
+app.get('/health', async (req, res) => {
+    try {
+        await pool.query('SELECT 1');
+        res.json({ status: 'ok', db: 'ok', uptime_s: Math.round(process.uptime()) });
+    } catch (err) {
+        res.status(503).json({ status: 'degraded', db: 'down', error: err.message });
+    }
+});
 
 // Best-effort attach the authenticated user to req for activity logging on
 // mutating routes. Failures here are silent — the actual auth gates live in
@@ -100,7 +135,7 @@ async function initializeServer() {
 
 // Initialize server before starting
 initializeServer().then(() => {
-    const PORT = 3001;
+    const PORT = parseInt(process.env.PORT || '4414', 10);
     const server = app.listen(PORT, () => {
         console.log(`Server running on port ${PORT}`);
 
@@ -121,11 +156,42 @@ initializeServer().then(() => {
 
     // Integration port: same Express app, separate listener for external
     // service-to-service traffic (Price Update python app, etc.). Forward
-    // ONLY this port through the firewall; keep 3001 LAN-only.
+    // ONLY this port through the firewall; keep the main port LAN-only.
     const INTEGRATION_PORT = parseInt(process.env.INTEGRATION_PORT || '7717', 10);
-    app.listen(INTEGRATION_PORT, () => {
+    const integrationServer = app.listen(INTEGRATION_PORT, () => {
         console.log(`Integration API listening on port ${INTEGRATION_PORT}`);
     });
+
+    // Graceful shutdown: stop accepting new connections, close MQTT, drain
+    // the DB pool, then exit. Without this, SIGTERM (e.g. from NSSM or a
+    // service-manager restart) leaves messages mid-flight and connections
+    // half-open.
+    let shuttingDown = false;
+    async function shutdown(signal) {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`${signal} received — shutting down`);
+
+        const forceExit = setTimeout(() => {
+            console.error('Forced exit after 10s — shutdown timed out');
+            process.exit(1);
+        }, 10_000);
+        forceExit.unref();
+
+        try {
+            await new Promise(r => server.close(r));
+            await new Promise(r => integrationServer.close(r));
+            if (typeof shutdownMqtt === 'function') await shutdownMqtt();
+            await pool.end();
+            console.log('Clean shutdown complete');
+            process.exit(0);
+        } catch (err) {
+            console.error('Error during shutdown:', err);
+            process.exit(1);
+        }
+    }
+    process.on('SIGTERM', () => shutdown('SIGTERM'));
+    process.on('SIGINT',  () => shutdown('SIGINT'));
 });
 
 app.use((err, req, res, next) => {
@@ -1089,7 +1155,18 @@ app.get('/api/device-info/:address', async (req, res) => {
     }
 });
 
-app.post('/api/auth/signin', async (req, res) => {
+// Brute-force guard: 5 attempts per 15 minutes per IP. Successful sign-ins
+// don't count toward the limit, so a normal user never hits it.
+const signinLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000,
+    max: 5,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skipSuccessfulRequests: true,
+    message: { error: 'Too many sign-in attempts. Try again in 15 minutes.' }
+});
+
+app.post('/api/auth/signin', signinLimiter, async (req, res) => {
   const ip = getClientIp(req);
   try {
     const { username, password } = req.body;
