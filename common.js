@@ -1,7 +1,7 @@
-// const host_PC_IP = '192.168.10.51';
-// const host_PC_IP = '72.255.62.111';
-const host_PC_IP = 'localhost';
-const API_BASE_URL = `http://${host_PC_IP}:3001/api`;
+// Same-origin: the Node server serves both this HTML/JS and /api/* on a
+// single port (see backend/server.js + .env PORT). A relative URL means
+// the frontend works on whatever host:port it was loaded from.
+const API_BASE_URL = '/api';
 
 // Auto-attach the auth token to every API_BASE_URL request so the backend
 // can identify the user on each call. Without this, only signin/signout

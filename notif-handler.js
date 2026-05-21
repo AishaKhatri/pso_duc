@@ -26,7 +26,8 @@ class NotificationHandler {
         }
 
         try {
-            const wsUrl = `ws://${host_PC_IP}:3001/ws/notifications`;
+            const wsProto = location.protocol === 'https:' ? 'wss' : 'ws';
+            const wsUrl = `${wsProto}://${location.host}/ws/notifications`;
             console.log('Attempting to connect to:', wsUrl);
             this.ws = new WebSocket(wsUrl);
 
