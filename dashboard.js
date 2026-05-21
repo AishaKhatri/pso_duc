@@ -1053,6 +1053,45 @@ async function fetchLongOutages(limit = 100) {
     }
 }
 
+// Dispensers in the DB whose customer_code doesn't match any sheet station.
+// Surfaced as warning alerts so the data-drift is visible on the dashboard
+// (these dispensers don't contribute to the Total DUCs count).
+function alertFromOrphan(orphan) {
+    const n = orphan.dispenser_count;
+    return {
+        id: `orphan-${orphan.customer_code}`,
+        ts: Date.now(),
+        type: 'warning',
+        device: `Cust ${orphan.customer_code}`,
+        status: `${n} DUC${n === 1 ? '' : 's'} not in station sheet`,
+        address: '',
+        customerCode: orphan.customer_code,
+        orphan: true
+    };
+}
+
+async function fetchOrphanDispensers() {
+    try {
+        const resp = await fetch(`${API_BASE_URL}/orphan-dispensers`);
+        if (!resp.ok) return [];
+        return await resp.json();
+    } catch (err) {
+        console.warn('Failed to load orphan dispensers:', err.message);
+        return [];
+    }
+}
+
+function mergeOrphanAlerts(orphans) {
+    // Drop any prior orphan entries, then append fresh ones at the bottom so
+    // they sit beneath real outage alerts (which are typically more urgent).
+    dashboardState.alerts = dashboardState.alerts.filter(a => !a.orphan);
+    for (const o of orphans) {
+        if (dashboardState.alerts.length >= ALERTS_MAX) break;
+        dashboardState.alerts.push(alertFromOrphan(o));
+    }
+    renderAlertsList();
+}
+
 function attachAlertListener() {
     if (dashboardState.alertListenerAttached) return;
     window.addEventListener('app-notification', (e) => {
@@ -1169,7 +1208,12 @@ async function renderDashboard() {
     content.appendChild(main);
 
     attachAlertListener();
-    fetchLongOutages().then(seedAlertsFromLongOutages);
+    // Seed outage alerts first, then layer the orphan-dispenser warnings on top
+    // (mergeOrphanAlerts preserves existing entries).
+    fetchLongOutages()
+        .then(seedAlertsFromLongOutages)
+        .then(() => fetchOrphanDispensers())
+        .then(mergeOrphanAlerts);
 
     dashboardState.map = L.map('station-map', { scrollWheelZoom: true })
         .setView([30.3753, 69.3451], 6);

@@ -172,6 +172,36 @@ app.get('/api/station-locations', async (req, res) => {
     }
 });
 
+// Dispensers in the DB whose customer_code is NOT present in the station sheet.
+// These are invisible to dashboard counts (which sum over sheet stations only),
+// so we surface them as alerts to flag the data drift.
+app.get('/api/orphan-dispensers', async (req, res) => {
+    try {
+        const sheet = await fetchStationSheetRows();
+        const sheetCodes = new Set(sheet.map(s => String(s.customer_code || '').trim()).filter(Boolean));
+
+        const [rows] = await pool.query(
+            `SELECT customer_code,
+                    COUNT(*)                                    AS dispenser_count,
+                    GROUP_CONCAT(${addressOutSql()} ORDER BY dispenser_id) AS addresses
+             FROM dispensers
+             WHERE customer_code IS NOT NULL AND customer_code <> ''
+             GROUP BY customer_code`
+        );
+        const orphans = rows
+            .filter(r => !sheetCodes.has(String(r.customer_code).trim()))
+            .map(r => ({
+                customer_code: r.customer_code,
+                dispenser_count: Number(r.dispenser_count) || 0,
+                addresses: (r.addresses || '').split(',').filter(Boolean)
+            }));
+        res.json(orphans);
+    } catch (error) {
+        console.error('Error building orphan dispensers list:', error);
+        res.status(500).json({ error: error.message || 'Failed to fetch orphan dispensers' });
+    }
+});
+
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
         const customerCode = (req.query.customer_code || '').trim();
