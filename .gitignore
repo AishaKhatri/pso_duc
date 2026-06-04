@@ -11,5 +11,6 @@
 
 **/.claude/
 
-# Ignore Word documents
+# Ignore log files
 *.log
+**/logs/
