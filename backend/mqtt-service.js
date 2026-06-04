@@ -712,7 +712,7 @@ async function handleConnectionAlert(topic, alertData) {
         if (pending) {
             clearTimeout(pending);
             pendingDisconnects.delete(addrD);
-            logWithTimestamp(chalk.gray, `Dispenser ${clientId} reconnected within ${DISCONNECT_DEBOUNCE_MS / 1000}s — ignoring blip`);
+            // logWithTimestamp(chalk.gray, `Dispenser ${clientId} reconnected within ${DISCONNECT_DEBOUNCE_MS / 1000}s — ignoring blip`);
             return;
         }
         await applyConnectionUpdate(addrD, addrNaked, clientId, true, eventAt);
@@ -869,11 +869,11 @@ async function updateNozzleInDatabase(dispenser_id, nozzle_id, updateData, bypas
         );
 
         if (result.affectedRows > 0) {
-            logWithTimestamp(null, `Nozzle ${nozzle_id} updated successfully`);
+            // logWithTimestamp(null, `Nozzle ${nozzle_id} updated successfully`);
             recentUpdates.set(messageHash, [now]);
             setTimeout(() => recentUpdates.delete(messageHash), DEDUPE_WINDOW);
         } else {
-            errorWithTimestamp(`No rows affected for nozzle ${nozzle_id} update`);
+            // errorWithTimestamp(`No rows affected for nozzle ${nozzle_id} update`);
         }
     } catch (error) {
         errorWithTimestamp('Nozzle update error:', error.message);
@@ -904,9 +904,9 @@ async function updateDispenserInDatabase(dispenser_id, updateData) {
         );
 
         if (result.affectedRows > 0) {
-            logWithTimestamp(null, `Dispenser ${dispenser_id} updated successfully`);
+            // logWithTimestamp(null, `Dispenser ${dispenser_id} updated successfully`);
         } else {
-            errorWithTimestamp(`No rows affected for dispenser ${dispenser_id} update`);
+            // errorWithTimestamp(`No rows affected for dispenser ${dispenser_id} update`);
         }
     } catch (error) {
         errorWithTimestamp('Dispenser update error:', error.message);
@@ -941,7 +941,7 @@ async function storeTransaction(customer_code, dispenser_id, nozzle_id, time, am
             ]
         );
         
-        logWithTimestamp(null, `Transaction recorded for nozzle ${nozzle_id}: ${amount} ${volume}`);
+        // logWithTimestamp(null, `Transaction recorded for nozzle ${nozzle_id}: ${amount} ${volume}`);
     } catch (error) {
         // errorWithTimestamp('Error storing transaction:', error.message);
     }
@@ -1081,14 +1081,12 @@ async function registerNewDevice(message) {
         let isNewDispenser = false;
         
         if (existingDispensers.length === 0) {
-            // Use the API to get next dispenser ID
-            try {
-                const response = await fetch(`http://localhost:3001/api/dispensers/next-id?customer_code=${customerCode}`);
-                if (!response.ok) {
-                    throw new Error('Failed to get next dispenser ID');
-                }
-                const data = await response.json();
-                finalDispenserId = parseInt(data.next_id);
+           try {
+                const [rows] = await pool.query(
+                    'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) AS max_id FROM dispensers WHERE customer_code = ?',
+                    [customerCode]
+                );
+                finalDispenserId = (rows[0].max_id || 0) + 1;
                 isNewDispenser = true;
             } catch (error) {
                 errorWithTimestamp('Error getting next dispenser ID:', error.message);

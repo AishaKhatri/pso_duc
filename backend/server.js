@@ -39,8 +39,11 @@ const { log } = require('console');
 const console = require('console');
 
 const app = express();
-// Express respects X-Forwarded-For when behind a proxy so req.ip is meaningful.
-app.set('trust proxy', true);
+// Only honor X-Forwarded-For when the request actually came from loopback
+// (i.e. a reverse proxy running on the same box). A blanket `true` would let
+// any remote client set XFF and trivially bypass the sign-in rate limiter.
+// If you later add a reverse proxy on a different host, list its IP(s) here.
+app.set('trust proxy', 'loopback');
 
 // Security headers. CSP is left default — the frontend pulls Leaflet from
 // unpkg.com via <script src> tags, so a strict default-src 'self' policy

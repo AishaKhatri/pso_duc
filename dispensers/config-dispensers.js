@@ -300,7 +300,7 @@ async function renderConfigDispensers() {
         searchesGroup.style.gap = '10px';
         searchesGroup.style.alignItems = 'center';
         searchesGroup.style.flex = '1 1 auto';
-        searchesGroup.appendChild(buildConfigSearchControl());
+        searchesGroup.appendChild(buildConfigSearchControl(refreshDispenserTable));
 
         buttonRow.insertBefore(searchesGroup, addButton);
         
