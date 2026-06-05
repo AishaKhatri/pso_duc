@@ -934,6 +934,48 @@ async function createCard(address, customer_code) {
     return { card, titleContainer };
 }
 
+function createInterfaceStatusIndicator(dispenser) {
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.top = '0';
+    container.style.left = '45%';
+    container.style.transform = 'translateX(-25%)';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.gap = '8px';
+
+    const isKeypad = (dispenser.interface_type || '').toLowerCase() === 'keypad';
+    const iconSrc = isKeypad ? 'assets/graphics/keypad-icon.png' : 'assets/graphics/ir-control-icon.png';
+    const iconAlt = isKeypad ? 'Keypad' : 'IR Control';
+    // Keypad icon sits inside a thin bordered box (visual cue distinguishing
+    // it from the IR icon, which is rendered bare).
+    const interfaceIcon = createIconFromImage(iconSrc, iconAlt, isKeypad ? '16px' : '20px');
+
+    let iconNode = interfaceIcon;
+    if (isKeypad) {
+        const box = document.createElement('div');
+        box.style.border = '1px solid var(--text-primary)';
+        box.style.borderRadius = '4px';
+        box.style.padding = '2px';
+        box.style.display = 'flex';
+        box.style.alignItems = 'center';
+        box.style.justifyContent = 'center';
+        box.appendChild(interfaceIcon);
+        iconNode = box;
+    }
+
+    const lockIcon = createIconFromImage('assets/graphics/green-lock.png', null, '20px');
+    lockIcon.className = 'interface-lock-icon';
+    lockIcon.src = dispenser.interface_lock_status
+        ? 'assets/graphics/green-lock.png'
+        : 'assets/graphics/red-unlock.png';
+    lockIcon.alt = dispenser.interface_lock_status ? 'Locked' : 'Unlocked';
+
+    container.appendChild(iconNode);
+    container.appendChild(lockIcon);
+    return container;
+}
+
 async function fetchErrorCount(dispenserTopic) {
     try {
         const address = stripDAddress(dispenserTopic);
