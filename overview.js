@@ -80,7 +80,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
     if (!nozzles) {
         const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+            `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
         );
         if (!nozzlesResponse.ok) return;
         nozzles = await nozzlesResponse.json();
@@ -152,7 +152,7 @@ async function updateDispenserCard(dispenser) {
         let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
         if (!nozzles) {
             const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+                `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
             );
             if (!nozzlesResponse.ok) return;
             nozzles = await nozzlesResponse.json();

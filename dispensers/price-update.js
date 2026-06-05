@@ -175,7 +175,7 @@ async function updatePrices(product, newPrice, nozzlesContainer) {
 
         for (const dispenser of dispensers) {
             const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}`
+                `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}`
             );
             if (!nozzlesResponse.ok) continue;
             const nozzles = await nozzlesResponse.json();
