@@ -429,6 +429,10 @@ async function renderDispenser() {
             optionsContainer.appendChild(configButton);
         }
 
+        // Super-admin-only — appends nothing for other roles.
+        const refreshConnBtn = createRefreshConnStatusButton();
+        if (refreshConnBtn) optionsContainer.appendChild(refreshConnBtn);
+
         // Single global "Last Updated" timestamp at top of page (replaces per-nozzle timestamps)
         const lastUpdatedEl = document.createElement('div');
         lastUpdatedEl.id = 'page-last-updated';

@@ -1490,6 +1490,43 @@ function shutdownMqtt() {
     });
 }
 
+// Admin action: force re-subscribe to every dispenser's duc/conn_status/<D…>
+// topic and clear any pending disconnect-debounce timers. Used when the broker
+// state and the server's in-memory view of subscriptions / debounced
+// disconnects have drifted apart (e.g. after broker restarts, network blips
+// that didn't trigger a reconnect, or a long server uptime where some
+// dispensers' status looks stuck "online").
+async function refreshConnStatusSubscriptions() {
+    // Cancel every pending DISCONNECT_DEBOUNCE_MS timer in flight so the
+    // server starts fresh — fresh conn_status events will arm new timers.
+    let timersCleared = 0;
+    for (const handle of pendingDisconnects.values()) {
+        clearTimeout(handle);
+        timersCleared++;
+    }
+    pendingDisconnects.clear();
+
+    // Re-subscribe to every dispenser's conn_status topic. Force re-subscribe
+    // by dropping the topic from the tracked Set first so subscribeToTopic
+    // doesn't short-circuit on the "already subscribed" check.
+    let resubscribed = 0;
+    const [dispensers] = await pool.query(
+        `SELECT ${addressOutSql('d')} AS address FROM dispensers d`
+    );
+    for (const d of dispensers) {
+        const addrD = ensureDAddress(d.address);
+        if (!addrD) continue;
+        const topic = `duc/conn_status/${addrD}`;
+        statusTopics.delete(topic);
+        await subscribeToTopic(topic, statusTopics);
+        resubscribed++;
+    }
+
+    logWithTimestamp(chalk.cyan,
+        `Conn-status refresh: re-subscribed to ${resubscribed} topics, cleared ${timersCleared} debounce timers`);
+    return { resubscribed, timersCleared };
+}
+
 function publishMessage(topic, message, options = {}) {
     return new Promise((resolve, reject) => {
         if (!mqttClient || !mqttClient.connected) {
@@ -1522,5 +1559,6 @@ module.exports = {
     handlePowerOnMessage,
     handleErrorMessage,
     publishMessage,
+    refreshConnStatusSubscriptions,
     shutdownMqtt
 };

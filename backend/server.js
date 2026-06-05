@@ -17,6 +17,7 @@ const {
     getGsmConnectionStatus,
     getWifiConnectionStatus,
     publishMessage,
+    refreshConnStatusSubscriptions,
     shutdownMqtt } = require('./mqtt-service');
 
 const {
@@ -669,6 +670,23 @@ app.get('/api/stations', async (req, res) => {
     } catch (error) {
         console.error('Get stations error:', error);
         res.status(500).json({ error: 'Failed to fetch stations' });
+    }
+});
+
+app.post('/api/admin/refresh-conn-status', async (req, res) => {
+    if (req.authUser?.role !== 'super_admin') {
+        return res.status(403).json({ error: 'super_admin only' });
+    }
+    try {
+        const result = await refreshConnStatusSubscriptions();
+        await logActivity(req, 'refresh_conn_status', {
+            entity_type: 'mqtt',
+            details: result
+        });
+        res.json({ ok: true, ...result });
+    } catch (error) {
+        console.error('refresh-conn-status failed:', error);
+        res.status(500).json({ error: error.message || 'Refresh failed' });
     }
 });
 

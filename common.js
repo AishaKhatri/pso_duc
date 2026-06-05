@@ -976,6 +976,57 @@ function createInterfaceStatusIndicator(dispenser) {
     return container;
 }
 
+function createRefreshConnStatusButton() {
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    if (role !== 'super_admin') return null;
+
+    const btn = createMainButton();
+    btn.textContent = 'Refresh Conn Status';
+    btn.title = 'Re-subscribe to all conn_status topics and reset debounce timers';
+    btn.style.width = 'auto';
+    btn.style.padding = '12px 14px';
+
+    btn.addEventListener('click', () => {
+        const { overlay, confirmButton } = createDeletePopup(
+            'Re-subscribe the server to all conn_status topics and clear the 30-minute disconnect-debounce timers?',
+            {
+                title: 'Refresh Connection Status',
+                confirmText: 'Refresh',
+                confirmColor: '#004D64',
+                confirmHoverColor: '#00324C'
+            }
+        );
+
+        confirmButton.onclick = async () => {
+            document.body.removeChild(overlay);
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.textContent = 'Refreshing…';
+            try {
+                const resp = await fetch(`${API_BASE_URL}/admin/refresh-conn-status`, { method: 'POST' });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) {
+                    throw new Error(data.error || `HTTP ${resp.status}`);
+                }
+                window.showNotification?.(
+                    `Conn-status refreshed — ${data.resubscribed} topics re-subscribed, ${data.timersCleared} timers cleared.`,
+                    'success'
+                );
+            } catch (e) {
+                console.error('refresh-conn-status failed:', e);
+                window.showNotification?.(`Refresh failed: ${e.message}`, 'error')
+                    ?? alert(`Refresh failed: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '';
+                btn.textContent = original;
+            }
+        };
+    });
+    return btn;
+}
+
 async function fetchErrorCount(dispenserTopic) {
     try {
         const address = stripDAddress(dispenserTopic);
@@ -1092,20 +1143,31 @@ function renderPageHeader(pageTitleText) {
     return { headerContainer, optionsContainer, gridContainer };
 }
 
-function createDeletePopup(confirmationQuestion) {
+// Generic Yes/No confirmation popup. Defaults read "Confirm Deletion" with a
+// red confirm button (preserves the original behavior for existing callers);
+// pass `opts` to repurpose it for any other confirmation.
+function createDeletePopup(confirmationQuestion, opts = {}) {
+    const {
+        title: titleText = 'Confirm Deletion',
+        confirmText = 'Yes',
+        cancelText = 'No',
+        confirmColor = '#D32F2F',
+        confirmHoverColor = '#B71C1C'
+    } = opts;
+
     const overlay = createModalOverlay();
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '300px';
     popup.style.maxWidth = '90vw';
-    
+
     const header = createHeader();
-    
+
     const title = createTitle();
-    title.textContent = 'Confirm Deletion';
+    title.textContent = titleText;
 
     const closeButton = createCloseButton(overlay);
-    
+
     header.appendChild(title);
     header.appendChild(closeButton);
     popup.appendChild(header);
@@ -1121,11 +1183,11 @@ function createDeletePopup(confirmationQuestion) {
     buttonContainer.style.justifyContent = 'center';
     buttonContainer.style.gap = '10px';
 
-    const confirmButton = createActionButton('#D32F2F', '#B71C1C');
-    confirmButton.textContent = 'Yes';
+    const confirmButton = createActionButton(confirmColor, confirmHoverColor);
+    confirmButton.textContent = confirmText;
 
     const cancelButton = createActionButton('#626262', '#424242');
-    cancelButton.textContent = 'No';
+    cancelButton.textContent = cancelText;
     cancelButton.onclick = () => {
         document.body.removeChild(overlay);
     };
