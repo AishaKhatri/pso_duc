@@ -140,7 +140,7 @@ async function renderSiteManagement() {
         buttonRow.insertBefore(searchesGroup, addButton);
 
         // Export CSV — super-admin only.
-        if (userInfo?.role === 'super_admin') {
+        if (userInfo?.role === 'super_admin' || userInfo?.role === 'admin') {
             const exportBtn = createActionButton();
             exportBtn.textContent = 'Export to CSV';
             exportBtn.style.marginRight = '8px';

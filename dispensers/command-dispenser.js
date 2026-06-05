@@ -504,9 +504,9 @@ function normalizeFuelType(product) {
         'pmg': 'PMG',
         'hsd': 'HSD',
         'hobc': 'HOBC',
-        'pmg 95': 'PMG',
-        'high speed diesel': 'HSD',
-        'hoc': 'HOBC'
+        'PMG': 'PMG',
+        'HSD': 'HSD',
+        'HOBC': 'HOBC'
     };
     return productMap[product?.toLowerCase()] || 'HOBC';
 }

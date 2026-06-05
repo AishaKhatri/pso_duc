@@ -14,6 +14,15 @@ function nozzleStatusLabel(code) {
     }
 }
 
+function normalizeFuelType(product) {
+    if (!product) return 'Premier';
+    const lowerProduct = product.toLowerCase().trim();
+    if (lowerProduct.includes('pmg')) return 'PMG';
+    if (lowerProduct.includes('hsd')) return 'HSD';
+    if (lowerProduct.includes('hobc')) return 'HOBC';
+    return 'Premier';
+}
+
 async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
     try {
         const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser_id)}&customer_code=${encodeURIComponent(customer_code)}`);
