@@ -104,7 +104,7 @@ async function showCommandDispenserPopup(options = {}) {
 
         for (const dispenser of dispensers) {
             const nozzlesResponse = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+                `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
             );
             if (!nozzlesResponse.ok) continue;
             const nozzles = await nozzlesResponse.json();
@@ -318,7 +318,7 @@ function showDispenserControls(dispenser, customerCode, city) {
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 
-    createIRControlSection(dispenserTopic, controlsContainer, customerCode, city);
+    createInterfaceControlSection(dispenserTopic, controlsContainer, customerCode, city, dispenser.interface_type || 'ir');
     createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer, customerCode, city);
 }
 
@@ -362,21 +362,25 @@ function createControlRow(label, dropdownId, value, options, onConfirm) {
     return { controlRow, dropdown, confirmButton };
 }
 
-function createIRControlSection(dispenserTopic, container, customerCode, city) {
-    const irSection = document.createElement('div');
-    irSection.style.marginBottom = '30px';
+function createInterfaceControlSection(dispenserTopic, container, customerCode, city, dispenserInterface) {
+    const isKeypad = (dispenserInterface || 'ir').toLowerCase() === 'keypad';
+    const sectionLabel = isKeypad ? 'Keypad Control' : 'IR Control';
+    const msgType = isKeypad ? 5 : 6;
 
-    const irTitle = document.createElement('h3');
-    irTitle.textContent = 'IR Control';
-    irTitle.style.marginTop = '0';
-    irTitle.style.borderBottom = '1px solid var(--border)';
-    irTitle.style.paddingBottom = '8px';
-    irTitle.style.color = 'var(--text-primary)';
-    irSection.appendChild(irTitle);
+    const section = document.createElement('div');
+    section.style.marginBottom = '30px';
+
+    const sectionTitle = document.createElement('h3');
+    sectionTitle.textContent = sectionLabel;
+    sectionTitle.style.marginTop = '0';
+    sectionTitle.style.borderBottom = '1px solid var(--border)';
+    sectionTitle.style.paddingBottom = '8px';
+    sectionTitle.style.color = 'var(--text-primary)';
+    section.appendChild(sectionTitle);
 
     const { controlRow, dropdown, confirmButton } = createControlRow(
-        'IR Control:',
-        'irControl',
+        `${sectionLabel}:`,
+        'interfaceControl',
         '0',
         [
             { value: '0', text: 'Unlock' },
@@ -387,13 +391,13 @@ function createIRControlSection(dispenserTopic, container, customerCode, city) {
             req_type: 0,
             side: 'A',
             noz_number: 1,
-            msg_type: 6,
+            msg_type: msgType,
             message: dropdown.value
-        }, confirmButton, `IR ${dropdown.value === '0' ? 'Unlock' : 'Lock'}`)
+        }, confirmButton, `${sectionLabel} ${dropdown.value === '0' ? 'Unlock' : 'Lock'}`)
     );
 
-    irSection.appendChild(controlRow);
-    container.appendChild(irSection);
+    section.appendChild(controlRow);
+    container.appendChild(section);
 }
 
 function createNozzlesSection(dispenserTopic, nozzles, container, customerCode, city) {
@@ -490,25 +494,6 @@ function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfi
         }, nozzleLockButton, `Nozzle ${number} Lock ${nozzleLockDropdown.value === '0' ? 'Unlock' : 'Lock'}`)
     );
     content.appendChild(nozzleLockRow);
-
-    const { controlRow: keypadLockRow, dropdown: keypadLockDropdown, confirmButton: keypadLockButton } = createControlRow(
-        'Keypad:',
-        `keypadLock-${nozzle.nozzle_id}`,
-        nozzle.keypad_lock_status === 'Lock' ? '1' : '0',
-        [
-            { value: '0', text: 'Unlock' },
-            { value: '1', text: 'Lock' }
-        ],
-        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
-            dis_addr: dispenserTopic,
-            req_type: 0,
-            side: side,
-            noz_number: nozzleNum,
-            msg_type: 5,
-            message: keypadLockDropdown.value
-        }, keypadLockButton, `Nozzle ${number} Keypad ${keypadLockDropdown.value === '0' ? 'Unlock' : 'Lock'}`)
-    );
-    content.appendChild(keypadLockRow);
 
     nozzleCard.appendChild(content);
     return nozzleCard;
