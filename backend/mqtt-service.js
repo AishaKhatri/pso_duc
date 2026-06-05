@@ -1,5 +1,6 @@
 const mqtt = require('mqtt');
 const chalk = require('chalk');
+const crypto = require('crypto');
 const pool = require('./db');
 const fs = require('fs').promises;
 const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
@@ -60,9 +61,6 @@ const wifiConnectionCache = new Map(); // Track WiFi connection state
 const gsmStatusCache = new Map(); // Cache for GSM status by dispenser address
 const wifiStatusCache = new Map(); // Cache for Wi-Fi status by dispenser address
 const mqttStatusCache = new Map();
-const powerOnCache = new Map();
-const clearedResetsCache = new Map();
-const resetCounters = new Map();
 const errorLogCache = new Map();
 const deviceInfoCache = new Map();
 
@@ -85,9 +83,8 @@ function startOfflineCheck() {
             const now = Date.now();
             for (const [nozzleId, { lastMessageTime, dispenser_id }] of lastStatusMessage) {
                 if (now - lastMessageTime > OFFLINE_TIMEOUT) {
-                    logWithTimestamp(chalk.red, `No ping received for nozzle ${nozzleId} in ${OFFLINE_TIMEOUT / 1000 / 60} minutes. Setting to offline.`);
-                    // Update the specific nozzle's status to 0 (offline)
-                    await updateNozzleInDatabase(dispenser_id, nozzleId, { status: 0 }, true);
+                    logWithTimestamp(chalk.red, `No ping received for nozzle ${nozzleId} in ${OFFLINE_TIMEOUT / 1000 / 60} minutes. Setting to offline (status=2).`);
+                    await updateNozzleInDatabase(dispenser_id, nozzleId, { status: 2 }, true);
                     // Remove from tracking to avoid repeated updates
                     lastStatusMessage.delete(nozzleId);
                 }
@@ -487,15 +484,9 @@ function getMqttStatus(dispenserAddr) {
     return mqttStatusCache.get(dispenserAddr) || null;
 }
 
-function handlePowerOnMessage(dispenserAddr, message) {
-    try {       
+async function handlePowerOnMessage(dispenserAddr, message) {
+    try {
         let parsedMessage;
-        let statusType;
-        let dieTime;
-        let wakeupTime;
-        let lastUpdated;
-        let downtimeMs;
-        
         if (typeof message === 'string') {
             try {
                 parsedMessage = JSON.parse(message);
@@ -505,53 +496,52 @@ function handlePowerOnMessage(dispenserAddr, message) {
         } else {
             parsedMessage = message;
         }
-        
-        statusType = parsedMessage.Status || parsedMessage.status;
-        dieTime = parsedMessage.DT ? new Date(parsedMessage.DT * 1000) : null;
-        wakeupTime = parsedMessage.WT ? new Date(parsedMessage.WT * 1000) : null;
-        downtimeMs = wakeupTime && dieTime ? (wakeupTime - dieTime) : null;
-        lastUpdated = new Date();
-        
-        // Get or create counter for this dispenser
-        if (!resetCounters.has(dispenserAddr)) {
-            resetCounters.set(dispenserAddr, 0);
-        }
-        const nextId = resetCounters.get(dispenserAddr) + 1;
-        resetCounters.set(dispenserAddr, nextId);
-        
-        const status = {
-            id: nextId,
-            message: statusType,
-            dieTime: dieTime,
-            wakeupTime: wakeupTime,
-            type: 'power_on',
-            lastUpdated: lastUpdated,
-            downtimeMs: downtimeMs
-        };
 
-        // Initialize array for this dispenser if it doesn't exist
-        if (!powerOnCache.has(dispenserAddr)) {
-            powerOnCache.set(dispenserAddr, []);
+        const statusType = parsedMessage.Status || parsedMessage.status || null;
+        const dieTime = parsedMessage.DT ? new Date(parsedMessage.DT * 1000) : null;
+        const wakeupTime = parsedMessage.WT ? new Date(parsedMessage.WT * 1000) : null;
+        const downtimeMs = (wakeupTime && dieTime) ? (wakeupTime - dieTime) : null;
+
+        const addrD = ensureDAddress(dispenserAddr);
+        const addrNaked = stripDAddress(dispenserAddr);
+
+        const [dispensers] = await pool.query(
+            'SELECT customer_code FROM dispensers WHERE address IN (?, ?)',
+            [addrD, addrNaked]
+        );
+        if (dispensers.length === 0) {
+            errorWithTimestamp(`No dispenser found for address ${addrD} (power-on message)`);
+            return null;
         }
-        
-        const powerOnStatuses = powerOnCache.get(dispenserAddr);
-        powerOnStatuses.unshift(status);
-        
-        if (powerOnStatuses.length > 20) {
-            powerOnStatuses.pop();
+        const customerCode = dispensers[0].customer_code;
+
+        const dedupSource = [
+            addrD,
+            dieTime ? dieTime.toISOString() : '0',
+            wakeupTime ? wakeupTime.toISOString() : '0',
+            statusType || ''
+        ].join('|');
+        const dedupKey = crypto.createHash('md5').update(dedupSource).digest('hex');
+
+        const [result] = await pool.query(
+            `INSERT IGNORE INTO resets
+             (customer_code, address, message, die_time, wakeup_time, downtime_ms, dedup_key)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [customerCode, addrD, statusType, dieTime, wakeupTime, downtimeMs, dedupKey]
+        );
+
+        if (result.affectedRows === 0) {
+            // Duplicate caught by uq_resets_dedup_key — QoS retry or post-restart replay.
+            logWithTimestamp(chalk.gray, `Reset for ${addrD} (${statusType}) already on file — duplicate dropped (dedup_key=${dedupKey.slice(0, 8)}…)`);
+            return null;
         }
-        
-        logWithTimestamp(chalk.cyan, `Power-on status updated for ${dispenserAddr}: ${statusType} (ID: ${nextId})`);
-        
-        return status;
+
+        logWithTimestamp(chalk.cyan, `Reset log persisted for ${addrD}: ${statusType} (id=${result.insertId})`);
+        return { id: result.insertId, message: statusType, dieTime, wakeupTime, downtimeMs };
     } catch (error) {
-        errorWithTimestamp('Error parsing power-on message:', error.message);
+        errorWithTimestamp('Error storing power-on message:', error.message);
         return null;
     }
-}
-
-function getPowerOnStatus(dispenserAddr) {
-    return powerOnCache.get(dispenserAddr) || [];
 }
 
 async function handleErrorMessage(dispenserAddr, message) {
@@ -757,7 +747,7 @@ async function applyConnectionUpdate(addrD, addrNaked, clientId, isConnection, e
     );
 
     await pool.query(
-        'UPDATE nozzles SET status = 0 WHERE dispenser_id = ? && customer_code = ?',
+        'UPDATE nozzles SET status = 2 WHERE dispenser_id = ? && customer_code = ?',
         [dispenser_id, customer_code]
     );
 
@@ -818,6 +808,9 @@ async function updateNozzleInDatabase(dispenser_id, nozzle_id, updateData, bypas
             fields.push('status = ?');
             values.push(updateData.status);
         }
+        if (updateData.touchPing) {
+            fields.push('last_ping_at = NOW()');
+        }
         if (updateData.price_per_liter !== undefined) {
             fields.push('price_per_liter = ?');
             values.push(Math.min(parseFloat(updateData.price_per_liter), MAX_DECIMAL_VALUE));
@@ -841,10 +834,6 @@ async function updateNozzleInDatabase(dispenser_id, nozzle_id, updateData, bypas
         if (updateData.lock_unlock !== undefined) {
             fields.push('lock_unlock = ?');
             values.push(updateData.lock_unlock);
-        }
-        if (updateData.keypad_lock_status !== undefined) {
-            fields.push('keypad_lock_status = ?');
-            values.push(updateData.keypad_lock_status);
         }
         if (updateData.price !== undefined) {
             fields.push('price = ?');
@@ -885,9 +874,9 @@ async function updateDispenserInDatabase(dispenser_id, updateData) {
         const fields = [];
         const values = [];
 
-        if (updateData.ir_lock_status !== undefined) {
-            fields.push('ir_lock_status = ?');
-            values.push(updateData.ir_lock_status);
+        if (updateData.interface_lock_status !== undefined) {
+            fields.push('interface_lock_status = ?');
+            values.push(updateData.interface_lock_status);
         }
 
         if (fields.length === 0) {
@@ -963,8 +952,8 @@ async function recordNozzleHistory() {
         for (const nozzle of nozzles) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    customer_code, dispenser_id, nozzle_id, product, status, price_per_liter,
-                    total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
+                    customer_code, dispenser_id, nozzle_id, product, status, last_ping_at,
+                    price_per_liter, total_quantity, total_amount, total_sales_today, lock_unlock
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     nozzle.customer_code,
@@ -972,12 +961,12 @@ async function recordNozzleHistory() {
                     nozzle.nozzle_id,
                     nozzle.product,
                     nozzle.status,
+                    nozzle.last_ping_at,
                     parseFloat(nozzle.price_per_liter),
                     parseFloat(nozzle.total_quantity),
                     parseFloat(nozzle.total_amount),
                     parseFloat(nozzle.total_sales_today),
-                    nozzle.lock_unlock,
-                    nozzle.keypad_lock_status
+                    nozzle.lock_unlock
                 ]
             );
         }
@@ -1009,15 +998,24 @@ async function registerNewDevice(message) {
         const deviceAddress = (deviceData.dis_addr || deviceData.DeviceId || '').replace(/^D/, '');
         const imei1 = deviceData.IMEI1 || null;
         const imei2 = deviceData.IMEI2 || null;
-        
+        const payloadDispenserId = deviceData.DispenserId;     // legacy firmware: omitted
+        const rawInterface = deviceData.Interface;             // legacy firmware: omitted
+        const payloadInterface = rawInterface ? String(rawInterface).toLowerCase() : null;
+
         // Validate required fields
         if (!customerCode || !deviceAddress) {
             errorWithTimestamp('Missing required registration fields:', { customerCode, deviceAddress });
             return;
         }
-        
-        // Validate number of sides
-        const numberOfSides = parseInt(deviceData.NumberOfSides);
+
+        // Interface is optional (old firmware doesn't send it). When present it must be valid.
+        if (payloadInterface !== null && payloadInterface !== 'ir' && payloadInterface !== 'keypad') {
+            errorWithTimestamp(`Invalid Interface in registration message: "${rawInterface}". Must be "ir" or "keypad"`);
+            return;
+        }
+
+        // Validate number of sides (accept Sides; fall back to NumberOfSides for legacy firmware)
+        const numberOfSides = parseInt(deviceData.Sides ?? deviceData.NumberOfSides);
         if (numberOfSides !== 1 && numberOfSides !== 2) {
             errorWithTimestamp(`Invalid number of sides: ${numberOfSides}. Must be 1 or 2`);
             return;
@@ -1081,31 +1079,41 @@ async function registerNewDevice(message) {
         let isNewDispenser = false;
         
         if (existingDispensers.length === 0) {
-           try {
-                const [rows] = await pool.query(
-                    'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) AS max_id FROM dispensers WHERE customer_code = ?',
-                    [customerCode]
-                );
-                finalDispenserId = (rows[0].max_id || 0) + 1;
-                isNewDispenser = true;
-            } catch (error) {
-                errorWithTimestamp('Error getting next dispenser ID:', error.message);
-                return;
+            // Prefer the dispenser_id supplied by the device. Fall back to
+            // MAX+1 for legacy firmware that doesn't send DispenserId.
+            if (payloadDispenserId) {
+                finalDispenserId = String(payloadDispenserId);
+            } else {
+                try {
+                    const [rows] = await pool.query(
+                        'SELECT MAX(CAST(dispenser_id AS UNSIGNED)) AS max_id FROM dispensers WHERE customer_code = ?',
+                        [customerCode]
+                    );
+                    finalDispenserId = String((rows[0].max_id || 0) + 1);
+                } catch (error) {
+                    errorWithTimestamp('Error getting next dispenser ID:', error.message);
+                    return;
+                }
             }
-            
+            isNewDispenser = true;
+
+            // Legacy firmware: no Interface field — default to 'ir'.
+            const dispenserInterface = payloadInterface || 'ir';
+
             // Create new dispenser — store address D-prefixed.
             await pool.query(
                 `INSERT INTO dispensers
                  (customer_code, dispenser_id, address, conn_status, connected_at,
-                  ir_lock_status, number_of_nozzles, DispenserBrand, IMEI1, IMEI2)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                  interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, IMEI1, IMEI2)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     customerCode,
                     finalDispenserId,
                     deviceAddressD,
                     0, // conn_status - offline
                     null,
-                    1, // ir_lock_status - unlocked
+                    dispenserInterface,
+                    1, // interface_lock_status - unlocked
                     totalNozzles,
                     dispenserBrand,
                     imei1,
@@ -1122,25 +1130,30 @@ async function registerNewDevice(message) {
         } else {
             finalDispenserId = existingDispensers[0].dispenser_id;
 
-            // Update IMEI fields if they exist and are different
-            if (imei1 || imei2) {
-                const updateFields = [];
-                const updateValues = [];
-                if (imei1) {
-                    updateFields.push('imei1 = ?');
-                    updateValues.push(imei1);
-                }
-                if (imei2) {
-                    updateFields.push('imei2 = ?');
-                    updateValues.push(imei2);
-                }
-                updateValues.push(customerCode, deviceAddressD, deviceAddressNaked);
+            // Build an update for whichever fields the payload actually carries.
+            // Old firmware omits Interface — don't overwrite stored value with a default.
+            const updateFields = [];
+            const updateValues = [];
+            if (imei1) {
+                updateFields.push('imei1 = ?');
+                updateValues.push(imei1);
+            }
+            if (imei2) {
+                updateFields.push('imei2 = ?');
+                updateValues.push(imei2);
+            }
+            if (payloadInterface) {
+                updateFields.push('interface_type = ?');
+                updateValues.push(payloadInterface);
+            }
 
+            if (updateFields.length > 0) {
+                updateValues.push(customerCode, deviceAddressD, deviceAddressNaked);
                 await pool.query(
                     `UPDATE dispensers SET ${updateFields.join(', ')} WHERE customer_code = ? AND address IN (?, ?)`,
                     updateValues
                 );
-                logWithTimestamp(chalk.blue, `✓ Updated IMEIs for existing dispenser: ${deviceAddressD}`);
+                logWithTimestamp(chalk.blue, `✓ Updated existing dispenser ${deviceAddressD}${payloadInterface ? ` (interface=${payloadInterface})` : ''}`);
             }
 
             logWithTimestamp(chalk.blue, `✓ Dispenser already exists: ID ${finalDispenserId}`);
@@ -1180,15 +1193,15 @@ async function registerNewDevice(message) {
                 
                 if (existingNozzles.length === 0) {
                     await pool.query(
-                        `INSERT INTO nozzles 
-                         (customer_code, dispenser_id, nozzle_id, product, status, 
-                          price_per_liter, total_quantity, total_amount, 
-                          total_sales_today, lock_unlock, keypad_lock_status, price, quantity) 
-                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                        `INSERT INTO nozzles
+                         (customer_code, dispenser_id, nozzle_id, product, status,
+                          price_per_liter, total_quantity, total_amount,
+                          total_sales_today, lock_unlock, price, quantity)
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                         [
                             customerCode, finalDispenserId, nozzleId, product,
                             0, 0.00, 0.00, 0.00, 0.00,
-                            0, 1, 0.00, 0.00
+                            0, 0.00, 0.00
                         ]
                     );
                     newNozzleCount++;
@@ -1298,30 +1311,32 @@ mqttClient.on('message', async (receivedTopic, message) => {
         const dbAddrD = ensureDAddress(dbAddress);
         const dbAddrNaked = stripDAddress(dbAddress);
         const [dispensers] = await pool.query(
-            'SELECT dispenser_id FROM dispensers WHERE address IN (?, ?)',
+            'SELECT dispenser_id, interface_type FROM dispensers WHERE address IN (?, ?)',
             [dbAddrD, dbAddrNaked]
         );
-        
+
         if (dispensers.length === 0) {
             errorWithTimestamp(`No dispenser found for address ${dbAddress}`);
             return;
         }
 
-        const { dispenser_id } = dispensers[0];
+        const { dispenser_id, interface_type: dispenserInterface } = dispensers[0];
 
         if (parsedData.req_type == 0 && parsedData.message !== '') {
             // Update database based on message type
             switch(data.msg_type) {
-                case 0: // Online/offline status
-                    if (data.message === "1") {
-                        lastStatusMessage.set(nozzleId, { lastMessageTime: Date.now(), dispenser_id});
-                    }
+                case 0: // Ping (msg_type=0). Both "0" and "1" prove the device is reachable;
+                        // the value just tells us whether it's talking to the dispenser MB.
+                        // Any ping resets the offline timer — a stream of msg=0 pings should
+                        // NOT decay into status=2 (that's reserved for "no ping at all").
+                    lastStatusMessage.set(nozzleId, { lastMessageTime: Date.now(), dispenser_id });
                     await pool.query(
                         'INSERT INTO ping_log (dispenser_id, nozzle_id, status) VALUES (?, ?, ?)',
                         [dispenser_id, nozzleId, data.message]
                     );
-                    await updateNozzleInDatabase(dispenser_id, nozzleId, { 
-                        status: parseInt(data.message) 
+                    await updateNozzleInDatabase(dispenser_id, nozzleId, {
+                        status: parseInt(data.message),
+                        touchPing: true
                     }, false);
                     break;
                 case 1: // Price per liter
@@ -1344,14 +1359,22 @@ mqttClient.on('message', async (receivedTopic, message) => {
                         lock_unlock: parseInt(data.message) 
                     }, false);
                     break;
-                case 5: // Keypad lock
-                    await updateNozzleInDatabase(dispenser_id, nozzleId, { 
-                        keypad_lock_status: parseInt(data.message) 
-                    }, false);
+                case 5: // Keypad lock — only valid when the dispenser's interface is 'keypad'
+                    if (dispenserInterface !== 'keypad') {
+                        errorWithTimestamp(`Invalid lock message: received msg_type=5 (keypad) for dispenser ${dbAddrD} with interface='${dispenserInterface}'`);
+                        break;
+                    }
+                    await updateDispenserInDatabase(dispenser_id, {
+                        interface_lock_status: parseInt(data.message)
+                    });
                     break;
-                case 6: // IR lock
-                    await updateDispenserInDatabase(dispenser_id, { 
-                        ir_lock_status: parseInt(data.message) 
+                case 6: // IR lock — only valid when the dispenser's interface is 'ir'
+                    if (dispenserInterface !== 'ir') {
+                        errorWithTimestamp(`Invalid lock message: received msg_type=6 (ir) for dispenser ${dbAddrD} with interface='${dispenserInterface}'`);
+                        break;
+                    }
+                    await updateDispenserInDatabase(dispenser_id, {
+                        interface_lock_status: parseInt(data.message)
                     });
                     break;
                 case 7: // Transaction data (T, A, V)
@@ -1392,7 +1415,7 @@ mqttClient.on('message', async (receivedTopic, message) => {
                     break;
                 case 12: // Power-on reset information
                     try {
-                        handlePowerOnMessage(dispenserAddr, data.message);
+                        await handlePowerOnMessage(dispenserAddr, data.message);
                     } catch (parseError) {
                         errorWithTimestamp('Failed to parse Power-on status message:', parseError.message);
                     }
@@ -1489,8 +1512,6 @@ module.exports = {
     getGsmStatus,
     getWiFiStatus,
     getMqttStatus,
-    getPowerOnStatus,
-    clearedResetsCache,
     getErrorLog,
     getDeviceInfo,
     hasErrors,
