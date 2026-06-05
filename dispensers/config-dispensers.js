@@ -38,7 +38,7 @@ function buildConfigSearchControl(onChange) {
     return dd.wrap;
 }
 
-async function saveDispenserToDB(dispenser, isUpdate = false) {
+async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserId = null) {
   try {
     const dbDispenser = {
       customer_code: dispenser.customer_code,
@@ -46,11 +46,16 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       address: dispenser.address,
       DispenserBrand: dispenser.DispenserBrand,
       number_of_nozzles: dispenser.number_of_nozzles,
-      ir_lock_status: dispenser.ir_lock_status || 1
+      interface_type: dispenser.interface_type || 'ir',
+      interface_lock_status: dispenser.interface_lock_status ?? 1
     };
 
-    const dispenserEndpoint = isUpdate 
-      ? `${API_BASE_URL}/dispensers/${dispenser.dispenser_id}?customer_code=${dispenser.customer_code}`
+    // For an UPDATE the URL must use the *original* dispenser_id (the row to
+    // look up) — body.dispenser_id is the target value, which may differ if
+    // the user renamed it. Server propagates the rename via FK cascade.
+    const lookupId = isUpdate ? (originalDispenserId ?? dispenser.dispenser_id) : null;
+    const dispenserEndpoint = isUpdate
+      ? `${API_BASE_URL}/dispensers/${encodeURIComponent(lookupId)}?customer_code=${encodeURIComponent(dispenser.customer_code)}`
       : `${API_BASE_URL}/dispensers`;
     
     const method = isUpdate ? 'PUT' : 'POST';
@@ -73,7 +78,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
     if (dispenser.nozzles && dispenser.nozzles.length > 0) {
       // Fetch existing nozzles
       const existingNozzlesResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dbDispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
       );
       let existingNozzles = [];
       if (existingNozzlesResponse.ok) {
@@ -88,7 +93,6 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
         product: nozzle.product,
         status: 0,
         lock_unlock: 0,
-        keypad_lock_status: 1,
         price_per_liter: '0.00',
         total_quantity: '0.00',
         total_amount: '0.00'
@@ -122,14 +126,13 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
           product: nozzle.product,
           status: nozzle.status,
           lock_unlock: nozzle.lock_unlock,
-          keypad_lock_status: nozzle.keypad_lock_status,
           price_per_liter: nozzle.price_per_liter,
           total_quantity: nozzle.total_quantity,
           total_amount: nozzle.total_amount
         };
 
         const nozzleResponse = await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
+          `${API_BASE_URL}/nozzles/${encodeURIComponent(dbDispenser.dispenser_id)}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${encodeURIComponent(dispenser.customer_code)}`,
           {
             method: 'PUT',
             headers: {
@@ -155,7 +158,6 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
           product: nozzle.product,
           status: nozzle.status,
           lock_unlock: nozzle.lock_unlock,
-          keypad_lock_status: nozzle.keypad_lock_status,
           price_per_liter: nozzle.price_per_liter,
           total_quantity: nozzle.total_quantity,
           total_amount: nozzle.total_amount
@@ -179,7 +181,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false) {
       // Delete removed nozzles
       for (const nozzle of nozzlesToDelete) {
         await fetch(
-          `${API_BASE_URL}/nozzles/${dbDispenser.dispenser_id}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${dispenser.customer_code}`,
+          `${API_BASE_URL}/nozzles/${encodeURIComponent(dbDispenser.dispenser_id)}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${encodeURIComponent(dispenser.customer_code)}`,
           {
             method: 'DELETE',
             headers: {
@@ -213,7 +215,7 @@ async function loadDispensersFromDB() {
     
     const dispensersWithNozzles = await Promise.all(dbDispensers.map(async dbDispenser => {
       const nozzleResponse = await fetch(
-        `${API_BASE_URL}/nozzles?dispenser_id=${dbDispenser.dispenser_id}&customer_code=${dbDispenser.customer_code}`
+        `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dbDispenser.dispenser_id)}&customer_code=${encodeURIComponent(dbDispenser.customer_code)}`
       );
       
       let nozzles = [];
@@ -228,7 +230,8 @@ async function loadDispensersFromDB() {
         DispenserBrand: dbDispenser.DispenserBrand,
         number_of_nozzles: dbDispenser.number_of_nozzles,
         dispenser_id: dbDispenser.dispenser_id,
-        ir_lock_status: dbDispenser.ir_lock_status,
+        interface_type: dbDispenser.interface_type,
+        interface_lock_status: dbDispenser.interface_lock_status,
         conn_status: dbDispenser.conn_status,
         connected_at: dbDispenser.connected_at,
         created_at: dbDispenser.created_at,
@@ -237,7 +240,6 @@ async function loadDispensersFromDB() {
           product: n.product,
           status: n.status,
           lockStatus: n.lock_unlock,
-          keypadLockStatus: n.keypad_lock_status,
           pricePerLiter: n.price_per_liter,
           totalQuantity: n.total_quantity,
           totalAmount: n.total_amount
@@ -413,18 +415,36 @@ async function renderConfigDispensers() {
         addressContainer.style.display = 'grid';
         addressContainer.style.gridTemplateColumns = '1fr 2fr';
         addressContainer.style.alignItems = 'center';
-        
+
         const addressLabel = document.createElement('label');
         addressLabel.className = 'label-text';
         addressLabel.textContent = 'Address:';
         addressLabel.style.width = '100px';
-        
+
         const addressInput = createTextInput({ name: 'address', required: true });
         addressInput.style.width = '90%';
-        
+
         addressContainer.appendChild(addressLabel);
         addressContainer.appendChild(addressInput);
         form.appendChild(addressContainer);
+
+        // Dispenser ID field (editable; rename cascades server-side)
+        const dispenserIdContainer = document.createElement('div');
+        dispenserIdContainer.style.display = 'grid';
+        dispenserIdContainer.style.gridTemplateColumns = '1fr 2fr';
+        dispenserIdContainer.style.alignItems = 'center';
+
+        const dispenserIdLabel = document.createElement('label');
+        dispenserIdLabel.className = 'label-text';
+        dispenserIdLabel.textContent = 'Dispenser ID:';
+        dispenserIdLabel.style.width = '100px';
+
+        const dispenserIdInput = createTextInput({ name: 'dispenser_id', required: true });
+        dispenserIdInput.style.width = '90%';
+
+        dispenserIdContainer.appendChild(dispenserIdLabel);
+        dispenserIdContainer.appendChild(dispenserIdInput);
+        form.appendChild(dispenserIdContainer);
 
         // DispenserBrand field
         const DispenserBrandContainer = document.createElement('div');
@@ -447,6 +467,29 @@ async function renderConfigDispensers() {
         DispenserBrandContainer.appendChild(DispenserBrandLabel);
         DispenserBrandContainer.appendChild(DispenserBrandSelect);
         form.appendChild(DispenserBrandContainer);
+
+        // Interface field (ir / keypad)
+        const interfaceContainer = document.createElement('div');
+        interfaceContainer.style.display = 'grid';
+        interfaceContainer.style.gridTemplateColumns = '1fr 2fr';
+        interfaceContainer.style.alignItems = 'center';
+
+        const interfaceLabel = document.createElement('label');
+        interfaceLabel.className = 'label-text';
+        interfaceLabel.textContent = 'Interface:';
+        interfaceLabel.style.width = '100px';
+
+        const interfaceSelect = applyInputStyles(document.createElement('select'));
+        interfaceSelect.name = 'interface_type';
+        interfaceSelect.required = true;
+        interfaceSelect.style.width = '100%';
+        interfaceSelect.innerHTML =
+            '<option value="ir">IR</option>' +
+            '<option value="keypad">Keypad</option>';
+
+        interfaceContainer.appendChild(interfaceLabel);
+        interfaceContainer.appendChild(interfaceSelect);
+        form.appendChild(interfaceContainer);
 
         // Nozzles configuration
         const nozzlesContainer = document.createElement('div');
@@ -619,15 +662,18 @@ async function renderConfigDispensers() {
         const { overlay, popup, form, updateProductSelectors } = createDispenserModal();
         dragPopup(overlay, popup);
         
-        const dispenser = window.dispensers[index] || { 
+        const dispenser = window.dispensers[index] || {
             customer_code: '',
-            address: '', 
-            nozzles: [], 
+            address: '',
+            nozzles: [],
             DispenserBrand: '',
             number_of_nozzles: 0,
-            ir_lock_status: 1
+            interface_type: 'ir',
+            interface_lock_status: 1
         };
         
+        const isExistingEdit = index < window.dispensers.length;
+
         // Set form values
         if (dispenser.customer_code) {
             form.customer_code.value = dispenser.customer_code;
@@ -635,6 +681,18 @@ async function renderConfigDispensers() {
         // Input expects naked numeric; backend re-prepends D on save.
         form.address.value = stripDAddress(dispenser.address || '');
         form.DispenserBrand.value = dispenser.DispenserBrand || '';
+        form.interface_type.value = (dispenser.interface_type || 'ir').toLowerCase();
+        form.dispenser_id.value = dispenser.dispenser_id != null ? String(dispenser.dispenser_id) : '';
+
+        // Customer code and address identify the dispenser — locking them on
+        // edit prevents accidental re-targeting of an unrelated row.
+        if (isExistingEdit) {
+            form.customer_code.disabled = true;
+            form.customer_code.style.opacity = '0.6';
+            form.address.readOnly = true;
+            form.address.style.cursor = 'auto';
+            form.address.style.opacity = '0.6';
+        }
 
         nozzleOptions.forEach(nozzle => {
             const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
@@ -657,11 +715,17 @@ async function renderConfigDispensers() {
             dispenser.nozzles.forEach(nozzle => {
                 const nozzleId = nozzle.nozzleId.split('-')[1];
                 const productSelect = form.querySelector(`select[name="product-${nozzleId}"]`);
-                if (productSelect) {
-                    productSelect.value = nozzle.product;
+                if (productSelect && nozzle.product) {
+                    // Match case-insensitively — DB-stored product casing may
+                    // differ from the dropdown's option values ('PMG' etc).
+                    const target = String(nozzle.product).toUpperCase();
+                    const opt = Array.from(productSelect.options).find(
+                        o => o.value.toUpperCase() === target
+                    );
+                    if (opt) productSelect.value = opt.value;
                 }
             });
-        }     
+        }
 
         form.onsubmit = async (e) => {
             e.preventDefault();
@@ -701,10 +765,16 @@ async function renderConfigDispensers() {
             }
 
             const address = addressInput;
-            let dispenser_id = dispenser.dispenser_id;
+            const originalDispenserId = dispenser.dispenser_id;
+            const enteredDispenserId = (form.dispenser_id.value || '').trim();
 
-            // Fetch next dispenser_id for new dispensers (per customer)
+            // For new dispensers, fall back to next-id if the user left it blank.
+            let dispenser_id = enteredDispenserId;
             if (!dispenser_id) {
+                if (isExistingEdit) {
+                    alert('Dispenser ID cannot be empty');
+                    return;
+                }
                 const response = await fetch(
                     `${API_BASE_URL}/dispensers/next-id?customer_code=${customerCode}`
                 );
@@ -712,7 +782,16 @@ async function renderConfigDispensers() {
                     throw new Error('Failed to get next dispenser ID');
                 }
                 const data = await response.json();
-                dispenser_id = parseInt(data.next_id);
+                dispenser_id = String(data.next_id);
+            }
+
+            // Block collisions client-side too (the server enforces this anyway).
+            const idCollision = window.dispensers.some((d, i) =>
+                i !== index && d.customer_code === customerCode &&
+                String(d.dispenser_id) === String(dispenser_id));
+            if (idCollision) {
+                alert(`Dispenser ID "${dispenser_id}" already exists for this customer`);
+                return;
             }
 
             const newDispenser = {
@@ -722,7 +801,8 @@ async function renderConfigDispensers() {
                 DispenserBrand: form.DispenserBrand.value,
                 number_of_nozzles: selectedNozzles.length,
                 dispenser_id: dispenser_id,
-                ir_lock_status: dispenser.ir_lock_status || 1,
+                interface_type: form.interface_type.value || 'ir',
+                interface_lock_status: dispenser.interface_lock_status ?? 1,
                 nozzles: selectedNozzles.map(nozzle => ({
                     nozzleId: `${ensureDAddress(address)}-${nozzle}`,
                     product: form[`product-${nozzle}`].value
@@ -731,8 +811,9 @@ async function renderConfigDispensers() {
 
             try {
                 const savedDispenser = await saveDispenserToDB(
-                    newDispenser, 
-                    index < window.dispensers.length
+                    newDispenser,
+                    isExistingEdit,
+                    isExistingEdit ? originalDispenserId : null
                 );
                 
                 const updatedDispenser = {
@@ -744,7 +825,6 @@ async function renderConfigDispensers() {
                         product: form[`product-${nozzle}`].value,
                         status: 0,
                         lockStatus: 0,
-                        keypadLockStatus: 1,
                         pricePerLiter: 0.00,
                         totalQuantity: 0.00,
                         totalAmount: 0.00
