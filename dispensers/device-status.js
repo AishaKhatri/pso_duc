@@ -1166,7 +1166,9 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 
                 const loadErrors = async (showAll = false) => {
                     currentFilterValue = showAll ? 'all' : 'uncleared';
-                    const response = await fetch(`${API_BASE_URL}/error-log/${dispenserAddress}`);
+                    const response = await fetch(
+                        `${API_BASE_URL}/error-log/${encodeURIComponent(dispenserAddress)}?showCleared=${showAll}`
+                    );
                     if (response.ok) {
                         const allErrors = await response.json();
                         errorContainer.innerHTML = '';
@@ -1186,7 +1188,10 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 resetContainer.style.overflow = 'auto';
                 
                 const loadResets = async (filter = 'uncleared') => {
-                    const response = await fetch(`${API_BASE_URL}/power-status/${dispenserTopic}`);
+                    const showCleared = filter === 'all';
+                    const response = await fetch(
+                        `${API_BASE_URL}/power-status/${encodeURIComponent(dispenserTopic)}?showCleared=${showCleared}`
+                    );
                     if (response.ok) {
                         let freshPowerStatus = await response.json();
                         if (!Array.isArray(freshPowerStatus)) {
