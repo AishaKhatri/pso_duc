@@ -89,7 +89,8 @@ CREATE TABLE `dispensers` (
   `address` varchar(9) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
-  `ir_lock_status` tinyint NOT NULL DEFAULT '0',
+  `interface_type` enum('ir','keypad') NOT NULL DEFAULT 'ir',
+  `interface_lock_status` tinyint NOT NULL DEFAULT '1',
   `number_of_nozzles` int NOT NULL,
   `DispenserBrand` varchar(255) NOT NULL,
   `imei1` varchar(50) DEFAULT NULL,
@@ -124,19 +125,20 @@ CREATE TABLE `nozzles` (
   `dispenser_id` varchar(50) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
   `product` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '0',
+  -- status: 0 = device online but no MB comm, 1 = device + MB OK, 2 = no recent ping (device unreachable)
+  `status` tinyint NOT NULL DEFAULT '2',
+  `last_ping_at` timestamp NULL DEFAULT NULL,
   `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
   `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_sales_today` decimal(15,2) NOT NULL DEFAULT '0.00',
   `lock_unlock` tinyint NOT NULL DEFAULT '0',
-  `keypad_lock_status` tinyint NOT NULL DEFAULT '0',
   `price` decimal(10,2) NOT NULL DEFAULT '0.00',
   `quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `unique_nozzle_per_dispenser` (`customer_code`,`dispenser_id`,`nozzle_id`),
-  CONSTRAINT `nozzles_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`) REFERENCES `dispensers` (`customer_code`,`dispenser_id`) ON DELETE CASCADE
+  CONSTRAINT `nozzles_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`) REFERENCES `dispensers` (`customer_code`,`dispenser_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE `nozzle_history` (
@@ -145,17 +147,17 @@ CREATE TABLE `nozzle_history` (
   `dispenser_id` varchar(50) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
   `product` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
+  `status` tinyint NOT NULL DEFAULT '2',
+  `last_ping_at` timestamp NULL DEFAULT NULL,
   `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
   `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_sales_today` decimal(15,2) NOT NULL DEFAULT '0.00',
   `lock_unlock` tinyint NOT NULL DEFAULT '0',
-  `keypad_lock_status` tinyint NOT NULL DEFAULT '0',
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_nozzle_history` (`customer_code`,`dispenser_id`,`nozzle_id`),
-  CONSTRAINT `nozzle_history_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE
+  CONSTRAINT `nozzle_history_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 -- Survives station/dispenser/nozzle deletes. Server snapshots affected
@@ -168,13 +170,13 @@ CREATE TABLE IF NOT EXISTS `nozzle_history_archive` (
   `dispenser_id` varchar(50) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
   `product` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '1',
+  `status` tinyint NOT NULL DEFAULT '2',
+  `last_ping_at` timestamp NULL DEFAULT NULL,
   `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
   `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
   `total_sales_today` decimal(15,2) NOT NULL DEFAULT '0.00',
   `lock_unlock` tinyint NOT NULL DEFAULT '0',
-  `keypad_lock_status` tinyint NOT NULL DEFAULT '0',
   `original_created_at` timestamp NULL DEFAULT NULL,
   `archived_reason` varchar(64) DEFAULT NULL,
   `archived_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
@@ -194,7 +196,7 @@ CREATE TABLE `transactions` (
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `station_dispenser_nozzle` (`customer_code`,`dispenser_id`,`nozzle_id`),
-  CONSTRAINT `transactions_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE
+  CONSTRAINT `transactions_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 CREATE TABLE `network_status` (
@@ -240,3 +242,24 @@ CREATE TABLE `errors` (
   KEY `idx_address` (`address`),
   KEY `idx_cleared` (`cleared`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
+CREATE TABLE `resets` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `customer_code` varchar(8) NOT NULL,
+  `address` varchar(9) NOT NULL,
+  `message` varchar(64) DEFAULT NULL,
+  `die_time` datetime NULL DEFAULT NULL,
+  `wakeup_time` datetime NULL DEFAULT NULL,
+  `downtime_ms` bigint DEFAULT NULL,
+  `cleared` tinyint NOT NULL DEFAULT '0',
+  -- MD5 hex digest of (address|die_time|wakeup_time|message), computed in node
+  -- before INSERT. Combined with INSERT IGNORE this drops both MQTT QoS-1
+  -- redeliveries and device-side replays after a server restart.
+  `dedup_key` char(32) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_resets_dedup_key` (`dedup_key`),
+  KEY `idx_customer_code_address` (`customer_code`,`address`),
+  KEY `idx_address` (`address`),
+  KEY `idx_cleared` (`cleared`)
+) ENGINE=InnoDB;
