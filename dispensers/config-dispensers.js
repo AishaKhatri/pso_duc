@@ -1,41 +1,169 @@
 // Global variable to store stations list
 let stationsList = [];
-let configSearchQuery = '';
+const PRODUCT_OPTIONS = ['PMG', 'HSD', 'HOBC'];
+const configFilters = {
+    address: '',          // substring match (case-insensitive)
+    city: 'all',          // 'all' or a city name from stationsList
+    station: 'all',       // 'all' or a customer_code
+    product: 'all'        // 'all' or one of PRODUCT_OPTIONS
+};
 
 function getFilteredConfigDispensers() {
     const all = window.dispensers || [];
-    const q = configSearchQuery.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter(d =>
-        (d.customer_code || '').toLowerCase().includes(q) ||
-        String(d.address || '').toLowerCase().includes(q) ||
-        (d.DispenserBrand || '').toLowerCase().includes(q)
-    );
+    const addr = configFilters.address.trim().toLowerCase();
+    const cityFilter = configFilters.city;
+    const stationFilter = configFilters.station;
+    const productFilter = configFilters.product;
+
+    const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
+
+    return all.filter(d => {
+        if (addr && !String(d.address || '').toLowerCase().includes(addr)) return false;
+        if (cityFilter !== 'all') {
+            const dCity = stationByCode.get(d.customer_code)?.city || '';
+            if (dCity !== cityFilter) return false;
+        }
+        if (stationFilter !== 'all' && d.customer_code !== stationFilter) return false;
+        if (productFilter !== 'all') {
+            const dProducts = (d.nozzles || []).map(n => (n.product || '').toUpperCase());
+            if (!dProducts.includes(productFilter)) return false;
+        }
+        return true;
+    });
 }
 
-function buildConfigSearchControl(onChange) {
-    const dd = createSearchableDropdown({
-        placeholder: 'Search by customer code, address, or brand',
-        width: '380px',
+// Build the row of filter controls (City, Station, Product, Address) — mirrors
+// the main dispensers page so the two screens feel consistent.
+function buildConfigFilters(onChange) {
+    const FILTER_WIDTH = '220px';
+    const fire = () => { if (typeof onChange === 'function') onChange(); };
+
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+    wrap.style.flexWrap = 'wrap';
+    wrap.style.alignItems = 'center';
+    wrap.style.gap = '10px';
+    wrap.style.flex = '1 1 auto';
+
+    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+
+    // --- City ---
+    const cityOptions = [
+        { value: 'all', label: 'All Cities' },
+        ...[...new Set(stationsList.map(s => s.city).filter(Boolean))]
+            .sort()
+            .map(c => ({ value: c, label: titleCase(c) }))
+    ];
+
+    // --- Station options are scoped to the currently selected city. ---
+    const buildStationOptions = (forCity) => {
+        const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
+        const unique = [...new Set((window.dispensers || []).map(d => d.customer_code).filter(Boolean))];
+        const filtered = forCity === 'all'
+            ? unique
+            : unique.filter(code => stationByCode.get(code)?.city === forCity);
+        return [
+            { value: 'all', label: 'All Stations' },
+            ...filtered.sort().map(code => ({
+                value: code,
+                label: code,
+                secondary: stationByCode.get(code)?.station_id || ''
+            }))
+        ];
+    };
+
+    const labelFor = (options, val) => {
+        if (val === 'all') return '';
+        return options.find(o => o.value === val)?.label || '';
+    };
+
+    let stationCtl;
+
+    const cityCtl = createSearchableDropdown({
+        placeholder: 'Search by City',
+        width: FILTER_WIDTH,
         bgWhite: true,
-        items: () => (window.dispensers || []).map(d => ({
-            value: d.customer_code || String(d.address) || '',
-            label: d.customer_code || '',
-            secondary: [d.address ? ensureDAddress(d.address) : '', d.DispenserBrand].filter(Boolean).join(' · '),
-            search: [d.address, d.DispenserBrand]
-        })),
-        initialQuery: configSearchQuery,
-        emptyText: 'No dispensers match',
-        onInput: (q) => {
-            configSearchQuery = q;
-            if (typeof onChange === 'function') onChange();
-        },
+        items: cityOptions,
+        initialQuery: labelFor(cityOptions, configFilters.city),
         onSelect: (value) => {
-            configSearchQuery = value;
-            if (typeof onChange === 'function') onChange();
+            configFilters.city = value;
+            if (value === 'all') cityCtl.setQuery('');
+            // City change resets the station selection and re-scopes options.
+            configFilters.station = 'all';
+            if (stationCtl) {
+                stationCtl.setItems(buildStationOptions(value));
+                stationCtl.setQuery('');
+            }
+            fire();
         }
     });
-    return dd.wrap;
+
+    stationCtl = createSearchableDropdown({
+        placeholder: 'Search by Station',
+        width: FILTER_WIDTH,
+        bgWhite: true,
+        items: buildStationOptions(configFilters.city),
+        initialQuery: configFilters.station === 'all' ? '' : configFilters.station,
+        onSelect: (value) => {
+            configFilters.station = value;
+            if (value === 'all') stationCtl.setQuery('');
+            fire();
+        }
+    });
+
+    // --- Product ---
+    const productOptions = [
+        { value: 'all', label: 'All Products' },
+        ...PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))
+    ];
+
+    const productCtl = createSearchableDropdown({
+        placeholder: 'Search by Product',
+        width: FILTER_WIDTH,
+        bgWhite: true,
+        items: productOptions,
+        initialQuery: labelFor(productOptions, configFilters.product),
+        onSelect: (value) => {
+            configFilters.product = value;
+            if (value === 'all') productCtl.setQuery('');
+            fire();
+        }
+    });
+
+    // --- Address (free-text substring; suggestions show unique addresses) ---
+    const addressCtl = createSearchableDropdown({
+        placeholder: 'Search by Address',
+        width: FILTER_WIDTH,
+        bgWhite: true,
+        items: () => {
+            const seen = new Set();
+            const out = [];
+            for (const d of (window.dispensers || [])) {
+                const addr = d.address ? ensureDAddress(d.address) : '';
+                if (addr && !seen.has(addr)) {
+                    seen.add(addr);
+                    out.push({ value: addr, label: addr });
+                }
+            }
+            return out.sort((a, b) => a.label.localeCompare(b.label));
+        },
+        initialQuery: configFilters.address,
+        emptyText: 'No matching address',
+        onInput: (q) => {
+            configFilters.address = q;
+            fire();
+        },
+        onSelect: (value) => {
+            configFilters.address = value;
+            fire();
+        }
+    });
+
+    wrap.appendChild(cityCtl.wrap);
+    wrap.appendChild(stationCtl.wrap);
+    wrap.appendChild(productCtl.wrap);
+    wrap.appendChild(addressCtl.wrap);
+    return wrap;
 }
 
 async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserId = null) {
@@ -290,22 +418,22 @@ async function renderConfigDispensers() {
     const { content, addButton } = configPage('Configure Dispensers', '← Back', backTarget, 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
 
-    // Inject a left-aligned search control into the Add-Dispenser button row.
+    // Reserve an empty placeholder slot in the button row now so the layout
+    // doesn't jump once filters get appended after data loads.
     const buttonRow = addButton.parentElement;
+    let searchesGroup = null;
     if (buttonRow) {
         buttonRow.style.justifyContent = 'space-between';
         buttonRow.style.flexWrap = 'wrap';
-        
-        const searchesGroup = document.createElement('div');
+
+        searchesGroup = document.createElement('div');
         searchesGroup.style.display = 'flex';
         searchesGroup.style.flexWrap = 'wrap';
         searchesGroup.style.gap = '10px';
         searchesGroup.style.alignItems = 'center';
         searchesGroup.style.flex = '1 1 auto';
-        searchesGroup.appendChild(buildConfigSearchControl(refreshDispenserTable));
-
         buttonRow.insertBefore(searchesGroup, addButton);
-        
+
         // Export CSV — super-admin only.
         const role = StationAuth.getUserInfo()?.role;
         if (role === 'super_admin') {
@@ -330,6 +458,13 @@ async function renderConfigDispensers() {
         console.error('Load error:', error);
         content.innerHTML = '<div class="error">Failed to load dispensers</div>';
         return;
+    }
+
+    // Build the filter controls now that stationsList and window.dispensers
+    // are populated — building before this would leave the City/Station
+    // dropdowns with only their "All …" entry.
+    if (searchesGroup) {
+        searchesGroup.appendChild(buildConfigFilters(refreshDispenserTable));
     }
 
     const DispenserBrandOptions = ['Tatsuno', 'Wayne'];
@@ -605,7 +740,11 @@ async function renderConfigDispensers() {
             td.style.textAlign = 'center';
             td.style.borderBottom = '1px solid var(--border)';
             td.style.padding = '10px';
-            td.textContent = configSearchQuery
+            const anyFilterActive = configFilters.address.trim() !== '' ||
+                configFilters.city !== 'all' ||
+                configFilters.station !== 'all' ||
+                configFilters.product !== 'all';
+            td.textContent = anyFilterActive
                 ? 'No dispensers match'
                 : 'No dispensers configured';
             tr.appendChild(td);
