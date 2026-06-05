@@ -526,7 +526,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     let nozzles = Array.isArray(dispenser.nozzles) ? dispenser.nozzles : null;
     if (!nozzles) {
         const nozzlesResponse = await fetch(
-            `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+            `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
         );
         if (!nozzlesResponse.ok) return;
         nozzles = await nozzlesResponse.json();
@@ -543,26 +543,29 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.dataset.address = dispenserTopic;
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
-    const irStatusContainer = document.createElement('div');
-    irStatusContainer.style.position = 'absolute';
-    irStatusContainer.style.top = '0';
-    irStatusContainer.style.left = '45%';
-    irStatusContainer.style.transform = 'translateX(-25%)';
-    irStatusContainer.style.display = 'flex';
-    irStatusContainer.style.alignItems = 'center';
-    irStatusContainer.style.gap = '8px';
+    const interfaceStatusContainer = document.createElement('div');
+    interfaceStatusContainer.style.position = 'absolute';
+    interfaceStatusContainer.style.top = '0';
+    interfaceStatusContainer.style.left = '45%';
+    interfaceStatusContainer.style.transform = 'translateX(-25%)';
+    interfaceStatusContainer.style.display = 'flex';
+    interfaceStatusContainer.style.alignItems = 'center';
+    interfaceStatusContainer.style.gap = '8px';
 
-    const irControlIcon = createIconFromImage('assets/graphics/ir-control-icon.png', 'IR Control', '20px');
+    const isKeypad = (dispenser.interface_type || '').toLowerCase() === 'keypad';
+    const interfaceIconSrc = isKeypad ? 'assets/graphics/keypad-icon.png' : 'assets/graphics/ir-control-icon.png';
+    const interfaceIconAlt = isKeypad ? 'Keypad' : 'IR Control';
+    const interfaceIcon = createIconFromImage(interfaceIconSrc, interfaceIconAlt, '20px');
 
-    const irLockIcon = createIconFromImage('assets/graphics/ir-control-icon.png', null, '20px');
-    irLockIcon.className = 'ir-lock-icon';
-    irLockIcon.src = dispenser.ir_lock_status ? 
+    const interfaceLockIcon = createIconFromImage('assets/graphics/green-lock.png', null, '20px');
+    interfaceLockIcon.className = 'interface-lock-icon';
+    interfaceLockIcon.src = dispenser.interface_lock_status ?
         'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
-    irLockIcon.alt = dispenser.ir_lock_status ? 'Locked' : 'Unlocked';
+    interfaceLockIcon.alt = dispenser.interface_lock_status ? 'Locked' : 'Unlocked';
 
-    irStatusContainer.appendChild(irControlIcon);
-    irStatusContainer.appendChild(irLockIcon);
-    titleContainer.appendChild(irStatusContainer);
+    interfaceStatusContainer.appendChild(interfaceIcon);
+    interfaceStatusContainer.appendChild(interfaceLockIcon);
+    titleContainer.appendChild(interfaceStatusContainer);
 
     // Refresh button issues commands and is only available to admin/operator
     const cardRole = window.StationAuth?.getUserInfo?.()?.role;
@@ -632,8 +635,8 @@ async function updateDispenserCard(dispenser) {
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 
-    if (typeof window.updateIRStatus === 'function') {
-        window.updateIRStatus(dispenserTopic, dispenser.ir_lock_status ? 1 : 0);
+    if (typeof window.updateInterfaceLockStatus === 'function') {
+        window.updateInterfaceLockStatus(dispenserTopic, dispenser.interface_lock_status ? 1 : 0);
     }
 
     if (typeof window.updateConnStatus === 'function') {
@@ -657,7 +660,7 @@ async function updateDispenserCard(dispenser) {
         ? Promise.resolve(dispenser.nozzles)
         : (async () => {
             const r = await fetch(
-                `${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`
+                `${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`
             );
             return r.ok ? r.json() : [];
         })();

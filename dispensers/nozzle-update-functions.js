@@ -1,9 +1,22 @@
 // Store layout type for each nozzle
 const nozzleLayoutType = new Map();
 
+// nozzles.status is tri-state from the backend:
+//   1 = device + dispenser MB both reachable (msg_type=0 with value "1")
+//   0 = device reachable but MB silent       (msg_type=0 with value "0")
+//   2 = no recent ping                       (offline detector after 10 min)
+function nozzleStatusLabel(code) {
+    switch (Number(code)) {
+        case 1: return 'Active';
+        case 0: return 'Inactive';
+        case 2: return 'No Ping';
+        default: return 'Unknown';
+    }
+}
+
 async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser_id}&customer_code=${customer_code}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser_id)}&customer_code=${encodeURIComponent(customer_code)}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
         return nozzles.find(n => n.nozzle_id === nozzle_id);
@@ -11,78 +24,6 @@ async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
         console.error('Error fetching nozzle data:', error);
         return null;
     }
-}
-
-async function updateNozzleStatus(nozzleId, status) {
-    const nozzleData = await getNozzleDataFromTopic(nozzleId);
-    if (!nozzleData) return;
-
-    const isActive = status === 1;
-    nozzleData.status = isActive ? 'Active' : 'Inactive';
-    nozzleData.lastUpdated = new Date().toLocaleString();
-
-    updateNozzleUI(nozzleId, nozzleData);
-
-    window.showNotification?.(
-        `Nozzle ${nozzleData.nozzleId} is ${isActive ? 'Active' : 'Inactive'}`,
-        isActive ? 'success' : 'error'
-    );
-}
-
-async function getNozzleDataFromTopic(nozzleId) {
-    const topic = nozzleId.split('-')[0];
-    const shortNozzleId = nozzleId.split('-').pop();
-    const dispenserCard = document.querySelector(`div[data-address="${topic}"]`);
-    if (!dispenserCard) {
-        console.warn(`No dispenser found for topic ${topic}`);
-        return null;
-    }
-
-    const dispenserId = dispenserCard.id.split('-')[1];
-    const customerCode = dispenserCard.querySelector('.card-title')?.textContent.split(': ')[1];
-
-    const nozzle = await fetchNozzleData(customerCode, dispenserId, nozzleId);
-    if (!nozzle) {
-        console.warn(`No nozzle data found for ${nozzleId}`);
-        return null;
-    }
-
-    const container = document.getElementById(`nozzle-${nozzleId}`);
-    let layoutType = window.NOZZLE_LAYOUTS?.FULL || 'full';
-    
-    if (container && container.nozzleData) {
-        layoutType = container.nozzleData.layoutType || layoutType;
-    }
-    
-    const storedType = nozzleLayoutType.get(nozzleId);
-    if (storedType) layoutType = storedType;
-
-    return {
-        nozzleId: shortNozzleId,
-        fullNozzleId: nozzleId,
-        dispenserId: nozzle.dispenser_id,
-        fuelType: normalizeFuelType(nozzle.product),
-        status: nozzle.status ? 'Active' : 'Inactive',
-        price: parseFloat(nozzle.price) || 0.00,
-        quantity: parseFloat(nozzle.quantity) || 0.00,
-        pricePerLitre: parseFloat(nozzle.price_per_liter) || 0.00,
-        totalQuantity: parseFloat(nozzle.total_quantity) || 0.00,
-        totalSalesToday: parseFloat(nozzle.total_sales_today) || 0.00,
-        totalPrice: parseFloat(nozzle.total_amount) || 0.00,
-        lastUpdated: new Date().toLocaleString(),
-        keypadStatus: nozzle.keypad_lock_status ? 'Locked' : 'Unlocked',
-        locked: !!nozzle.lock_unlock,
-        layoutType: layoutType
-    };
-}
-
-function normalizeFuelType(product) {
-    if (!product) return 'Premier';
-    const lowerProduct = product.toLowerCase().trim();
-    if (lowerProduct.includes('pmg')) return 'PMG';
-    if (lowerProduct.includes('hsd')) return 'HSD';
-    if (lowerProduct.includes('hobc')) return 'HOBC';
-    return 'Premier';
 }
 
 function updateNozzleUI(nozzleId, nozzleData) {
@@ -118,7 +59,9 @@ function NozzleData(nozzle) {
         dispenserTopic: dispenserTopic,
         address: stripDAddress(dispenserTopic),
         fuelType: normalizeFuelType(nozzle.product),
-        status: nozzle.status ? 'Active' : 'Inactive',
+        statusCode: Number(nozzle.status),
+        status: nozzleStatusLabel(nozzle.status),
+        lastPingAt: nozzle.last_ping_at || null,
         price: parseFloat(nozzle.price) || 0.00,
         quantity: parseFloat(nozzle.quantity) || 0.00,
         pricePerLitre: parseFloat(nozzle.price_per_liter) || 0.00,
@@ -126,7 +69,6 @@ function NozzleData(nozzle) {
         totalSalesToday: parseFloat(nozzle.total_sales_today) || 0.00,
         totalPrice: parseFloat(nozzle.total_amount) || 0.00,
         lastUpdated: new Date().toLocaleString(),
-        keypadStatus: nozzle.keypad_lock_status ? 'Locked' : 'Unlocked',
         locked: !!nozzle.lock_unlock,
     };
 }
@@ -139,16 +81,16 @@ function getNozzleLayoutType(nozzleId) {
     return nozzleLayoutType.get(nozzleId);
 }
 
-async function updateIRStatus(dispenserId, lockStatus) {
+async function updateInterfaceLockStatus(dispenserId, lockStatus) {
     const dispenserCard = document.querySelector(`div[data-address="${dispenserId}"]`);
     if (dispenserCard) {
-        const irLockIcon = dispenserCard.querySelector('.ir-lock-icon');
-        if (irLockIcon) {
+        const lockIcon = dispenserCard.querySelector('.interface-lock-icon');
+        if (lockIcon) {
             const isLocked = lockStatus === 1;
-            irLockIcon.src = isLocked 
-                ? 'assets/graphics/green-lock.png' 
+            lockIcon.src = isLocked
+                ? 'assets/graphics/green-lock.png'
                 : 'assets/graphics/red-unlock.png';
-            irLockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
+            lockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
         }
     }
 }
@@ -171,7 +113,7 @@ async function sendGetCommandsForDispenser(dispenser) {
     const DELAY_BETWEEN_MESSAGES = 500; // 500ms delay
 
     try {
-        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${dispenser.dispenser_id}&customer_code=${dispenser.customer_code}`);
+        const response = await fetch(`${API_BASE_URL}/nozzles?dispenser_id=${encodeURIComponent(dispenser.dispenser_id)}&customer_code=${encodeURIComponent(dispenser.customer_code)}`);
         if (!response.ok) throw new Error('Failed to fetch nozzles');
         const nozzles = await response.json();
 
@@ -269,10 +211,9 @@ async function sendGetCommandsForDispenser(dispenser) {
 
 // Export functions
 window.NozzleData = NozzleData;
+window.nozzleStatusLabel = nozzleStatusLabel;
 window.setNozzleLayoutType = setNozzleLayoutType;
 window.getNozzleLayoutType = getNozzleLayoutType;
-window.updateNozzleStatus = updateNozzleStatus;
-window.updateIRStatus = updateIRStatus;
-window.getNozzleDataFromTopic = getNozzleDataFromTopic;
+window.updateInterfaceLockStatus = updateInterfaceLockStatus;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;

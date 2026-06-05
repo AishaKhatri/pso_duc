@@ -92,48 +92,80 @@ function createStatusSection(data, layoutType) {
         statusWrapper.appendChild(price);
     }
 
-    // Keypad and lock/unlock icons (only for FULL layout)
-    if (config.showKeypad && config.showLockStatus) {
-        const keypadContainer = document.createElement('div');
-        keypadContainer.style.display = 'flex';
-        keypadContainer.style.alignItems = 'center';
-        keypadContainer.style.gap = '8px';
-
-        const keypadBox = document.createElement('div');
-        keypadBox.style.border = '1px solid var(--text-primary)';
-        keypadBox.style.borderRadius = '4px';
-        keypadBox.style.padding = '2px';
-        keypadBox.style.display = 'flex';
-        keypadBox.style.alignItems = 'center';
-        keypadBox.style.justifyContent = 'center';
-
-        const keypadIcon = createIconFromImage('assets/graphics/keypad-icon.png', 'Keypad Icon', '16px');
-        keypadBox.appendChild(keypadIcon);
-
-        const lockIcon = document.createElement('img');
-        lockIcon.src = data.keypadStatus === 'Locked' ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
-        lockIcon.alt = data.keypadStatus === 'Locked' ? 'Locked' : 'Unlocked';
-        lockIcon.style.height = '20px';
-
-        keypadContainer.appendChild(keypadBox);
-        keypadContainer.appendChild(lockIcon);
-        statusWrapper.appendChild(keypadContainer);
-    }
-
-    // Status (right-aligned)
+    // Status badge (right-aligned). Tri-state palette:
+    //   1 → green (badge-online)   = device + MB OK
+    //   0 → amber (badge-reset)    = device online, MB silent
+    //   2 → red   (badge-offline)  = no recent ping
     const status = document.createElement('div');
-    status.style.background = data.status === 'Active' ? 'var(--badge-online-bg)' : 'var(--badge-offline-bg)';
-    status.style.color = data.status === 'Active' ? 'var(--badge-online-text)' : 'var(--badge-offline-text)';
+    const code = Number(data.statusCode);
+    let bgVar = 'var(--badge-offline-bg)';
+    let txtVar = 'var(--badge-offline-text)';
+    if (code === 1) {
+        bgVar = 'var(--badge-online-bg)';
+        txtVar = 'var(--badge-online-text)';
+    } else if (code === 0) {
+        bgVar = 'var(--badge-reset-bg)';
+        txtVar = 'var(--badge-reset-text)';
+    }
+    status.style.background = bgVar;
+    status.style.color = txtVar;
     status.style.fontWeight = '500';
     status.style.padding = '4px 10px';
     status.style.borderRadius = '20px';
     status.style.fontSize = config.statusFontSize;
+    status.style.cursor = 'pointer';
+    status.style.userSelect = 'none';
     status.textContent = data.status ?? 'Unknown';
+    status.title = data.lastPingAt
+        ? `Last ping: ${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
+        : 'No ping received yet';
+
+    // Tap-to-reveal "Last ping" — touch panels can't surface the title= tooltip,
+    // so the same info toggles inline below the badge on tap/click.
+    const pingNote = document.createElement('div');
+    pingNote.style.fontSize = '10px';
+    pingNote.style.color = 'var(--text-secondary)';
+    pingNote.style.textAlign = 'right';
+    pingNote.style.marginTop = '3px';
+    pingNote.style.display = 'none';
+
+    status.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const open = pingNote.style.display !== 'none';
+        if (open) {
+            pingNote.style.display = 'none';
+        } else {
+            // Refresh the relative time at open so a long-idle card doesn't show stale "2m ago".
+            pingNote.textContent = data.lastPingAt
+                ? `${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
+                : 'No ping received yet';
+            pingNote.style.display = 'block';
+        }
+    });
 
     statusWrapper.appendChild(status);
     section.appendChild(statusWrapper);
-    
+    section.appendChild(pingNote);
+
     return section;
+}
+
+// Small helper — renders "2m ago", "1h 13m ago", etc. Used in the tooltip and
+// (for the FULL layout) below the status badge.
+function formatRelativeTime(ts) {
+    if (!ts) return 'never';
+    const then = new Date(ts).getTime();
+    if (Number.isNaN(then)) return 'unknown';
+    const diffSec = Math.max(0, Math.floor((Date.now() - then) / 1000));
+    if (diffSec < 60) return `${diffSec}s ago`;
+    const diffMin = Math.floor(diffSec / 60);
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const hr = Math.floor(diffMin / 60);
+    const min = diffMin % 60;
+    if (hr < 24) return min ? `${hr}h ${min}m ago` : `${hr}h ago`;
+    const day = Math.floor(hr / 24);
+    const hrRem = hr % 24;
+    return hrRem ? `${day}d ${hrRem}h ago` : `${day}d ago`;
 }
 
 // Create metrics section (only for FULL layout)
@@ -215,15 +247,28 @@ function createTotalsFooter(data) {
 }
 
 // Create last updated section (only for FULL layout)
-function createLastUpdatedSection(lastUpdated) {
-    const updated = document.createElement('div');
-    updated.style.textAlign = 'center';
-    updated.style.fontSize = '11px';
-    updated.style.borderTop = '1px solid var(--border)';
-    updated.style.color = 'var(--text-secondary)';
-    updated.style.padding = '4px 0 4px';
-    updated.textContent = `Last Updated: ${lastUpdated ?? '-'}`;
-    return updated;
+function createLastUpdatedSection(lastUpdated, lastPingAt) {
+    const wrap = document.createElement('div');
+    wrap.style.textAlign = 'center';
+    wrap.style.fontSize = '11px';
+    wrap.style.borderTop = '1px solid var(--border)';
+    wrap.style.color = 'var(--text-secondary)';
+    wrap.style.padding = '4px 0';
+
+    const updatedLine = document.createElement('div');
+    updatedLine.textContent = `Last Updated: ${lastUpdated ?? '-'}`;
+    wrap.appendChild(updatedLine);
+
+    const pingLine = document.createElement('div');
+    pingLine.textContent = lastPingAt
+        ? `Last Ping: ${formatRelativeTime(lastPingAt)}`
+        : 'Last Ping: never';
+    if (lastPingAt) {
+        pingLine.title = new Date(lastPingAt).toLocaleString();
+    }
+    wrap.appendChild(pingLine);
+
+    return wrap;
 }
 
 // Create transaction log link (common)
@@ -357,7 +402,7 @@ window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYO
         
         // Last updated (only for FULL layout)
         if (config.showLastUpdated) {
-            const lastUpdated = createLastUpdatedSection(data.lastUpdated);
+            const lastUpdated = createLastUpdatedSection(data.lastUpdated, data.lastPingAt);
             card.appendChild(lastUpdated);
         }
         
