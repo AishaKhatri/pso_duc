@@ -4,6 +4,39 @@
 let allGroupedDispensers = {};
 let allStationsData = [];
 
+// Shared filter state — module-scope so newly-rendered station sections (added
+// during the long render loop) can pick up filters the user has already
+// applied while the render is still in flight.
+const _filterState = { city: 'all', station: 'all', connection: 'all', address: '' };
+
+function _applyFilterToSection(stationSection) {
+    if (!stationSection) return false;
+    const stationCode = stationSection.getAttribute('data-station-code');
+    const stationCity = stationSection.getAttribute('data-city');
+    const cityMatch = _filterState.city === 'all' || stationCity === _filterState.city;
+    const stationMatch = _filterState.station === 'all' || stationCode === _filterState.station;
+
+    if (!cityMatch || !stationMatch) {
+        stationSection.style.display = 'none';
+        return false;
+    }
+
+    const addrQuery = _filterState.address.trim().toLowerCase();
+
+    let anyCardVisible = false;
+    stationSection.querySelectorAll('.app-dispenser-card').forEach(card => {
+        const connStatus = card.dataset.connStatus || '';
+        const connMatch = _filterState.connection === 'all' || connStatus === _filterState.connection;
+        const cardAddress = (card.dataset.address || '').toLowerCase();
+        const addrMatch = !addrQuery || cardAddress.includes(addrQuery);
+        const visible = connMatch && addrMatch;
+        card.style.display = visible ? '' : 'none';
+        if (visible) anyCardVisible = true;
+    });
+    stationSection.style.display = anyCardVisible ? 'block' : 'none';
+    return anyCardVisible;
+}
+
 // Group dispensers by station
 function groupDispensersByStation(dispensers) {
     const grouped = {};
@@ -88,12 +121,9 @@ function buildPickerDropdown({ placeholder, width, options, getSelected, setSele
 
 // Create filter container with city, station, and connection filters
 async function createFilterContainer(stations, onFilterChange, actionsContainer = null) {
-    // Filter state (kept in closure so each control reads/writes the same values)
-    const state = {
-        city: 'all',
-        station: 'all',
-        connection: 'all'    // 'all' | '1' (Connected) | '0' (Disconnected)
-    };
+    // Shared module-scope state, so newly-added station sections during the
+    // render loop can apply the current filter selection.
+    const state = _filterState;
 
     // All three search bars share the same width.
     const FILTER_WIDTH = '240px';
@@ -182,6 +212,34 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
         onPick: () => emitChange()
     });
 
+    // Address — free-text substring search with autocomplete suggestions
+    // pulled from the unique D-addresses across all stations on this page.
+    const addressOptions = (() => {
+        const seen = new Set();
+        const out = [];
+        for (const code of allStationCodes) {
+            for (const d of (stations[code]?.dispensers || [])) {
+                const addr = d.address ? ensureDAddress(d.address) : '';
+                if (addr && !seen.has(addr)) {
+                    seen.add(addr);
+                    out.push({ value: addr, label: addr });
+                }
+            }
+        }
+        return out.sort((a, b) => a.label.localeCompare(b.label));
+    })();
+
+    const addressCtl = createSearchableDropdown({
+        placeholder: 'Search by Address',
+        width: FILTER_WIDTH,
+        bgWhite: true,
+        items: addressOptions,
+        initialQuery: state.address,
+        emptyText: 'No matching address',
+        onInput: (q) => { state.address = q; emitChange(); },
+        onSelect: (v) => { state.address = v; emitChange(); }
+    });
+
     function emitChange() {
         if (typeof onFilterChange === 'function') {
             onFilterChange(state.station, state.city, state.connection);
@@ -191,6 +249,7 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     filtersLeft.appendChild(cityCtl.wrap);
     filtersLeft.appendChild(stationCtl.wrap);
     filtersLeft.appendChild(connectionCtl.wrap);
+    filtersLeft.appendChild(addressCtl.wrap);
 
     filterContainer.appendChild(filtersLeft);
 
@@ -476,34 +535,10 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
     emptyMsg.style.display = 'none';
 
     if (sortedStations.length > 0) {
-        const applyFilters = (selectedStation, selectedCity, selectedConn) => {
+        const applyFilters = () => {
             let anyStationVisible = false;
-            for (const [stationCode, stationSection] of Object.entries(window.stationSections)) {
-                const stationCity = stationSection.getAttribute('data-city');
-                const cityMatch = selectedCity === 'all' || stationCity === selectedCity;
-                const stationMatch = selectedStation === 'all' || stationCode === selectedStation;
-
-                if (!cityMatch || !stationMatch) {
-                    stationSection.style.display = 'none';
-                    continue;
-                }
-
-                // Section passes city/station; now filter individual cards by connection.
-                let anyCardVisible = false;
-                const cards = stationSection.querySelectorAll('.app-dispenser-card');
-                cards.forEach(card => {
-                    const connStatus = card.dataset.connStatus || '';
-                    const connMatch = selectedConn === 'all' || connStatus === selectedConn;
-                    if (connMatch) {
-                        card.style.display = '';
-                        anyCardVisible = true;
-                    } else {
-                        card.style.display = 'none';
-                    }
-                });
-
-                stationSection.style.display = anyCardVisible ? 'block' : 'none';
-                if (anyCardVisible) anyStationVisible = true;
+            for (const stationSection of Object.values(window.stationSections)) {
+                if (_applyFilterToSection(stationSection)) anyStationVisible = true;
             }
             emptyMsg.style.display = anyStationVisible ? 'none' : 'block';
         };
@@ -559,10 +594,6 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
         window.stationCheckOverflow[stationCode] = checkOverflow;
         window.stationSections[stationCode] = stationSection;
 
-        // Attach BEFORE building cards inside stationGrid. createDispenserCard
-        // schedules a setTimeout that calls document.getElementById('nozzle-…') —
-        // if the section is still detached at that point, the lookup fails and
-        // the nozzle stays blank until the next periodic tick re-renders it.
         gridContainer.appendChild(stationSection);
 
         // Create cards for each dispenser in this station
@@ -570,6 +601,14 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
             await createCardFunction(dispenser, stationGrid, additionalParams);
         }
     }
+
+    // Whole grid is built — apply current filter once so a deep-linked /
+    // pre-selected filter takes effect before the page is revealed by the caller.
+    for (const stationSection of Object.values(window.stationSections)) {
+        _applyFilterToSection(stationSection);
+    }
+    emptyMsg.style.display = Object.values(window.stationSections)
+        .some(s => s.style.display !== 'none') ? 'none' : 'block';
 
     return { filterContainer };
 }

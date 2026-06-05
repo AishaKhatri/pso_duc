@@ -341,9 +341,12 @@ async function renderDispenser() {
     const params = new URLSearchParams(window.location.search);
     const customerCodeFilter = (params.get('customer_code') || '').trim();
 
-    // Show a loader while the initial dispenser/nozzle data is being fetched.
     const loader = createPageLoader('Loading dispensers…');
     content.appendChild(loader);
+
+    const stage = document.createElement('div');
+    stage.style.display = 'none';
+    content.appendChild(stage);
 
     try {
         // /dispensers-full returns each dispenser with its nozzles[] and station
@@ -355,7 +358,6 @@ async function renderDispenser() {
         const dispensersResponse = await fetch(dispenserUrl);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
-        loader.remove();
 
         let headerContainer, optionsContainer, gridContainer;
 
@@ -443,7 +445,7 @@ async function renderDispenser() {
             topRow.style.justifyContent = 'flex-end';
             topRow.style.marginBottom = '8px';
             topRow.appendChild(lastUpdatedEl);
-            content.appendChild(topRow);
+            stage.appendChild(topRow);
 
             const backRow = document.createElement('div');
             backRow.style.display = 'flex';
@@ -456,26 +458,21 @@ async function renderDispenser() {
             backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
-            content.appendChild(backRow);
+            stage.appendChild(backRow);
         } else {
             const topRow = document.createElement('div');
             topRow.style.display = 'flex';
             topRow.style.justifyContent = 'flex-end';
             topRow.style.marginBottom = '8px';
             topRow.appendChild(lastUpdatedEl);
-            content.appendChild(topRow);
+            stage.appendChild(topRow);
         }
         if (headerContainer) {
-            content.appendChild(headerContainer);
+            stage.appendChild(headerContainer);
         }
 
         gridContainer.id = 'dispenser-grid';
-        // Attach gridContainer BEFORE rendering into it. createDispenserCard
-        // schedules a setTimeout that calls document.getElementById('nozzle-…');
-        // if cards are built into a detached gridContainer they aren't visible
-        // to that lookup, which was leaving every nozzle blank until the 10-s
-        // periodic tick finally populated them.
-        content.appendChild(gridContainer);
+        stage.appendChild(gridContainer);
 
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');
@@ -493,6 +490,10 @@ async function renderDispenser() {
         } else {
             await window.renderStationWiseDispensers(dispensers, gridContainer, createDispenserCard, { layoutType: window.NOZZLE_LAYOUTS.FULL }, optionsContainer);
         }
+
+        // Build done — swap loader for the fully-assembled UI in one paint.
+        loader.remove();
+        stage.style.display = '';
 
         if (dispensers.length > 0) {
             updateInterval = setInterval(async () => {
@@ -543,29 +544,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.dataset.address = dispenserTopic;
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
-    const interfaceStatusContainer = document.createElement('div');
-    interfaceStatusContainer.style.position = 'absolute';
-    interfaceStatusContainer.style.top = '0';
-    interfaceStatusContainer.style.left = '45%';
-    interfaceStatusContainer.style.transform = 'translateX(-25%)';
-    interfaceStatusContainer.style.display = 'flex';
-    interfaceStatusContainer.style.alignItems = 'center';
-    interfaceStatusContainer.style.gap = '8px';
-
-    const isKeypad = (dispenser.interface_type || '').toLowerCase() === 'keypad';
-    const interfaceIconSrc = isKeypad ? 'assets/graphics/keypad-icon.png' : 'assets/graphics/ir-control-icon.png';
-    const interfaceIconAlt = isKeypad ? 'Keypad' : 'IR Control';
-    const interfaceIcon = createIconFromImage(interfaceIconSrc, interfaceIconAlt, '20px');
-
-    const interfaceLockIcon = createIconFromImage('assets/graphics/green-lock.png', null, '20px');
-    interfaceLockIcon.className = 'interface-lock-icon';
-    interfaceLockIcon.src = dispenser.interface_lock_status ?
-        'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
-    interfaceLockIcon.alt = dispenser.interface_lock_status ? 'Locked' : 'Unlocked';
-
-    interfaceStatusContainer.appendChild(interfaceIcon);
-    interfaceStatusContainer.appendChild(interfaceLockIcon);
-    titleContainer.appendChild(interfaceStatusContainer);
+    titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
 
     // Refresh button issues commands and is only available to admin/operator
     const cardRole = window.StationAuth?.getUserInfo?.()?.role;
@@ -597,33 +576,76 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     nozzleGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
     nozzleGrid.style.gap = '11px';
     nozzleGrid.style.marginTop = '8px';
+    // Reserve approximate vertical space so the page doesn't reflow violently
+    // when off-screen cards eventually materialize as the user scrolls.
+    nozzleGrid.style.minHeight = `${Math.ceil(nozzles.length / 2) * 110}px`;
     card.appendChild(nozzleGrid);
     gridContainer.appendChild(card);
 
-    nozzles.forEach(nozzle => {
-        const nozzleContainer = document.createElement('div');
-        nozzleContainer.id = `nozzle-${nozzle.nozzle_id}`;
-        nozzleGrid.appendChild(nozzleContainer);
+    // Apply the initial conn_status badge now — without this, the card shows
+    // "Connecting…" until the first 10s periodic tick fires.
+    if (typeof window.updateConnStatus === 'function') {
+        window.updateConnStatus(
+            dispenserTopic,
+            dispenser.conn_status ? 1 : 0,
+            dispenser.connected_at
+        );
+    }
 
-        // Store layout type for this nozzle
-        if (typeof window.setNozzleLayoutType === 'function') {
-            window.setNozzleLayoutType(nozzle.nozzle_id, layoutType);
-        }
-    });
+    // Latest dispenser/nozzle data stays on the card so the periodic 10s tick
+    // can refresh it for un-materialized cards too — materialize() reads from
+    // here, not the closure, so deferred cards render fresh data when scrolled
+    // into view instead of whatever was on screen at first render.
+    card._dispenserData = dispenser;
+    card._dispenserNozzles = nozzles;
+    card._layoutType = layoutType;
+    card._showHourlyChart = !!params.showHourlyChart;
 
-    // Small delay to ensure DOM is updated, then update UI
-    setTimeout(() => {
-        nozzles.forEach(nozzle => {
+    const materialize = () => {
+        if (card._materialized) return;
+        card._materialized = true;
+
+        const currentNozzles = card._dispenserNozzles || nozzles;
+        currentNozzles.forEach(nozzle => {
+            const nozzleContainer = document.createElement('div');
+            nozzleContainer.id = `nozzle-${nozzle.nozzle_id}`;
+            nozzleGrid.appendChild(nozzleContainer);
+            if (typeof window.setNozzleLayoutType === 'function') {
+                window.setNozzleLayoutType(nozzle.nozzle_id, card._layoutType);
+            }
+        });
+        // Drop the placeholder min-height now that real content fills it.
+        nozzleGrid.style.minHeight = '';
+
+        currentNozzles.forEach(nozzle => {
             const nozzleData = window.NozzleData(nozzle);
             if (typeof window.updateNozzleUI === 'function') {
                 window.updateNozzleUI(nozzle.nozzle_id, nozzleData);
             }
         });
-    }, 100);
 
-    // Optional: per-dispenser hourly sales chart embedded inside the card
-    if (params.showHourlyChart) {
-        attachDispenserHourlyChart(dispenser, card);
+        if (card._showHourlyChart) {
+            attachDispenserHourlyChart(card._dispenserData || dispenser, card);
+        }
+    };
+    card._materialize = materialize;
+
+    // IntersectionObserver materializes off-screen cards lazily. rootMargin
+    // pre-renders cards ~400px before they scroll into view, hiding the
+    // build latency from the user.
+    if (typeof IntersectionObserver === 'function') {
+        const io = new IntersectionObserver((entries, observer) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    materialize();
+                    observer.disconnect();
+                }
+            });
+        }, { rootMargin: '400px 0px' });
+        io.observe(card);
+    } else {
+        // Fallback for ancient browsers — materialize everything immediately.
+        materialize();
     }
 }
 
@@ -632,6 +654,13 @@ async function updateDispenserCard(dispenser) {
     if (!card) return;
 
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+
+    // Refresh the cached payload so a card that hasn't materialized yet (still
+    // off-screen) will pop in with fresh nozzle data once it scrolls into view.
+    card._dispenserData = dispenser;
+    if (Array.isArray(dispenser.nozzles)) {
+        card._dispenserNozzles = dispenser.nozzles;
+    }
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 
