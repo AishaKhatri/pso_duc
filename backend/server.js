@@ -14,10 +14,8 @@ const {
     getGsmStatus,
     getWiFiStatus,
     getMqttStatus,
-    getPowerOnStatus,
     getGsmConnectionStatus,
     getWifiConnectionStatus,
-    clearedResetsCache,
     publishMessage,
     shutdownMqtt } = require('./mqtt-service');
 
@@ -767,7 +765,7 @@ app.get('/api/dispensers', async (req, res) => {
         // Explicit columns — drops IMEI1/IMEI2 from the response (only
         // used server-side) so the payload stays small over the network.
         let query = `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                            connected_at, ir_lock_status, number_of_nozzles, DispenserBrand, created_at
+                            connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at
                      FROM dispensers`;
         let params = [];
 
@@ -800,16 +798,16 @@ app.get('/api/dispensers-full', async (req, res) => {
         const [dispensers, nozzles, stations] = await Promise.all([
             pool.query(
                 `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                        connected_at, ir_lock_status, number_of_nozzles, DispenserBrand, created_at
+                        connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at
                  FROM dispensers
                  ${whereCustomer}
                  ORDER BY customer_code, dispenser_id`,
                 params
             ),
             pool.query(
-                `SELECT customer_code, dispenser_id, nozzle_id, product, status,
+                `SELECT customer_code, dispenser_id, nozzle_id, product, status, last_ping_at,
                         price_per_liter, total_quantity, total_amount, total_sales_today,
-                        lock_unlock, keypad_lock_status, price, quantity
+                        lock_unlock, price, quantity
                  FROM nozzles
                  ${whereCustomer}`,
                 params
@@ -890,9 +888,9 @@ app.get('/api/nozzles', async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            `SELECT customer_code, dispenser_id, nozzle_id, product, status,
+            `SELECT customer_code, dispenser_id, nozzle_id, product, status, last_ping_at,
                     price_per_liter, total_quantity, total_amount, total_sales_today,
-                    lock_unlock, keypad_lock_status, price, quantity
+                    lock_unlock, price, quantity
              FROM nozzles
              WHERE customer_code = ? AND dispenser_id = ?`,
             [customer_code, dispenser_id]
@@ -1018,34 +1016,58 @@ app.get('/api/mqtt-status/:dispenser_addr', (req, res) => {
     }
 });
 
-app.get('/api/power-status/:dispenser_addr', (req, res) => {
+app.get('/api/power-status/:dispenser_addr', async (req, res) => {
     try {
-        const { dispenser_addr } = req.params;       
-        let status = getPowerOnStatus(dispenser_addr);        
-        let statusArray = [];
-        if (status) {
-            statusArray = Array.isArray(status) ? status : [status];
+        const { dispenser_addr } = req.params;
+        const { showCleared } = req.query;
+        const addrD = ensureDAddress(dispenser_addr);
+        const addrNaked = stripDAddress(dispenser_addr);
+
+        let query = `
+            SELECT id, customer_code, message, die_time, wakeup_time, downtime_ms, cleared, created_at
+            FROM resets
+            WHERE address IN (?, ?)
+        `;
+        const params = [addrD, addrNaked];
+
+        if (showCleared === 'false' || showCleared === '0') {
+            query += ' AND cleared = 0';
         }
-        
-        const clearedIds = clearedResetsCache.get(dispenser_addr) || new Set();
-        
-        const statusWithCleared = statusArray.map((item) => ({
-            ...item,
-            cleared: clearedIds.has(item.id)
+
+        query += ' ORDER BY created_at DESC LIMIT 1000';
+
+        const [rows] = await pool.query(query, params);
+
+        // Shape matches the legacy in-memory format so the existing frontend renderer just works.
+        const result = rows.map(r => ({
+            id: r.id,
+            message: r.message,
+            dieTime: r.die_time,
+            wakeupTime: r.wakeup_time,
+            type: 'power_on',
+            lastUpdated: r.created_at,
+            downtimeMs: r.downtime_ms != null ? Number(r.downtime_ms) : null,
+            cleared: !!r.cleared
         }));
-        
-        res.json(statusWithCleared);
+
+        res.json(result);
     } catch (error) {
         console.error('Error fetching power-on status:', error);
         res.status(500).json({ error: 'Failed to fetch power-on status' });
     }
 });
 
-app.get('/api/cleared-resets/:dispenser_addr', (req, res) => {
+app.get('/api/cleared-resets/:dispenser_addr', async (req, res) => {
     try {
         const { dispenser_addr } = req.params;
-        const clearedIds = clearedResetsCache.get(dispenser_addr) || new Set();
-        res.json({ ids: Array.from(clearedIds) });
+        const addrD = ensureDAddress(dispenser_addr);
+        const addrNaked = stripDAddress(dispenser_addr);
+
+        const [rows] = await pool.query(
+            'SELECT id FROM resets WHERE address IN (?, ?) AND cleared = 1',
+            [addrD, addrNaked]
+        );
+        res.json({ ids: rows.map(r => r.id) });
     } catch (error) {
         console.error('Error fetching cleared resets:', error);
         res.status(500).json({ error: 'Failed to fetch cleared resets' });
@@ -1377,7 +1399,11 @@ app.post('/api/stations', async (req, res) => {
 
 app.post('/api/dispensers', async (req, res) => {
     try {
-        const { customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles, ir_lock_status } = req.body;
+        const { customer_code, dispenser_id, address, DispenserBrand, number_of_nozzles, interface_type, interface_lock_status } = req.body;
+        const dispenserInterface = (interface_type || 'ir').toLowerCase();
+        if (dispenserInterface !== 'ir' && dispenserInterface !== 'keypad') {
+            return res.status(400).json({ error: "interface_type must be 'ir' or 'keypad'" });
+        }
         const conn_status = 0;
         const connected_at = null;
 
@@ -1425,9 +1451,9 @@ app.post('/api/dispensers', async (req, res) => {
         // Insert the dispenser (D-prefixed)
         const [result] = await pool.query(
             `INSERT INTO dispensers
-            (customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [customer_code, dispenser_id, addrD, conn_status, connected_at, DispenserBrand, number_of_nozzles, ir_lock_status || 0]
+            (customer_code, dispenser_id, address, conn_status, connected_at, DispenserBrand, number_of_nozzles, interface_type, interface_lock_status)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            [customer_code, dispenser_id, addrD, conn_status, connected_at, DispenserBrand, number_of_nozzles, dispenserInterface, interface_lock_status ?? 1]
         );
 
         // MQTT slave topic uses the numeric address (s<naked>).
@@ -1489,17 +1515,16 @@ app.post('/api/dispensers/publish', async (req, res) => {
 
 app.post('/api/nozzles', async (req, res) => {
     try {
-        const { 
+        const {
             customer_code,
-            dispenser_id, 
-            nozzle_id, 
-            product, 
-            status = 1, 
-            lock_unlock = 1, 
-            keypad_lock_status = 1, 
-            price_per_liter = '0.00', 
-            total_quantity = '0.00', 
-            total_amount = '0.00', 
+            dispenser_id,
+            nozzle_id,
+            product,
+            status = 1,
+            lock_unlock = 1,
+            price_per_liter = '0.00',
+            total_quantity = '0.00',
+            total_amount = '0.00',
             total_sales_today = '0.00',
             price = '0.00',
             quantity = '0.00'
@@ -1530,9 +1555,9 @@ app.post('/api/nozzles', async (req, res) => {
 
         const [result] = await pool.query(
             `INSERT INTO nozzles
-            (customer_code, dispenser_id, nozzle_id, product, status, lock_unlock, keypad_lock_status,
+            (customer_code, dispenser_id, nozzle_id, product, status, lock_unlock,
              price_per_liter, total_quantity, total_amount, total_sales_today, price, quantity)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 customer_code,
                 dispenser_id,
@@ -1540,7 +1565,6 @@ app.post('/api/nozzles', async (req, res) => {
                 product,
                 status,
                 lock_unlock,
-                keypad_lock_status,
                 numericFields.price_per_liter,
                 numericFields.total_quantity,
                 numericFields.total_amount,
@@ -1651,91 +1675,169 @@ app.put('/api/users/:id', async (req, res) => {
 });
 
 app.put('/api/dispensers/:dispenser_id', async (req, res) => {
+    const connection = await pool.getConnection();
     try {
         const { dispenser_id } = req.params;
-        const { customer_code, address, DispenserBrand, number_of_nozzles, ir_lock_status, conn_status } = req.body;
+        const {
+            customer_code, address, DispenserBrand, number_of_nozzles,
+            interface_type, interface_lock_status, conn_status,
+            dispenser_id: newDispenserIdRaw
+        } = req.body;
 
         if (!customer_code) {
+            connection.release();
             return res.status(400).json({ error: 'customer_code is required' });
         }
 
-        // Check if at least one field is provided
         if (Object.keys(req.body).length === 0) {
+            connection.release();
             return res.status(400).json({ error: 'At least one field must be provided for update' });
         }
+
+        await connection.beginTransaction();
+
+        // Rename dispenser_id (if requested). The FK cascade handles nozzles,
+        // nozzle_history and transactions automatically; the three loose tables
+        // (no FK) we update by hand inside the same transaction.
+        const newDispenserId = newDispenserIdRaw !== undefined && String(newDispenserIdRaw) !== String(dispenser_id)
+            ? String(newDispenserIdRaw)
+            : null;
+
+        if (newDispenserId !== null) {
+            if (!newDispenserId.trim()) {
+                await connection.rollback();
+                connection.release();
+                return res.status(400).json({ error: 'dispenser_id cannot be empty' });
+            }
+
+            const [collision] = await connection.query(
+                'SELECT id FROM dispensers WHERE customer_code = ? AND dispenser_id = ?',
+                [customer_code, newDispenserId]
+            );
+            if (collision.length > 0) {
+                await connection.rollback();
+                connection.release();
+                return res.status(409).json({ error: `dispenser_id "${newDispenserId}" already exists for customer ${customer_code}` });
+            }
+
+            const [renameResult] = await connection.query(
+                'UPDATE dispensers SET dispenser_id = ? WHERE customer_code = ? AND dispenser_id = ?',
+                [newDispenserId, customer_code, dispenser_id]
+            );
+            if (renameResult.affectedRows === 0) {
+                await connection.rollback();
+                connection.release();
+                return res.status(404).json({ error: 'Dispenser not found' });
+            }
+
+            // FK chain (nozzles → nozzle_history, transactions) updated via
+            // ON UPDATE CASCADE. Loose tables have no FK — update them here.
+            await connection.query(
+                'UPDATE ping_log SET dispenser_id = ? WHERE dispenser_id = ?',
+                [newDispenserId, dispenser_id]
+            );
+            await connection.query(
+                'UPDATE connections_history SET dispenser_id = ? WHERE dispenser_id = ?',
+                [newDispenserId, dispenser_id]
+            );
+            await connection.query(
+                'UPDATE nozzle_history_archive SET dispenser_id = ? WHERE customer_code = ? AND dispenser_id = ?',
+                [newDispenserId, customer_code, dispenser_id]
+            );
+        }
+
+        // Lookup key for any remaining field updates is the (possibly new) id.
+        const effectiveDispenserId = newDispenserId ?? dispenser_id;
 
         const fields = [];
         const values = [];
 
-        // Validate and add each field if provided
         if (address !== undefined) {
             fields.push('address = ?');
             values.push(ensureDAddress(address));
         }
-
         if (DispenserBrand !== undefined) {
             fields.push('DispenserBrand = ?');
             values.push(DispenserBrand);
         }
-
         if (number_of_nozzles !== undefined) {
             fields.push('number_of_nozzles = ?');
             values.push(number_of_nozzles);
         }
-
-        if (ir_lock_status !== undefined) {
-            fields.push('ir_lock_status = ?');
-            values.push(ir_lock_status);
+        if (interface_type !== undefined) {
+            const v = String(interface_type).toLowerCase();
+            if (v !== 'ir' && v !== 'keypad') {
+                await connection.rollback();
+                connection.release();
+                return res.status(400).json({ error: "interface_type must be 'ir' or 'keypad'" });
+            }
+            fields.push('interface_type = ?');
+            values.push(v);
         }
-
+        if (interface_lock_status !== undefined) {
+            fields.push('interface_lock_status = ?');
+            values.push(interface_lock_status);
+        }
         if (conn_status !== undefined) {
             fields.push('conn_status = ?');
             values.push(conn_status);
         }
 
-        // Add WHERE clause parameters
-        values.push(customer_code, dispenser_id);
-
-        const [result] = await pool.query(
-            `UPDATE dispensers SET ${fields.join(', ')}
-            WHERE customer_code = ? AND dispenser_id = ?`,
-            values
-        );
-
-        if (result.affectedRows === 0) {
-            return res.status(404).json({ error: 'Dispenser not found' });
+        if (fields.length > 0) {
+            values.push(customer_code, effectiveDispenserId);
+            const [result] = await connection.query(
+                `UPDATE dispensers SET ${fields.join(', ')}
+                 WHERE customer_code = ? AND dispenser_id = ?`,
+                values
+            );
+            if (result.affectedRows === 0 && newDispenserId === null) {
+                await connection.rollback();
+                connection.release();
+                return res.status(404).json({ error: 'Dispenser not found' });
+            }
         }
 
+        await connection.commit();
+
         logActivity(req, 'dispenser_update', {
-            entity_type: 'dispenser', entity_id: `${customer_code}/${dispenser_id}`,
-            details: { fields: fields.map(f => f.replace(' = ?', '')) }
+            entity_type: 'dispenser',
+            entity_id: `${customer_code}/${effectiveDispenserId}`,
+            details: {
+                fields: fields.map(f => f.replace(' = ?', '')),
+                renamed_from: newDispenserId !== null ? dispenser_id : undefined,
+                renamed_to: newDispenserId !== null ? newDispenserId : undefined
+            }
         });
 
         res.json({
             success: true,
             message: 'Dispenser updated successfully',
             customer_code,
-            dispenser_id
+            dispenser_id: effectiveDispenserId,
+            renamed: newDispenserId !== null
         });
     } catch (error) {
+        try { await connection.rollback(); } catch {}
         console.error('Database error:', error);
-        res.status(500).json({ error: 'Failed to update dispenser' });
+        res.status(500).json({ error: 'Failed to update dispenser: ' + error.message });
+    } finally {
+        connection.release();
     }
 });
 
 app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
     try {
         const { dispenser_id, nozzle_id } = req.params;
-        const { customer_code, product, status, price_per_liter, total_quantity, total_amount, 
-                total_sales_today, lock_unlock, keypad_lock_status, price, quantity } = req.body;
+        const { customer_code, product, status, price_per_liter, total_quantity, total_amount,
+                total_sales_today, lock_unlock, price, quantity } = req.body;
 
         if (!customer_code) {
             return res.status(400).json({ error: 'customer_code is required' });
         }
 
         // Generate a unique hash for deduplication
-        const messageHash = JSON.stringify({ customer_code, dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount, 
-                                             total_sales_today, lock_unlock, keypad_lock_status, price, quantity });
+        const messageHash = JSON.stringify({ customer_code, dispenser_id, nozzle_id, product, status, price_per_liter, total_quantity, total_amount,
+                                             total_sales_today, lock_unlock, price, quantity });
         const now = Date.now();
         if (recentUpdates.has(messageHash)) {
             const [lastUpdateTime] = recentUpdates.get(messageHash);
@@ -1822,10 +1924,6 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
             fields.push('lock_unlock = ?');
             values.push(lock_unlock);
         }
-        if (keypad_lock_status !== undefined) {
-            fields.push('keypad_lock_status = ?');
-            values.push(keypad_lock_status);
-        }
 
         if (fields.length === 0) {
             return res.status(400).json({ error: 'No valid fields provided for update' });
@@ -1852,8 +1950,8 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
         if (updatedNozzle.length > 0) {
             await pool.query(
                 `INSERT INTO nozzle_history (
-                    customer_code, dispenser_id, nozzle_id, product, status, price_per_liter,
-                    total_quantity, total_amount, total_sales_today, lock_unlock, keypad_lock_status
+                    customer_code, dispenser_id, nozzle_id, product, status, last_ping_at,
+                    price_per_liter, total_quantity, total_amount, total_sales_today, lock_unlock
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     updatedNozzle[0].customer_code,
@@ -1861,12 +1959,12 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
                     updatedNozzle[0].nozzle_id,
                     updatedNozzle[0].product,
                     updatedNozzle[0].status,
+                    updatedNozzle[0].last_ping_at,
                     parseFloat(updatedNozzle[0].price_per_liter),
                     parseFloat(updatedNozzle[0].total_quantity),
                     parseFloat(updatedNozzle[0].total_amount),
                     parseFloat(updatedNozzle[0].total_sales_today),
-                    updatedNozzle[0].lock_unlock,
-                    updatedNozzle[0].keypad_lock_status
+                    updatedNozzle[0].lock_unlock
                 ]
             );
         }
@@ -1892,31 +1990,33 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
     }
 });
 
-app.put('/api/reset-logs/mark-cleared', (req, res) => {
+app.put('/api/reset-logs/mark-cleared', async (req, res) => {
     try {
         const { dispenserAddress, resetIds } = req.body;
-        
+
         if (!dispenserAddress || !resetIds || !Array.isArray(resetIds) || resetIds.length === 0) {
             return res.status(400).json({ error: 'dispenserAddress and resetIds array are required' });
         }
-        
-        // Get or create cleared set for this dispenser
-        if (!clearedResetsCache.has(dispenserAddress)) {
-            clearedResetsCache.set(dispenserAddress, new Set());
-        }
-        
-        const clearedSet = clearedResetsCache.get(dispenserAddress);
-        resetIds.forEach(id => clearedSet.add(id));
 
-        logActivity(req, 'reset_logs_clear', {
+        const addrD = ensureDAddress(dispenserAddress);
+        const addrNaked = stripDAddress(dispenserAddress);
+
+        const placeholders = resetIds.map(() => '?').join(',');
+        const [result] = await pool.query(
+            `UPDATE resets SET cleared = 1
+             WHERE address IN (?, ?) AND id IN (${placeholders})`,
+            [addrD, addrNaked, ...resetIds]
+        );
+
+        logActivity(req, 'resets_clear', {
             entity_type: 'dispenser_address', entity_id: dispenserAddress,
-            details: { count: resetIds.length, ids: resetIds }
+            details: { count: result.affectedRows, ids: resetIds }
         });
 
         res.json({
             success: true,
-            message: `${resetIds.length} reset log(s) marked as cleared`,
-            affectedRows: resetIds.length
+            message: `${result.affectedRows} reset log(s) marked as cleared`,
+            affectedRows: result.affectedRows
         });
     } catch (error) {
         console.error('Error marking resets as cleared:', error);
@@ -2020,15 +2120,15 @@ app.delete('/api/stations/:id', async (req, res) => {
         if (historyRows.length > 0) {
             const archiveValues = historyRows.map(r => [
                 r.id, r.customer_code, r.dispenser_id, r.nozzle_id, r.product,
-                r.status, r.price_per_liter, r.total_quantity, r.total_amount,
-                r.total_sales_today, r.lock_unlock, r.keypad_lock_status,
+                r.status, r.last_ping_at, r.price_per_liter, r.total_quantity, r.total_amount,
+                r.total_sales_today, r.lock_unlock,
                 r.created_at, 'station_delete'
             ]);
             await connection.query(
                 `INSERT INTO nozzle_history_archive
                  (original_id, customer_code, dispenser_id, nozzle_id, product,
-                  status, price_per_liter, total_quantity, total_amount,
-                  total_sales_today, lock_unlock, keypad_lock_status,
+                  status, last_ping_at, price_per_liter, total_quantity, total_amount,
+                  total_sales_today, lock_unlock,
                   original_created_at, archived_reason)
                  VALUES ?`,
                 [archiveValues]
@@ -2110,15 +2210,15 @@ app.delete('/api/dispensers/:id', async (req, res) => {
         if (historyRows.length > 0) {
             const archiveValues = historyRows.map(r => [
                 r.id, r.customer_code, r.dispenser_id, r.nozzle_id, r.product,
-                r.status, r.price_per_liter, r.total_quantity, r.total_amount,
-                r.total_sales_today, r.lock_unlock, r.keypad_lock_status,
+                r.status, r.last_ping_at, r.price_per_liter, r.total_quantity, r.total_amount,
+                r.total_sales_today, r.lock_unlock,
                 r.created_at, 'dispenser_delete'
             ]);
             await connection.query(
                 `INSERT INTO nozzle_history_archive
                  (original_id, customer_code, dispenser_id, nozzle_id, product,
-                  status, price_per_liter, total_quantity, total_amount,
-                  total_sales_today, lock_unlock, keypad_lock_status,
+                  status, last_ping_at, price_per_liter, total_quantity, total_amount,
+                  total_sales_today, lock_unlock,
                   original_created_at, archived_reason)
                  VALUES ?`,
                 [archiveValues]
