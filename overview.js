@@ -44,6 +44,14 @@ async function renderOverview() {
         gridContainer.style.justifyContent = 'flex-start';
         stage.appendChild(gridContainer);
 
+        // Sticky right-side Alarms panel (Check Prices etc.). Reserve right
+        // padding on the stage so cards don't render under the fixed panel.
+        if (typeof window.createAlarmsPanel === 'function') {
+            const alarmsPanel = window.createAlarmsPanel();
+            stage.appendChild(alarmsPanel);
+            stage.style.paddingRight = '305px';
+        }
+
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');
             message.style.padding = '40px';
@@ -99,7 +107,8 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 
     const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
 
-    card.id = `dispenser-${dispenser.dispenser_id}`;
+    // ID is the D-prefixed address — globally unique across stations.
+    card.id = `dispenser-${dispenserTopic}`;
     card.dataset.address = dispenserTopic;
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
 
@@ -179,7 +188,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 }
 
 async function updateDispenserCard(dispenser) {
-    const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
+    const card = document.getElementById(`dispenser-${ensureDAddress(dispenser.address)}`);
     if (!card) return;
 
     card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
@@ -205,6 +214,13 @@ async function updateDispenserCard(dispenser) {
     if (typeof window.updateResetCount === 'function') {
         await window.updateResetCount(dispenserTopic);
     }
+
+    // Skip per-nozzle DOM updates for cards that haven't materialized yet —
+    // their nozzle <div>s don't exist, so updateNozzleUI would just log a
+    // "container not found" warning for each one. Fresh data is already
+    // cached on card._dispenserNozzles above, so materialize() will pick
+    // it up when the card scrolls into view.
+    if (!card._materialized) return;
 
     try {
         // Use attached nozzles when present (from /dispensers-full), else fetch.
