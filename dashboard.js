@@ -1133,11 +1133,16 @@ async function renderDashboard() {
     content.innerHTML = '';
     content.classList.add('dashboard-page');
 
-    const loading = document.createElement('div');
-    loading.textContent = 'Loading dashboard…';
-    loading.style.padding = '24px';
-    loading.style.color = 'var(--text-secondary)';
-    content.appendChild(loading);
+    const loader = createPageLoader('Loading dashboard…');
+    content.appendChild(loader);
+
+    // Build the whole dashboard into a hidden stage so the user sees a single
+    // assembled page instead of panels popping in one at a time. Leaflet must
+    // be initialized AFTER the stage is revealed (it can't measure a
+    // display:none container), so map setup happens below the swap.
+    const stage = document.createElement('div');
+    stage.style.display = 'none';
+    content.appendChild(stage);
 
     let stations = [];
     let stats = null;
@@ -1145,12 +1150,15 @@ async function renderDashboard() {
         [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats()]);
     } catch (error) {
         console.error('Failed to load dashboard data:', error);
-        loading.style.color = 'var(--danger)';
-        loading.textContent = `Failed to load dashboard data: ${error.message}`;
+        loader.remove();
+        stage.style.display = '';
+        const err = document.createElement('div');
+        err.style.padding = '24px';
+        err.style.color = 'var(--danger)';
+        err.textContent = `Failed to load dashboard data: ${error.message}`;
+        stage.appendChild(err);
         return;
     }
-
-    content.removeChild(loading);
 
     dashboardState.stations = stations;
     dashboardState.stats = stats;
@@ -1166,11 +1174,11 @@ async function renderDashboard() {
     lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
     dashboardState.lastUpdatedEl = lastUpdatedEl;
     topRow.appendChild(lastUpdatedEl);
-    content.appendChild(topRow);
+    stage.appendChild(topRow);
 
     const kpiStrip = buildKpiStrip(stations, stats.today);
     dashboardState.kpiStrip = kpiStrip;
-    content.appendChild(kpiStrip);
+    stage.appendChild(kpiStrip);
 
     const main = document.createElement('div');
     main.className = 'dashboard-main';
@@ -1205,7 +1213,19 @@ async function renderDashboard() {
     side.appendChild(alertsPanelEl);
     main.appendChild(side);
 
-    content.appendChild(main);
+    stage.appendChild(main);
+
+    if (stations.length === 0) {
+        const msg = document.createElement('div');
+        msg.textContent = 'No stations found in the source sheet.';
+        msg.style.padding = '12px';
+        msg.style.color = 'var(--text-secondary)';
+        mapWrapper.insertBefore(msg, mapEl);
+    }
+
+    // Build done — swap loader for the fully-assembled UI in one paint.
+    loader.remove();
+    stage.style.display = '';
 
     attachAlertListener();
     // Seed outage alerts first, then layer the orphan-dispenser warnings on top
@@ -1215,6 +1235,8 @@ async function renderDashboard() {
         .then(() => fetchOrphanDispensers())
         .then(mergeOrphanAlerts);
 
+    // Leaflet needs a visible, measurable container — initialize it only
+    // after the stage is shown above.
     dashboardState.map = L.map('station-map', { scrollWheelZoom: true })
         .setView([30.3753, 69.3451], 6);
 
@@ -1235,13 +1257,7 @@ async function renderDashboard() {
     }
     requestAnimationFrame(() => dashboardState.map.invalidateSize());
 
-    if (stations.length === 0) {
-        const msg = document.createElement('div');
-        msg.textContent = 'No stations found in the source sheet.';
-        msg.style.padding = '12px';
-        msg.style.color = 'var(--text-secondary)';
-        mapWrapper.insertBefore(msg, mapEl);
-    } else {
+    if (stations.length > 0) {
         refreshMarkers();
     }
 
