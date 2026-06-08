@@ -1,5 +1,26 @@
 // auth-functions.js
 
+// Sends the user to signin.html. When `savePath` is true (default), the
+// current URL is stashed in sessionStorage so the signin page can bounce the
+// user back to where they came from after re-authenticating. Pass false on
+// explicit sign-out — the user asked to leave, no return trip needed.
+function redirectToSignin(savePath = true) {
+  try {
+    const path = window.location.pathname + window.location.search;
+    const file = path.split('/').pop() || '';
+    // Don't loop back to signin.html itself, and skip empty/root paths so the
+    // post-signin redirect doesn't end up on the same blank page.
+    if (savePath && file && file !== 'signin.html') {
+      sessionStorage.setItem('signinReturnTo', path);
+    } else {
+      sessionStorage.removeItem('signinReturnTo');
+    }
+  } catch (e) {
+    // sessionStorage can throw in private-mode contexts; redirect anyway.
+  }
+  window.location.href = 'signin.html';
+}
+
 const StationAuth = {
   async signIn(username, password) {
     try {
@@ -41,7 +62,8 @@ const StationAuth = {
       console.error('Sign out error:', error);
     } finally {
       this.clearAuth();
-      window.location.href = 'signin.html';
+      // Explicit user logout — no return trip; default to dashboard next signin.
+      redirectToSignin(false);
     }
   },
 
@@ -73,7 +95,7 @@ async function checkAuthentication() {
   const user = localStorage.getItem('currentUser');
 
   if (!signedIn || !userInfo || !user) {
-    window.location.href = 'signin.html';
+    redirectToSignin();
     return false;
   }
 
@@ -88,7 +110,7 @@ async function checkAuthentication() {
     
     if (!data.success) {
       StationAuth.clearAuth();
-      window.location.href = 'signin.html';
+      redirectToSignin();
       return false;
     }
     
@@ -98,7 +120,7 @@ async function checkAuthentication() {
   } catch (error) {
     console.error('Auth check error:', error);
     StationAuth.clearAuth();
-    window.location.href = 'signin.html';
+    redirectToSignin();
     return false;
   }
 }

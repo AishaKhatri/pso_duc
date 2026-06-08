@@ -206,8 +206,19 @@ document.addEventListener('DOMContentLoaded', () => {
     submitButton.textContent = 'Sign In';
     
     if (result.success) {
-      // Redirect to dashboard
-      window.location.href = 'index.html';
+      // If we were bounced here from a protected page, return there. Same-
+      // origin guard: only honor paths that start with '/' and don't begin
+      // with '//' (which would route to another host). Anything weird falls
+      // back to the dashboard.
+      let returnTo = 'index.html';
+      try {
+        const saved = sessionStorage.getItem('signinReturnTo');
+        sessionStorage.removeItem('signinReturnTo');
+        if (saved && saved.startsWith('/') && !saved.startsWith('//')) {
+          returnTo = saved;
+        }
+      } catch (e) {}
+      window.location.href = returnTo;
     } else {
       errorMessage.textContent = result.message;
       errorMessage.style.display = 'block';

@@ -11,10 +11,15 @@
     <script src="theme.js"></script>
 </head>
 <body>
-    <!-- Check if user is signed in -->
+    <!-- Check if user is signed in. Runs before auth-functions.js loads, so
+         redirectToSignin() isn't available yet — inline the same returnTo
+         save so signin can bounce us back here after re-authenticating. -->
     <script>
         if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
-        window.location.href = 'signin.html';
+            try {
+                sessionStorage.setItem('signinReturnTo', window.location.pathname + window.location.search);
+            } catch (e) {}
+            window.location.href = 'signin.html';
         }
     </script>
     <div id="app"></div>
