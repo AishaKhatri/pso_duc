@@ -46,10 +46,15 @@ async function renderOverview() {
 
         // Sticky right-side Alarms panel (Check Prices etc.). Reserve right
         // padding on the stage so cards don't render under the fixed panel.
+        // The panel broadcasts 'alarms-panel-resize' when collapsed/expanded
+        // so the gutter can shrink/grow accordingly.
         if (typeof window.createAlarmsPanel === 'function') {
             const alarmsPanel = window.createAlarmsPanel();
             stage.appendChild(alarmsPanel);
             stage.style.paddingRight = '305px';
+            window.addEventListener('alarms-panel-resize', (e) => {
+                stage.style.paddingRight = `${e.detail.reservedRight}px`;
+            });
         }
 
         if (dispensers.length === 0) {

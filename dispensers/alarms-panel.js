@@ -16,31 +16,79 @@
 // page reloads — re-clicking "Check Prices" still excludes these.
 const _dismissedMismatches = new Set();
 
+// Panel widths (px). The host page's stage paddingRight tracks these via the
+// 'alarms-panel-resize' event so cards reclaim the freed space when collapsed.
+const ALARMS_PANEL_WIDTH_EXPANDED = 280;
+const ALARMS_PANEL_WIDTH_COLLAPSED = 36;
+const ALARMS_PANEL_GUTTER = 25;  // right offset (15px) + small breathing room
+const ALARMS_COLLAPSED_KEY = 'alarmsPanelCollapsed';
+
+function _emitAlarmsPanelResize(collapsed) {
+    const width = collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED;
+    window.dispatchEvent(new CustomEvent('alarms-panel-resize', {
+        detail: { collapsed, reservedRight: width + ALARMS_PANEL_GUTTER }
+    }));
+}
+
 function createAlarmsPanel() {
+    let collapsed = localStorage.getItem(ALARMS_COLLAPSED_KEY) === '1';
+
     const panel = document.createElement('div');
     panel.id = 'alarms-panel';
     Object.assign(panel.style, {
         position: 'fixed',
         right: '15px',
         top: '90px',
-        width: '280px',
+        width: `${collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED}px`,
         maxHeight: 'calc(100vh - 110px)',
         overflowY: 'auto',
+        overflowX: 'hidden',
         background: 'var(--bg-surface)',
         border: '1px solid var(--border)',
         borderRadius: '10px',
         boxShadow: 'var(--shadow-card)',
-        padding: '12px',
+        padding: collapsed ? '10px 6px' : '12px',
         zIndex: '50',
-        boxSizing: 'border-box'
+        boxSizing: 'border-box',
+        transition: 'width 0.2s ease, padding 0.2s ease'
     });
+
+    // Header row: title on the left, collapse toggle on the right. When
+    // collapsed only the toggle stays visible and the panel becomes a thin
+    // vertical tab pinned to the right edge.
+    const headerRow = document.createElement('div');
+    headerRow.style.display = 'flex';
+    headerRow.style.alignItems = 'center';
+    headerRow.style.justifyContent = collapsed ? 'center' : 'space-between';
+    headerRow.style.marginBottom = collapsed ? '0' : '10px';
 
     const header = document.createElement('h3');
     header.textContent = 'Alarms';
-    header.style.margin = '0 0 10px';
+    header.style.margin = '0';
     header.style.fontSize = '16px';
     header.style.color = 'var(--text-heading)';
-    panel.appendChild(header);
+    header.style.display = collapsed ? 'none' : 'block';
+
+    const toggleBtn = document.createElement('button');
+    toggleBtn.type = 'button';
+    Object.assign(toggleBtn.style, {
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: '14px',
+        color: 'var(--text-secondary)',
+        padding: '2px 4px',
+        lineHeight: '1',
+        borderRadius: '3px'
+    });
+    toggleBtn.textContent = collapsed ? '◀' : '▶';  // ◀ when collapsed (click to expand right→left), ▶ when expanded (click to collapse)
+    toggleBtn.title = collapsed ? 'Expand alarms' : 'Collapse alarms';
+    toggleBtn.addEventListener('mouseover', () => toggleBtn.style.background = 'var(--bg-surface-2, transparent)');
+    toggleBtn.addEventListener('mouseout', () => toggleBtn.style.background = 'transparent');
+
+    headerRow.appendChild(header);
+    headerRow.appendChild(toggleBtn);
+    panel.appendChild(headerRow);
 
     // --- Price Check section ---
     const section = document.createElement('div');
@@ -160,7 +208,30 @@ function createAlarmsPanel() {
     // against the new visible set.
     window.addEventListener('dispenser-filters-changed', resetAll);
 
+    section.style.display = collapsed ? 'none' : 'block';
     panel.appendChild(section);
+
+    // Toggle handler — update DOM, persist preference, broadcast new reserved
+    // width so the host page can re-flow cards into the freed space.
+    toggleBtn.addEventListener('click', () => {
+        collapsed = !collapsed;
+        localStorage.setItem(ALARMS_COLLAPSED_KEY, collapsed ? '1' : '0');
+        panel.style.width = `${collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED}px`;
+        panel.style.padding = collapsed ? '10px 6px' : '12px';
+        header.style.display = collapsed ? 'none' : 'block';
+        section.style.display = collapsed ? 'none' : 'block';
+        headerRow.style.justifyContent = collapsed ? 'center' : 'space-between';
+        headerRow.style.marginBottom = collapsed ? '0' : '10px';
+        toggleBtn.textContent = collapsed ? '◀' : '▶';
+        toggleBtn.title = collapsed ? 'Expand alarms' : 'Collapse alarms';
+        _emitAlarmsPanelResize(collapsed);
+    });
+
+    // Broadcast initial state on next tick so listeners attached after this
+    // function returns (the host page wires its listener around the same time
+    // it mounts the panel) still receive the starting width.
+    setTimeout(() => _emitAlarmsPanelResize(collapsed), 0);
+
     return panel;
 }
 
