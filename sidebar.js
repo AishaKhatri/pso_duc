@@ -53,6 +53,7 @@ function renderSidebar() {
     }
 
     if (isSuperAdmin) {
+        items.push({ page: 'prices', label: 'Prices', icon: 'prices-icon.png', url: 'prices.html' });
         items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' });
     }
 
@@ -65,6 +66,7 @@ function renderSidebar() {
         'config-dispensers': 'dispensers',
         'user-management': 'users',
         'site-management': 'sites',
+        'prices': 'prices',
         'activity-logs': 'activity-logs',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
