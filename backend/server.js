@@ -681,6 +681,22 @@ const pricesUpload = multer({
     limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+// Builds a SQL expression that yields the value to store in
+// nozzles.actual_price. Wayne dispensers can only display/charge to one
+// decimal place, so we truncate (floor) their stored price to one decimal —
+// `stations.price_*` keeps the full PSO price, but the per-nozzle column
+// reflects what the pump actually charges. Other brands store the full price.
+//   stationsAlias        SQL alias of the stations table in the surrounding
+//                        query (e.g. 's')
+//   dispensersAlias      SQL alias of the dispensers table (e.g. 'd')
+//   stationPriceCol      one of 'price_pmg' | 'price_hsd' | 'price_hobc'
+// Whitelisted callers only — do NOT pass user input as stationPriceCol.
+function _nozzleActualPriceExpr(stationsAlias, dispensersAlias, stationPriceCol) {
+    return `CASE WHEN LOWER(${dispensersAlias}.DispenserBrand) = 'wayne' `
+         + `THEN FLOOR(${stationsAlias}.\`${stationPriceCol}\` * 10) / 10 `
+         + `ELSE ${stationsAlias}.\`${stationPriceCol}\` END`;
+}
+
 // Pull the per-customer-code prices out of one of the price-file sheets.
 // Sheet layout (row 0 = date, row 1 = headers, row 2+ = data):
 //   col B Customer Code | col D New Code | col G {Product} Price
@@ -706,11 +722,6 @@ function _parsePriceSheet(sheet) {
     return out;
 }
 
-// Super-admin upload of the PSO price-change Excel file. Parses the three
-// product sheets (PMG/HSD/HOBC), updates stations.price_* + prices_updated_at
-// for every recognized customer code, then propagates each product's new
-// station price into nozzles.actual_price via JOIN. Unknown customer codes
-// are skipped and listed back so the operator can spot mis-routes.
 app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, res) => {
     if (req.authUser?.role !== 'super_admin') {
         return res.status(403).json({ error: 'super_admin only' });
@@ -742,7 +753,6 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
         const [stationRows] = await pool.query('SELECT customer_code FROM stations');
         const known = new Set(stationRows.map(r => r.customer_code));
 
-        const unknownByProduct = { PMG: [], HSD: [], HOBC: [] };
         const updatedByProduct = { PMG: 0, HSD: 0, HOBC: 0 };
 
         conn = await pool.getConnection();
@@ -754,10 +764,9 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
                 const col = `price_${product.toLowerCase()}`;
 
                 for (const [code, price] of priceMap.entries()) {
-                    if (!known.has(code)) {
-                        unknownByProduct[product].push(code);
-                        continue;
-                    }
+                    // Codes in the file but not in the DB are silently
+                    // skipped (no list returned for these).
+                    if (!known.has(code)) continue;
                     await conn.query(
                         `UPDATE stations SET \`${col}\` = ?, prices_updated_at = NOW() WHERE customer_code = ?`,
                         [price, code]
@@ -767,13 +776,17 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
             }
 
             // Sync nozzles.actual_price from each station's matching product
-            // price. JOIN is one round trip per product, regardless of nozzle count.
+            // price. Wayne dispensers truncate to 1 decimal (their hardware
+            // limit); the dispensers JOIN is what lets the CASE see the brand.
+            // One round trip per product, regardless of nozzle count.
             for (const product of ['PMG', 'HSD', 'HOBC']) {
                 const col = `price_${product.toLowerCase()}`;
                 await conn.query(
                     `UPDATE nozzles n
                      JOIN stations s ON s.customer_code = n.customer_code
-                        SET n.actual_price = s.\`${col}\`
+                     JOIN dispensers d ON d.customer_code = n.customer_code
+                                      AND d.dispenser_id = n.dispenser_id
+                        SET n.actual_price = ${_nozzleActualPriceExpr('s', 'd', col)}
                       WHERE UPPER(n.product) = ?`,
                     [product]
                 );
@@ -785,20 +798,31 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
             throw txErr;
         }
 
+        // list of stations missing from the price sheet
+        const missingByProduct = { PMG: [], HSD: [], HOBC: [] };
+        for (const product of ['PMG', 'HSD', 'HOBC']) {
+            const priceMap = pricesByProduct[product];
+            if (!priceMap.size) continue;
+            for (const code of known) {
+                if (!priceMap.has(code)) missingByProduct[product].push(code);
+            }
+            missingByProduct[product].sort();
+        }
+
         await logActivity(req, 'upload_prices', { entity_type: 'prices', details: {
             file: req.file.originalname,
             updated: updatedByProduct,
-            skipped_counts: {
-                PMG: unknownByProduct.PMG.length,
-                HSD: unknownByProduct.HSD.length,
-                HOBC: unknownByProduct.HOBC.length
+            missing_counts: {
+                PMG: missingByProduct.PMG.length,
+                HSD: missingByProduct.HSD.length,
+                HOBC: missingByProduct.HOBC.length
             }
         }});
 
         res.json({
             ok: true,
             updated: updatedByProduct,
-            skippedUnknownCodes: unknownByProduct
+            missingFromFile: missingByProduct
         });
     } catch (error) {
         console.error('upload-prices failed:', error);
@@ -869,7 +893,9 @@ app.post('/api/admin/prices/manual', async (req, res) => {
             );
 
             // Propagate to nozzles.actual_price for each product the user
-            // updated. Scoped to this customer_code only.
+            // updated, scoped to this customer_code. Wayne dispensers
+            // truncate to 1 decimal (hardware limit); dispensers JOIN gives
+            // the CASE the brand it needs.
             for (const [k, n] of Object.entries(parsed)) {
                 if (n == null) continue;
                 const product = k.toUpperCase();
@@ -877,7 +903,9 @@ app.post('/api/admin/prices/manual', async (req, res) => {
                 await conn.query(
                     `UPDATE nozzles n
                      JOIN stations s ON s.customer_code = n.customer_code
-                        SET n.actual_price = s.\`${col}\`
+                     JOIN dispensers d ON d.customer_code = n.customer_code
+                                      AND d.dispenser_id = n.dispenser_id
+                        SET n.actual_price = ${_nozzleActualPriceExpr('s', 'd', col)}
                       WHERE n.customer_code = ? AND UPPER(n.product) = ?`,
                     [customer_code, product]
                 );
@@ -1831,7 +1859,9 @@ app.post('/api/nozzles', async (req, res) => {
 
         // Inherit actual_price from the station's price for this product, so
         // a freshly-added nozzle picks up the official filed price without
-        // waiting for the next price-file upload.
+        // waiting for the next price-file upload. Wayne units truncate to
+        // one decimal (hardware limit) — that's what the CASE in the SELECT
+        // does, in lockstep with the file-upload / manual-entry paths.
         const productKey = String(product).toUpperCase();
         const priceCol = productKey === 'PMG' ? 'price_pmg'
                         : productKey === 'HSD' ? 'price_hsd'
@@ -1840,8 +1870,11 @@ app.post('/api/nozzles', async (req, res) => {
         let actualPrice = null;
         if (priceCol) {
             const [stationPriceRows] = await pool.query(
-                `SELECT \`${priceCol}\` AS p FROM stations WHERE customer_code = ?`,
-                [customer_code]
+                `SELECT ${_nozzleActualPriceExpr('s', 'd', priceCol)} AS p
+                   FROM stations s
+                   JOIN dispensers d ON d.customer_code = s.customer_code
+                  WHERE s.customer_code = ? AND d.dispenser_id = ?`,
+                [customer_code, dispenser_id]
             );
             actualPrice = stationPriceRows[0]?.p ?? null;
         }
@@ -2212,7 +2245,8 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
 
             // Product changed — re-derive actual_price from the station's
             // current price for the new product. NULL if station has no price
-            // filed yet for it.
+            // filed yet for it. Wayne units truncate to one decimal (same
+            // rule as file upload / manual entry).
             const productKey = String(product).toUpperCase();
             const priceCol = productKey === 'PMG' ? 'price_pmg'
                             : productKey === 'HSD' ? 'price_hsd'
@@ -2221,8 +2255,11 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
             let actualPrice = null;
             if (priceCol) {
                 const [stationPriceRows] = await pool.query(
-                    `SELECT \`${priceCol}\` AS p FROM stations WHERE customer_code = ?`,
-                    [customer_code]
+                    `SELECT ${_nozzleActualPriceExpr('s', 'd', priceCol)} AS p
+                       FROM stations s
+                       JOIN dispensers d ON d.customer_code = s.customer_code
+                      WHERE s.customer_code = ? AND d.dispenser_id = ?`,
+                    [customer_code, dispenser_id]
                 );
                 actualPrice = stationPriceRows[0]?.p ?? null;
             }
