@@ -26,6 +26,14 @@ const lastStatusMessage = new Map();
 const DISCONNECT_DEBOUNCE_MS = 30 * 60 * 1000;
 const pendingDisconnects = new Map(); // addrD -> timeout handle
 
+// Addresses queued by the "Refresh Conn Status" admin action. The next
+// conn_status message that arrives for any address in this set bypasses ALL
+// debounce / flap-suppression logic and writes the message's timestamp to
+// dispensers.connected_at immediately, whether the message says Connected or
+// Disconnected. The address is removed from the set on first delivery, so the
+// regular flap-protection rules resume from the very next event.
+const refreshForceCommit = new Set(); // Set<addrD>
+
 // const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
 
 // Initialize MQTT client to connect to local EMQX via WebSocket
@@ -684,7 +692,17 @@ function getDeviceInfo(deviceAddr) {
     return deviceInfoCache.get(deviceAddr) || null;
 }
 
-// Helper function to handle connection/disconnection alerts
+// Helper function to handle connection/disconnection alerts.
+//
+// Two concerns are split here:
+//   1. connections_history — EVERY conn_status message from the broker gets a
+//      row, no debounce, no dedup. The history table is the audit log of
+//      what the broker actually said and when.
+//   2. dispensers / nozzles state — gated by the 30-minute disconnect
+//      debounce so an unstable network that flaps every minute does NOT
+//      cause the dispensers row to flip back and forth. Disconnect updates
+//      the row only after 30 min of no reconnect; a reconnect that lands
+//      first cancels the timer and leaves the row alone.
 async function handleConnectionAlert(topic, alertData) {
     const clientId = alertData.clientid;
     const isConnection = alertData.status === 'Connected';
@@ -693,58 +711,86 @@ async function handleConnectionAlert(topic, alertData) {
     const eventAt = new Date(isConnection
         ? alertData.connected_at
         : alertData.disconnected_at);
-
-    if (isConnection) {
-        // If we were waiting out a debounce, this is a sub-minute flap —
-        // the disconnect was never committed, so skip the connect work too
-        // and let live state stay as it was.
-        const pending = pendingDisconnects.get(addrD);
-        if (pending) {
-            clearTimeout(pending);
-            pendingDisconnects.delete(addrD);
-            // logWithTimestamp(chalk.gray, `Dispenser ${clientId} reconnected within ${DISCONNECT_DEBOUNCE_MS / 1000}s — ignoring blip`);
-            return;
-        }
-        await applyConnectionUpdate(addrD, addrNaked, clientId, true, eventAt);
-        return;
-    }
-
-    // Disconnect: defer the write. If a timer is already running for this
-    // address, leave it alone so the 1-minute clock measures from the first
-    // drop (not the latest duplicate alert).
-    if (pendingDisconnects.has(addrD)) return;
-
-    const handle = setTimeout(() => {
-        pendingDisconnects.delete(addrD);
-        applyConnectionUpdate(addrD, addrNaked, clientId, false, eventAt)
-            .catch(err => errorWithTimestamp(`Deferred disconnect write failed for ${addrD}: ${err.message}`));
-    }, DISCONNECT_DEBOUNCE_MS);
-    pendingDisconnects.set(addrD, handle);
-}
-
-async function applyConnectionUpdate(addrD, addrNaked, clientId, isConnection, eventAt) {
     const conn_status = isConnection ? 1 : 0;
-    const action = isConnection ? 'connected' : 'disconnected';
-    const color = isConnection ? chalk.green : chalk.red;
 
-    const [dispensers] = await pool.query(
-        'SELECT dispenser_id, customer_code FROM dispensers WHERE address IN (?, ?)',
+    // Look up the dispenser once — used for the history insert below AND
+    // (potentially) the dispensers state change.
+    const [dispRows] = await pool.query(
+        'SELECT dispenser_id, customer_code, conn_status FROM dispensers WHERE address IN (?, ?)',
         [addrD, addrNaked]
     );
-    if (dispensers.length === 0) {
+    if (dispRows.length === 0) {
         logWithTimestamp(chalk.yellow, `No dispenser found in database for address: ${addrD}`);
         return;
     }
+    const { dispenser_id, customer_code } = dispRows[0];
+    const currentDbStatus = Number(dispRows[0].conn_status);
 
-    const { dispenser_id, customer_code } = dispensers[0];
+    // Concern 1: always log to connections_history.
+    const action = isConnection ? 'connected' : 'disconnected';
+    const color = isConnection ? chalk.green : chalk.red;
     const log = `Dispenser ${clientId} ${action}.`;
     logWithTimestamp(color, log);
     logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(eventAt)} `);
-
     await pool.query(
         'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
         [dispenser_id, addrD, conn_status, eventAt]
     );
+
+    // Concern 2: dispensers/nozzles state, gated by debounce.
+
+    // Admin just hit "Refresh Conn Status" — commit broker truth for this
+    // address right now, skipping debounce. Consumed on first delivery.
+    if (refreshForceCommit.has(addrD)) {
+        refreshForceCommit.delete(addrD);
+        await applyDispenserStateChange(addrD, addrNaked, isConnection, eventAt, dispenser_id, customer_code);
+        return;
+    }
+
+    if (isConnection) {
+        // Reconnect during the disconnect debounce window — flap suppressed.
+        // Cancel the pending timer; dispensers row stays as it was.
+        const pending = pendingDisconnects.get(addrD);
+        if (pending) {
+            clearTimeout(pending);
+            pendingDisconnects.delete(addrD);
+            return;
+        }
+        // No pending disconnect. Only touch the dispensers row if the state
+        // actually differs from what's stored — duplicate Connect events from
+        // keepalive renewal would otherwise rewrite connected_at every minute.
+        if (currentDbStatus === 1) return;
+        await applyDispenserStateChange(addrD, addrNaked, true, eventAt, dispenser_id, customer_code);
+        return;
+    }
+
+    // Disconnect: defer the dispensers update. If a timer is already running
+    // for this address, leave it alone so the 30-min clock measures from the
+    // first drop, not the latest duplicate.
+    if (pendingDisconnects.has(addrD)) return;
+
+    const handle = setTimeout(async () => {
+        pendingDisconnects.delete(addrD);
+        try {
+            // Re-fetch in case the dispenser was reconfigured in the 30-min window.
+            const [latest] = await pool.query(
+                'SELECT dispenser_id, customer_code FROM dispensers WHERE address IN (?, ?)',
+                [addrD, addrNaked]
+            );
+            if (latest.length === 0) return;
+            await applyDispenserStateChange(addrD, addrNaked, false, eventAt, latest[0].dispenser_id, latest[0].customer_code);
+        } catch (err) {
+            errorWithTimestamp(`Deferred disconnect write failed for ${addrD}: ${err.message}`);
+        }
+    }, DISCONNECT_DEBOUNCE_MS);
+    pendingDisconnects.set(addrD, handle);
+}
+
+// Commit the dispenser/nozzle state change implied by a connect/disconnect
+// event. Does NOT touch connections_history — that's logged unconditionally
+// by handleConnectionAlert before this is called.
+async function applyDispenserStateChange(addrD, addrNaked, isConnection, eventAt, dispenser_id, customer_code) {
+    const conn_status = isConnection ? 1 : 0;
 
     await pool.query(
         'UPDATE nozzles SET status = 2 WHERE dispenser_id = ? && customer_code = ?',
@@ -752,13 +798,8 @@ async function applyConnectionUpdate(addrD, addrNaked, clientId, isConnection, e
     );
 
     await pool.query(
-        'UPDATE dispensers SET conn_status = ? WHERE address IN (?, ?)',
-        [conn_status, addrD, addrNaked]
-    );
-
-    await pool.query(
-        'UPDATE dispensers SET connected_at = ? WHERE address IN (?, ?)',
-        [eventAt, addrD, addrNaked]
+        'UPDATE dispensers SET conn_status = ?, connected_at = ? WHERE address IN (?, ?)',
+        [conn_status, eventAt, addrD, addrNaked]
     );
 
     // Per-device connect/disconnect events no longer broadcast to the
@@ -1496,9 +1537,29 @@ function shutdownMqtt() {
 // disconnects have drifted apart (e.g. after broker restarts, network blips
 // that didn't trigger a reconnect, or a long server uptime where some
 // dispensers' status looks stuck "online").
+// Promise-wrapped UNSUBSCRIBE — the broker only re-delivers a topic's
+// retained message on a SUBSCRIBE if the client is NOT already subscribed
+// to it. Resolves on SUBACK regardless of error so refresh can keep going.
+function _mqttUnsubscribe(topic) {
+    return new Promise((resolve) => {
+        if (!mqttClient || !mqttClient.connected) return resolve();
+        mqttClient.unsubscribe(topic, () => resolve());
+    });
+}
+
+// Promise-wrapped SUBSCRIBE — same idea, waits for SUBACK so retained
+// messages on this topic start arriving before the next iteration.
+function _mqttSubscribe(topic) {
+    return new Promise((resolve) => {
+        if (!mqttClient || !mqttClient.connected) return resolve();
+        mqttClient.subscribe(topic, { qos: 1 }, () => resolve());
+    });
+}
+
 async function refreshConnStatusSubscriptions() {
     // Cancel every pending DISCONNECT_DEBOUNCE_MS timer in flight so the
-    // server starts fresh — fresh conn_status events will arm new timers.
+    // server starts fresh — they'd otherwise race with the immediate-commit
+    // events about to arrive.
     let timersCleared = 0;
     for (const handle of pendingDisconnects.values()) {
         clearTimeout(handle);
@@ -1506,24 +1567,36 @@ async function refreshConnStatusSubscriptions() {
     }
     pendingDisconnects.clear();
 
-    // Re-subscribe to every dispenser's conn_status topic. Force re-subscribe
-    // by dropping the topic from the tracked Set first so subscribeToTopic
-    // doesn't short-circuit on the "already subscribed" check.
+    // Mark every dispenser address as "next conn_status message wins" BEFORE
+    // re-subscribing. Both connect AND disconnect events bypass debounce —
+    // see handleConnectionAlert.
     let resubscribed = 0;
     const [dispensers] = await pool.query(
         `SELECT ${addressOutSql('d')} AS address FROM dispensers d`
     );
     for (const d of dispensers) {
         const addrD = ensureDAddress(d.address);
+        if (addrD) refreshForceCommit.add(addrD);
+    }
+
+    // Cycle every conn_status topic: UNSUBSCRIBE then SUBSCRIBE. Without the
+    // unsubscribe step the broker treats the second SUBSCRIBE as a no-op for
+    // already-subscribed topics and will NOT redeliver the retained message,
+    // which is why some devices' timestamps weren't updating. Cycling forces
+    // a fresh SUBACK and, with it, redelivery of the retained conn_status.
+    for (const d of dispensers) {
+        const addrD = ensureDAddress(d.address);
         if (!addrD) continue;
         const topic = `duc/conn_status/${addrD}`;
+        await _mqttUnsubscribe(topic);
         statusTopics.delete(topic);
-        await subscribeToTopic(topic, statusTopics);
+        await _mqttSubscribe(topic);
+        statusTopics.add(topic);
         resubscribed++;
     }
 
     logWithTimestamp(chalk.cyan,
-        `Conn-status refresh: re-subscribed to ${resubscribed} topics, cleared ${timersCleared} debounce timers`);
+        `Conn-status refresh: cycled ${resubscribed} topics, cleared ${timersCleared} debounce timers, queued ${refreshForceCommit.size} addresses for immediate commit`);
     return { resubscribed, timersCleared };
 }
 
