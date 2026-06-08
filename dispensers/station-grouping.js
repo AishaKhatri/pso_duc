@@ -6,8 +6,18 @@ let allStationsData = [];
 
 // Shared filter state — module-scope so newly-rendered station sections (added
 // during the long render loop) can pick up filters the user has already
-// applied while the render is still in flight.
-const _filterState = { city: 'all', station: 'all', connection: 'all', address: '' };
+// applied while the render is still in flight. Exposed on window so the
+// dispensers-page Alarms panel can apply the same filter to its mismatch list.
+const _filterState = {
+    city: 'all',
+    station: 'all',
+    connection: 'all',
+    address: '',
+    product: 'all'
+};
+if (typeof window !== 'undefined') window._filterState = _filterState;
+
+const PRODUCT_OPTIONS = ['PMG', 'HSD', 'HOBC'];
 
 function _applyFilterToSection(stationSection) {
     if (!stationSection) return false;
@@ -22,6 +32,7 @@ function _applyFilterToSection(stationSection) {
     }
 
     const addrQuery = _filterState.address.trim().toLowerCase();
+    const productFilter = _filterState.product;
 
     let anyCardVisible = false;
     stationSection.querySelectorAll('.app-dispenser-card').forEach(card => {
@@ -29,7 +40,12 @@ function _applyFilterToSection(stationSection) {
         const connMatch = _filterState.connection === 'all' || connStatus === _filterState.connection;
         const cardAddress = (card.dataset.address || '').toLowerCase();
         const addrMatch = !addrQuery || cardAddress.includes(addrQuery);
-        const visible = connMatch && addrMatch;
+        let productMatch = true;
+        if (productFilter !== 'all') {
+            const nozzles = card._dispenserNozzles || [];
+            productMatch = nozzles.some(n => String(n.product || '').toUpperCase() === productFilter);
+        }
+        const visible = connMatch && addrMatch && productMatch;
         card.style.display = visible ? '' : 'none';
         if (visible) anyCardVisible = true;
     });
@@ -212,6 +228,20 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
         onPick: () => emitChange()
     });
 
+    const productOptions = [
+        { value: 'all', label: 'All Products' },
+        ...PRODUCT_OPTIONS.map(p => ({ value: p, label: p }))
+    ];
+
+    const productCtl = buildPickerDropdown({
+        placeholder: 'Search by Product',
+        width: FILTER_WIDTH,
+        options: productOptions,
+        getSelected: () => state.product,
+        setSelected: (v) => { state.product = v; },
+        onPick: () => emitChange()
+    });
+
     // Address — free-text substring search with autocomplete suggestions
     // pulled from the unique D-addresses across all stations on this page.
     const addressOptions = (() => {
@@ -249,6 +279,7 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     filtersLeft.appendChild(cityCtl.wrap);
     filtersLeft.appendChild(stationCtl.wrap);
     filtersLeft.appendChild(connectionCtl.wrap);
+    filtersLeft.appendChild(productCtl.wrap);
     filtersLeft.appendChild(addressCtl.wrap);
 
     filterContainer.appendChild(filtersLeft);
@@ -541,6 +572,9 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
                 if (_applyFilterToSection(stationSection)) anyStationVisible = true;
             }
             emptyMsg.style.display = anyStationVisible ? 'none' : 'block';
+            // Tell the alarms panel its current scan is stale — different
+            // filter selection means the user needs to re-run Check Prices.
+            window.dispatchEvent(new CustomEvent('dispenser-filters-changed'));
         };
         filterContainer = await createFilterContainer(groupedDispensers, applyFilters, actionsContainer);
         gridContainer.appendChild(filterContainer);
@@ -615,7 +649,7 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
 
 // Update a specific dispenser card within its station
 async function updateStationDispenserCard(dispenser, updateCardFunction) {
-    const card = document.getElementById(`dispenser-${dispenser.dispenser_id}`);
+    const card = document.getElementById(`dispenser-${ensureDAddress(dispenser.address)}`);
     if (card && typeof updateCardFunction === 'function') {
         await updateCardFunction(dispenser);
     }
