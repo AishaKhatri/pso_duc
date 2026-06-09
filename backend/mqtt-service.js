@@ -34,6 +34,19 @@ const pendingDisconnects = new Map(); // addrD -> timeout handle
 // regular flap-protection rules resume from the very next event.
 const refreshForceCommit = new Set(); // Set<addrD>
 
+// Topic DUCs publish an ACK on after they apply a price-update message. Same
+// topic as the Python price-update tool — both clients can listen at once
+// (separate MQTT client IDs, no conflict).
+const PRICE_ACK_TOPIC = 'duc/acked_msgs';
+
+// In-memory price-update job ledger. /api/admin/price-update/publish creates
+// an entry per (city, customer, product) batch; ACKs from DUCs flip the
+// per-device flag inside. The frontend polls /api/admin/price-update/acks/:id
+// to render progress. Jobs are evicted after PRICE_JOB_TTL_MS — the operator
+// can't track a stale job forever.
+const priceUpdateJobs = new Map(); // jobId -> { createdAt, items: Array<{product, topic, ducs: Set<addrD>, acked: Map<addrD, isoTime>}> }
+const PRICE_JOB_TTL_MS = 60 * 60 * 1000; // 1 hour
+
 // const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
 
 // Initialize MQTT client to connect to local EMQX via WebSocket
@@ -106,6 +119,7 @@ function startOfflineCheck() {
 async function initializeMQTTSubscriptions() {
     try {
         await subscribeToTopic('duc/registration', statusTopics);
+        await subscribeToTopic(PRICE_ACK_TOPIC, statusTopics);
 
         // Fetch all dispensers from the database — address normalized to D-prefixed.
         const [dispensers] = await pool.query(`
@@ -792,10 +806,19 @@ async function handleConnectionAlert(topic, alertData) {
 async function applyDispenserStateChange(addrD, addrNaked, isConnection, eventAt, dispenser_id, customer_code) {
     const conn_status = isConnection ? 1 : 0;
 
-    await pool.query(
-        'UPDATE nozzles SET status = 2 WHERE dispenser_id = ? && customer_code = ?',
-        [dispenser_id, customer_code]
-    );
+    // Wipe nozzles to "no ping" only on disconnect — that's the case where
+    // pings really have stopped arriving and the cached state is going stale.
+    // On connect we leave nozzles alone: either they were already fresh (the
+    // refresh-conn-status path runs this for devices that never actually
+    // went offline), or the prior disconnect path already set them to 2 and
+    // the next ping will repaint them correctly. Wiping on connect would
+    // briefly flash "no ping" for currently-pinging devices.
+    if (!isConnection) {
+        await pool.query(
+            'UPDATE nozzles SET status = 2 WHERE dispenser_id = ? && customer_code = ?',
+            [dispenser_id, customer_code]
+        );
+    }
 
     await pool.query(
         'UPDATE dispensers SET conn_status = ?, connected_at = ? WHERE address IN (?, ?)',
@@ -1299,6 +1322,21 @@ mqttClient.on('connect', () => {
 
 mqttClient.on('message', async (receivedTopic, message) => {
     const messageStr = message.toString();
+
+    // Price-update ACKs (duc/acked_msgs) — shape: {device, topic}. Handled
+    // before the generic parser because the payload doesn't have msg_type /
+    // dis_addr / clientid fields the rest of this handler keys off of.
+    if (receivedTopic === PRICE_ACK_TOPIC) {
+        try {
+            if (!messageStr.trim()) return;
+            const payload = JSON.parse(messageStr);
+            handlePriceAck(payload);
+        } catch (err) {
+            errorWithTimestamp(`Failed to parse price ACK: ${err.message}`);
+        }
+        return;
+    }
+
     let logColor = chalk.yellow;
     let parsedData;
 
@@ -1613,6 +1651,71 @@ function publishMessage(topic, message, options = {}) {
     });
 }
 
+// ----- Price-update job ledger -----
+
+// Register a freshly-published price update so incoming ACKs on
+// duc/acked_msgs can be attributed back to it. `items` is an array of
+// { product, topic, ducs: string[] } — one entry per (product) batch in the
+// job. Returns the same jobId for chaining.
+function registerPriceUpdateJob(jobId, items) {
+    // GC old jobs first so the ledger doesn't grow unboundedly.
+    const cutoff = Date.now() - PRICE_JOB_TTL_MS;
+    for (const [id, j] of priceUpdateJobs) {
+        if (j.createdAt < cutoff) priceUpdateJobs.delete(id);
+    }
+    priceUpdateJobs.set(jobId, {
+        createdAt: Date.now(),
+        items: items.map(it => ({
+            product: it.product,
+            topic: it.topic,
+            ducs: new Set(it.ducs),
+            acked: new Map(),  // addrD -> ISO timestamp
+        }))
+    });
+    return jobId;
+}
+
+// Plain-JSON snapshot of a job for the polling endpoint. Sets become arrays;
+// Maps become objects.
+function getPriceUpdateJob(jobId) {
+    const job = priceUpdateJobs.get(jobId);
+    if (!job) return null;
+    return {
+        jobId,
+        createdAt: new Date(job.createdAt).toISOString(),
+        items: job.items.map(it => ({
+            product: it.product,
+            topic: it.topic,
+            ducs: Array.from(it.ducs),
+            acked: Array.from(it.acked.entries()).map(([device, at]) => ({ device, at })),
+            ackedCount: it.acked.size,
+            totalDucs: it.ducs.size
+        }))
+    };
+}
+
+// Called when a price-update ACK lands on duc/acked_msgs. Payload shape:
+//   { device: 'D13846', topic: 'PSO/karachi/102563/duc/price/pmg' }
+// Walks every active job; if any item's topic matches AND the device is in
+// that item's expected DUC set, records the ack. Multiple jobs for the same
+// (topic, device) all get marked — harmless overlap.
+function handlePriceAck(payload) {
+    const device = payload && payload.device;
+    const topic = payload && payload.topic;
+    if (!device || !topic) return;
+    const addrD = ensureDAddress(device);
+    const topicLower = String(topic).toLowerCase();
+
+    for (const job of priceUpdateJobs.values()) {
+        for (const item of job.items) {
+            if (item.topic !== topicLower) continue;
+            if (!item.ducs.has(addrD)) continue;
+            if (item.acked.has(addrD)) continue;
+            item.acked.set(addrD, new Date().toISOString());
+        }
+    }
+}
+
 module.exports = {
     setNotificationService,
     subscribeToTopic,
@@ -1633,5 +1736,7 @@ module.exports = {
     handleErrorMessage,
     publishMessage,
     refreshConnStatusSubscriptions,
+    registerPriceUpdateJob,
+    getPriceUpdateJob,
     shutdownMqtt
 };

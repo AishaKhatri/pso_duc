@@ -52,6 +52,10 @@ function renderSidebar() {
         items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
     }
 
+    if (isAdmin || isSuperAdmin) {
+        items.push({ page: 'price-update', label: 'Price Update', icon: 'prices-icon.png', url: 'price-update.html' });
+    }
+
     if (isSuperAdmin) {
         items.push({ page: 'prices', label: 'Prices', icon: 'prices-icon.png', url: 'prices.html' });
         items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' });
@@ -67,6 +71,7 @@ function renderSidebar() {
         'user-management': 'users',
         'site-management': 'sites',
         'prices': 'prices',
+        'price-update': 'price-update',
         'activity-logs': 'activity-logs',
     };
     const activePage = pageMap[currentPage] || 'dispensers';

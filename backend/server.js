@@ -6,6 +6,7 @@ const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const pool = require('./db'); // Use shared pool from db.js
 const {
     setNotificationService,
@@ -18,6 +19,8 @@ const {
     getWifiConnectionStatus,
     publishMessage,
     refreshConnStatusSubscriptions,
+    registerPriceUpdateJob,
+    getPriceUpdateJob,
     shutdownMqtt } = require('./mqtt-service');
 
 const {
@@ -113,7 +116,16 @@ const JWT_SECRET = process.env.JWT_SECRET;
 // port. Rotate by changing PRICE_APP_API_KEY in .env and restarting.
 const PRICE_APP_API_KEY = process.env.PRICE_APP_API_KEY;
 
+// Accepts either:
+//   - X-API-Key header matching PRICE_APP_API_KEY (used by the Python price
+//     update app and any other server-to-server caller), OR
+//   - A signed-in admin / super_admin (req.authUser set by the JWT middleware)
+// Lets the web Price Update page reuse the same /api/ducs feed the Python tool
+// already consumes — no duplicate DUC-listing endpoint needed.
 function requireApiKey(req, res, next) {
+    const role = req.authUser && req.authUser.role;
+    if (role === 'admin' || role === 'super_admin') return next();
+
     if (!PRICE_APP_API_KEY) {
         return res.status(503).json({ error: 'API key not configured on server' });
     }
@@ -972,6 +984,124 @@ app.post('/api/admin/refresh-conn-status', async (req, res) => {
         console.error('refresh-conn-status failed:', error);
         res.status(500).json({ error: error.message || 'Refresh failed' });
     }
+});
+
+// ----- Price Update over MQTT (admin + super_admin) -----
+//
+// Web equivalent of price_update_app/python/manual_entry.py. Publishes a price
+// update to PSO/<city>/<customer>/duc/price/<product> for each non-null price
+// the operator entered. DUCs are expected to reply on duc/acked_msgs after
+// applying the new price; mqtt-service tracks those ACKs against the returned
+// job_id so the page can poll /price-update/acks/:job_id and render progress.
+const PRICE_PRODUCTS = ['PMG', 'HSD', 'HOBC'];
+
+function _isPriceUpdateRole(role) {
+    return role === 'admin' || role === 'super_admin';
+}
+
+app.post('/api/admin/price-update/publish', async (req, res) => {
+    if (!_isPriceUpdateRole(req.authUser?.role)) {
+        return res.status(403).json({ error: 'admin only' });
+    }
+    const { city, customer_code, prices } = req.body || {};
+    if (!city || !customer_code || !prices || typeof prices !== 'object') {
+        return res.status(400).json({ error: 'city, customer_code, and prices required' });
+    }
+
+    // Validate and normalize each provided price into a two-decimal string —
+    // matches the on-wire format the Python tool publishes ("X.XX").
+    const validPrices = {};
+    for (const product of PRICE_PRODUCTS) {
+        const raw = prices[product];
+        if (raw == null || raw === '') continue;
+        const num = Number(raw);
+        if (!Number.isFinite(num) || num <= 0) {
+            return res.status(400).json({ error: `Invalid ${product} price: ${raw}` });
+        }
+        validPrices[product] = num.toFixed(2);
+    }
+    if (Object.keys(validPrices).length === 0) {
+        return res.status(400).json({ error: 'At least one valid price required' });
+    }
+
+    const cityLower = String(city).toLowerCase();
+    const date = String(Math.floor(Date.now() / 1000));
+
+    // Per product: fetch only the DUCs that have a nozzle for that product
+    // (matches the Python find_ducs_for semantics). Empty product lists are
+    // surfaced as "skipped" so the operator can see what didn't go out.
+    const items = [];
+    const skipped = [];
+
+    try {
+        for (const product of Object.keys(validPrices)) {
+            const [ducRows] = await pool.query(
+                `SELECT DISTINCT ${addressOutSql('d')} AS address
+                   FROM dispensers d
+                   JOIN nozzles n
+                        ON n.dispenser_id = d.dispenser_id
+                       AND n.customer_code = d.customer_code
+                  WHERE d.customer_code = ?
+                    AND UPPER(n.product) = ?`,
+                [customer_code, product]
+            );
+            const ducs = ducRows.map(r => ensureDAddress(r.address)).filter(Boolean);
+            if (ducs.length === 0) {
+                skipped.push(product);
+                continue;
+            }
+            const topic = `pso/${cityLower}/${customer_code}/duc/price/${product.toLowerCase()}`;
+            const payload = JSON.stringify({ date, req_type: 0, message: validPrices[product] });
+            await publishMessage(topic, payload, { qos: 1 });
+            items.push({ product, topic, ducs });
+        }
+    } catch (e) {
+        console.error('price-update publish failed:', e);
+        return res.status(500).json({ error: `Publish failed: ${e.message}` });
+    }
+
+    if (items.length === 0) {
+        return res.status(404).json({
+            error: 'No registered DUCs match the selected products',
+            skipped
+        });
+    }
+
+    const jobId = crypto.randomUUID();
+    registerPriceUpdateJob(jobId, items);
+
+    await logActivity(req, 'price_update_publish', {
+        entity_type: 'prices',
+        entity_id: customer_code,
+        details: {
+            jobId,
+            city: cityLower,
+            customer_code,
+            prices: validPrices,
+            published: items.map(it => ({ product: it.product, ducCount: it.ducs.length })),
+            skipped
+        }
+    });
+
+    res.json({
+        jobId,
+        items: items.map(it => ({
+            product: it.product,
+            topic: it.topic,
+            totalDucs: it.ducs.length,
+            ducs: it.ducs
+        })),
+        skipped
+    });
+});
+
+app.get('/api/admin/price-update/acks/:job_id', (req, res) => {
+    if (!_isPriceUpdateRole(req.authUser?.role)) {
+        return res.status(403).json({ error: 'admin only' });
+    }
+    const job = getPriceUpdateJob(req.params.job_id);
+    if (!job) return res.status(404).json({ error: 'Job not found or expired' });
+    res.json(job);
 });
 
 // Activity log feed for the super_admin Activity Logs page. Date range is
