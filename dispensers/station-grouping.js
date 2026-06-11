@@ -142,7 +142,8 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     const state = _filterState;
 
     // All three search bars share the same width.
-    const FILTER_WIDTH = '240px';
+    const FILTER_WIDTH = '210px';
+    const FILTER_WIDTH_SMALL = '185px';
 
     const filterContainer = document.createElement('div');
     filterContainer.style.display = 'flex';
@@ -235,7 +236,7 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
 
     const productCtl = buildPickerDropdown({
         placeholder: 'Search by Product',
-        width: FILTER_WIDTH,
+        width: FILTER_WIDTH_SMALL,
         options: productOptions,
         getSelected: () => state.product,
         setSelected: (v) => { state.product = v; },
@@ -261,7 +262,7 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
 
     const addressCtl = createSearchableDropdown({
         placeholder: 'Search by Address',
-        width: FILTER_WIDTH,
+        width: FILTER_WIDTH_SMALL,
         bgWhite: true,
         items: addressOptions,
         initialQuery: state.address,
@@ -315,6 +316,20 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationHeader.style.marginBottom = '5px';
     stationHeader.style.paddingBottom = '10px';
     stationHeader.style.borderBottom = `2px solid #2E7D32`;
+    stationHeader.style.cursor = 'pointer';
+    stationHeader.style.borderRadius = '6px';
+    stationHeader.style.padding = '6px 10px 10px';
+    stationHeader.style.transition = 'background-color 0.15s ease';
+    stationHeader.title = `Open dispenser page for station ${stationCode}`;
+    stationHeader.addEventListener('mouseenter', () => {
+        stationHeader.style.backgroundColor = 'var(--bg-surface-2)';
+    });
+    stationHeader.addEventListener('mouseleave', () => {
+        stationHeader.style.backgroundColor = '';
+    });
+    stationHeader.addEventListener('click', () => {
+        window.location.href = `dispensers.html?customer_code=${encodeURIComponent(stationCode)}`;
+    });
     
     // Left side - Station title
     const stationTitle = document.createElement('h3');

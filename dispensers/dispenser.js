@@ -459,7 +459,13 @@ async function renderDispenser() {
 
             const backBtn = createActionButton();
             backBtn.textContent = '← Back';
-            backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+            backBtn.addEventListener('click', () => {
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    window.location.href = 'index.html';
+                }
+            });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
             stage.appendChild(backRow);
