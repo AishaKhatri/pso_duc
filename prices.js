@@ -54,7 +54,7 @@ async function loadPricesFromDB() {
     return resp.json();
 }
 
-function showUploadResultPopup({ updated, skippedUnknownCodes }) {
+function showUploadResultPopup({ updated, missingFromFile }) {
     const overlay = createModalOverlay();
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
@@ -77,15 +77,16 @@ function showUploadResultPopup({ updated, skippedUnknownCodes }) {
         `<b>Updated:</b> ${updated.PMG} PMG, ${updated.HSD} HSD, ${updated.HOBC} HOBC.`;
     body.appendChild(summary);
 
+    const missing = missingFromFile || {};
     for (const product of ['PMG', 'HSD', 'HOBC']) {
-        const codes = skippedUnknownCodes[product] || [];
+        const codes = missing[product] || [];
         if (!codes.length) continue;
         const section = document.createElement('div');
         section.style.marginBottom = '10px';
         const heading = document.createElement('div');
         heading.style.fontWeight = '600';
         heading.style.marginBottom = '4px';
-        heading.textContent = `Skipped ${codes.length} ${product} rows (no matching station):`;
+        heading.textContent = `${codes.length} ${product} station${codes.length === 1 ? '' : 's'} not in file:`;
         section.appendChild(heading);
 
         const codesBox = document.createElement('div');

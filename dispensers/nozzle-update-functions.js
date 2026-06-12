@@ -38,10 +38,7 @@ async function fetchNozzleData(customer_code, dispenser_id, nozzle_id) {
 function updateNozzleUI(nozzleId, nozzleData) {
     try {
         const container = document.getElementById(`nozzle-${nozzleId}`);
-        if (!container) {
-            console.warn(`Nozzle container nozzle-${nozzleId} not found`);
-            return;
-        }
+        if (!container) return;
 
         container.nozzleData = nozzleData;
         
