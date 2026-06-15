@@ -222,7 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } else {
       errorMessage.textContent = result.message;
       errorMessage.style.display = 'block';
-      errorMessage.style.color = '#c62828';
+      errorMessage.style.color = 'var(--danger)';
     }
   }
 

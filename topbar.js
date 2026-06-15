@@ -127,26 +127,26 @@ function renderTopbar(pageTitle) {
         position: absolute;
         top: 45px;
         right: 0;
-        background: white;
-        border: 1px solid #ddd;
+        background: var(--bg-surface);
+        border: 1px solid var(--border);
         border-radius: 6px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        box-shadow: var(--shadow-card);
         display: none;
         flex-direction: column;
         min-width: 120px;
         z-index: 1000;
     `;
-    
+
     // User info in dropdown
     const userInfoItem = document.createElement('div');
     userInfoItem.style.cssText = `
         padding: 10px 16px;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border-soft);
         font-size: 12px;
-        color: #666;
+        color: var(--text-secondary);
     `;
     userInfoItem.innerHTML = `
-        <div style="font-weight: bold; color: #333;">${currentUser}</div>
+        <div style="font-weight: bold; color: var(--text-primary);">${currentUser}</div>
         <div>Role: ${userInfo?.role || 'User'}</div>
     `;
     dropdown.appendChild(userInfoItem);
@@ -159,17 +159,17 @@ function renderTopbar(pageTitle) {
         padding: 10px 16px;
         background: none;
         border: none;
-        border-bottom: 1px solid #eee;
+        border-bottom: 1px solid var(--border-soft);
         text-align: left;
         cursor: pointer;
-        color: #333;
+        color: var(--text-primary);
         font-size: 14px;
         width: 100%;
         text-decoration: none;
         display: block;
         box-sizing: border-box;
     `;
-    usersLink.onmouseover = () => { usersLink.style.backgroundColor = '#f5f5f5'; };
+    usersLink.onmouseover = () => { usersLink.style.backgroundColor = 'var(--bg-sidebar-hover)'; };
     usersLink.onmouseout = () => { usersLink.style.backgroundColor = 'transparent'; };
     dropdown.appendChild(usersLink);
 
@@ -182,13 +182,13 @@ function renderTopbar(pageTitle) {
         border: none;
         text-align: left;
         cursor: pointer;
-        color: #d32f2f;
+        color: var(--danger);
         font-size: 14px;
         width: 100%;
     `;
 
     signOutBtn.onmouseover = () => {
-        signOutBtn.style.backgroundColor = '#f5f5f5';
+        signOutBtn.style.backgroundColor = 'var(--bg-sidebar-hover)';
     };
 
     signOutBtn.onmouseout = () => {

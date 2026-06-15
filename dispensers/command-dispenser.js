@@ -298,13 +298,13 @@ function showCommandStatusMessage(message, type) {
     messageElement.style.marginTop = '20px';
 
     if (type === 'error') {
-        messageElement.style.backgroundColor = '#ffebee';
-        messageElement.style.color = '#c62828';
-        messageElement.style.border = '1px solid #ef9a9a';
+        messageElement.style.backgroundColor = 'var(--badge-error-bg)';
+        messageElement.style.color = 'var(--badge-error-text)';
+        messageElement.style.border = '1px solid var(--badge-error-text)';
     } else {
-        messageElement.style.backgroundColor = '#e8f5e9';
-        messageElement.style.color = '#2e7d32';
-        messageElement.style.border = '1px solid #a5d6a7';
+        messageElement.style.backgroundColor = 'var(--badge-online-bg)';
+        messageElement.style.color = 'var(--badge-online-text)';
+        messageElement.style.border = '1px solid var(--badge-online-text)';
     }
 
     statusContainer.appendChild(messageElement);

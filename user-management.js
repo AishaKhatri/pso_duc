@@ -81,7 +81,7 @@ async function renderUsersTable(users) {
         const errorRow = document.createElement('tr');
         const errorCell = document.createElement('td');
         errorCell.colSpan = 8;
-        errorCell.style.color = '#ff4444';
+        errorCell.style.color = 'var(--danger)';
         errorCell.style.textAlign = 'center';
         errorCell.style.padding = '20px';
         errorCell.textContent = 'Error loading users. Please try again.';
