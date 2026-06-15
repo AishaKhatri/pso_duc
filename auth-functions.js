@@ -30,6 +30,26 @@ const StationAuth = {
         body: JSON.stringify({ username, password })
       });
 
+      // Rate-limited by the server after too many failed attempts. Build a
+      // "retry after X minutes" message from the standard rate-limit headers
+      // (seconds remaining); fall back to the limiter's 15-minute window if
+      // the headers aren't present.
+      if (response.status === 429) {
+        const retrySecs = parseInt(
+          response.headers.get('Retry-After') ||
+          response.headers.get('RateLimit-Reset') || '',
+          10
+        );
+        const minutes = Number.isFinite(retrySecs) && retrySecs > 0
+          ? Math.ceil(retrySecs / 60)
+          : 15;
+        return {
+          success: false,
+          rateLimited: true,
+          message: `Too many unsuccessful login attempts. Please retry after ${minutes} minute${minutes === 1 ? '' : 's'}.`
+        };
+      }
+
       const data = await response.json();
       
       if (data.success) {
