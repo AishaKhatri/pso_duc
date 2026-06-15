@@ -776,10 +776,14 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
     }
 }
 
-async function createCard(address, customer_code) {
+// opts: { dispenserId, brand } — when supplied, the card title reads
+// "Dispenser ID: <x>" (styled small, like the brand) and the prominent
+// D-address moves into a floating tab that straddles the card's top edge.
+async function createCard(address, customer_code, opts = {}) {
     const card = document.createElement('div');
     card.classList.add('app-dispenser-card');
     Object.assign(card.style, {
+        position: 'relative',
         backgroundColor: 'var(--bg-surface)',
         color: 'var(--text-primary)',
         border: '1px solid var(--border)',
@@ -789,7 +793,9 @@ async function createCard(address, customer_code) {
         flexDirection: 'column',
         minWidth: 'fit-content',
         width: 'fit-content',
-        padding: '11px'
+        // Extra top padding leaves room for the floating address/brand tab that
+        // straddles the card's top edge (built at the end of this function).
+        padding: '24px 11px 11px'
     });
 
     const titleContainer = document.createElement('div');
@@ -801,10 +807,21 @@ async function createCard(address, customer_code) {
     titleContainer.style.marginRight = '5px';
     titleContainer.style.position = 'relative';
 
+    // Title: "Dispenser ID: <x>" when an id is supplied (small, same weight as
+    // the brand). Otherwise fall back to the D-address in the original
+    // prominent style.
     const titleText = document.createElement('h2');
-    titleText.textContent = address;
-    titleText.style.fontSize = '17px';
     titleText.style.margin = '0';
+    const hasDispId = opts.dispenserId != null && opts.dispenserId !== '';
+    if (hasDispId) {
+        titleText.textContent = `Dispenser ID: ${opts.dispenserId}`;
+        titleText.style.fontSize = '16px';
+        titleText.style.fontWeight = '500';
+        titleText.style.color = 'var(--text-primary)';
+    } else {
+        titleText.textContent = address;
+        titleText.style.fontSize = '17px';
+    }
 
     const statusText = createLink();
     statusText.className = 'conn-status';
@@ -930,6 +947,55 @@ async function createCard(address, customer_code) {
     nextContainer.appendChild(leftContainer);
     nextContainer.appendChild(uptime);
     card.appendChild(nextContainer);
+
+    // Floating tab straddling the top edge: "<D-address> | <brand>". The
+    // D-address is the most prominent element on the card (light blue + bold,
+    // 17px — the size the title used to be); the brand is smaller and in the
+    // normal text colour, not blue.
+    const tab = document.createElement('div');
+    tab.className = 'dispenser-card-tab';
+    Object.assign(tab.style, {
+        position: 'absolute',
+        top: '0',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+        zIndex: '2',
+        display: 'flex',
+        alignItems: 'baseline',
+        gap: '6px',
+        background: 'var(--bg-surface-2)',
+        border: '1px solid var(--border)',
+        borderRadius: '20px',
+        padding: '4px 16px',
+        whiteSpace: 'nowrap',
+        boxShadow: 'var(--shadow-card)'
+    });
+
+    const addrSpan = document.createElement('span');
+    addrSpan.textContent = address;
+    // Theme-aware: dark grey (#333, as before) in light theme, light blue
+    // (#4fc3f7) in dark theme. Bold, 17px — same prominence as the old title.
+    addrSpan.style.color = 'var(--dispenser-addr-color)';
+    addrSpan.style.fontWeight = '700';
+    addrSpan.style.fontSize = '17px';
+    tab.appendChild(addrSpan);
+
+    const brandText = (opts.brand || '').toString().trim();
+    if (brandText) {
+        const sep = document.createElement('span');
+        sep.textContent = '|';
+        sep.style.fontSize = '16px';
+        sep.style.color = 'var(--text-secondary)';
+        const brandSpan = document.createElement('span');
+        brandSpan.textContent = brandText;
+        brandSpan.style.color = 'var(--text-primary)';
+        brandSpan.style.fontWeight = '500';
+        brandSpan.style.fontSize = '16px';
+        tab.appendChild(sep);
+        tab.appendChild(brandSpan);
+    }
+
+    card.appendChild(tab);
 
     return { card, titleContainer };
 }

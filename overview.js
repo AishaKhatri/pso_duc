@@ -110,7 +110,10 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const paddedAddress = dispenser.address;
     const dispenserTopic = ensureDAddress(paddedAddress);
 
-    const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`);
+    const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`, {
+        dispenserId: dispenser.dispenser_id,
+        brand: dispenser.DispenserBrand
+    });
 
     // ID is the D-prefixed address — globally unique across stations.
     card.id = `dispenser-${dispenserTopic}`;

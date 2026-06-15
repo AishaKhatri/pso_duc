@@ -9,6 +9,7 @@
     --bg-overlay: rgba(0, 0, 0, 0.5);
     --bg-modal-overlay: rgba(0, 0, 0, 0.4);
     --text-primary: #333;
+    --dispenser-addr-color: #004D64;
     --text-secondary: #666;
     --text-on-accent: #ffffff;
     --text-heading: #004D64;
@@ -78,6 +79,7 @@
     --bg-overlay: rgba(0, 0, 0, 0.7);
     --bg-modal-overlay: rgba(0, 0, 0, 0.6);
     --text-primary: #e6edf3;
+    --dispenser-addr-color: #4fc3f7;
     --text-secondary: #9fb1bf;
     --text-on-accent: #ffffff;
     --text-heading: #4fc3f7;
