@@ -127,7 +127,12 @@ function createStatusSection(data, layoutType) {
     pingNote.style.color = 'var(--text-secondary)';
     pingNote.style.textAlign = 'right';
     pingNote.style.marginTop = '3px';
-    pingNote.style.display = 'none';
+    // Show the last-ping timestamp by default; the badge click below still
+    // toggles it off/on, and the hover tooltip (status.title) is unchanged.
+    pingNote.textContent = data.lastPingAt
+        ? `${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
+        : 'No ping received yet';
+    pingNote.style.display = 'block';
 
     status.addEventListener('click', (e) => {
         e.stopPropagation();
