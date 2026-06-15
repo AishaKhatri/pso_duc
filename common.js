@@ -1027,7 +1027,58 @@ function createRefreshConnStatusButton() {
     return btn;
 }
 
-async function fetchErrorCount(dispenserTopic) {
+// Bulk-prefetch uncleared error/reset counts for the whole page (or a single
+// station) in one request each, then serve per-card lookups from these maps
+// instead of one network round trip per dispenser. The dispensers page calls
+// these once on load and again on every periodic tick; other pages that never
+// prefetch fall through to the per-address fetch below.
+async function prefetchErrorCounts(customerCode) {
+    try {
+        const url = customerCode
+            ? `${API_BASE_URL}/error-counts?customer_code=${encodeURIComponent(customerCode)}`
+            : `${API_BASE_URL}/error-counts`;
+        const resp = await fetch(url);
+        if (!resp.ok) return false;
+        const data = await resp.json();
+        const map = new Map();
+        for (const [addr, cnt] of Object.entries(data || {})) {
+            map.set(ensureDAddress(addr), Number(cnt) || 0);
+        }
+        window.__errorCountMap = map;
+        window.__errorCountReady = true;
+        return true;
+    } catch (error) {
+        console.error('Error prefetching error counts:', error);
+        return false;
+    }
+}
+
+async function prefetchResetCounts(customerCode) {
+    try {
+        const url = customerCode
+            ? `${API_BASE_URL}/reset-counts?customer_code=${encodeURIComponent(customerCode)}`
+            : `${API_BASE_URL}/reset-counts`;
+        const resp = await fetch(url);
+        if (!resp.ok) return false;
+        const data = await resp.json();
+        const map = new Map();
+        for (const [addr, cnt] of Object.entries(data || {})) {
+            map.set(ensureDAddress(addr), Number(cnt) || 0);
+        }
+        window.__resetCountMap = map;
+        window.__resetCountReady = true;
+        return true;
+    } catch (error) {
+        console.error('Error prefetching reset counts:', error);
+        return false;
+    }
+}
+
+async function fetchErrorCount(dispenserTopic, { bypassCache = false } = {}) {
+    // Serve from the bulk-prefetched map when available (absent address == 0).
+    if (!bypassCache && window.__errorCountReady && window.__errorCountMap instanceof Map) {
+        return window.__errorCountMap.get(ensureDAddress(dispenserTopic)) || 0;
+    }
     try {
         const address = stripDAddress(dispenserTopic);
         const response = await fetch(`${API_BASE_URL}/error-log/${address}?showCleared=false`);
@@ -1045,7 +1096,7 @@ async function fetchErrorCount(dispenserTopic) {
 // Update the dispenser card's error badge. If `precomputedCount` is passed in,
 // reuse it instead of re-fetching /error-log — lets callers share one fetch
 // across multiple consumers (badge + per-nozzle errorCount).
-async function updateErrorCount(dispenserTopic, precomputedCount) {
+async function updateErrorCount(dispenserTopic, precomputedCount, { bypassCache = false } = {}) {
     const card = document.querySelector(`div[data-address="${dispenserTopic}"]`);
     if (!card) return;
 
@@ -1055,7 +1106,7 @@ async function updateErrorCount(dispenserTopic, precomputedCount) {
     if (errorCountSpan) {
         const count = (typeof precomputedCount === 'number')
             ? precomputedCount
-            : await fetchErrorCount(dispenserTopic);
+            : await fetchErrorCount(dispenserTopic, { bypassCache });
         errorCountSpan.textContent = count;
 
         if (count > 0) {
@@ -1068,7 +1119,11 @@ async function updateErrorCount(dispenserTopic, precomputedCount) {
     }
 }
 
-async function fetchResetCount(dispenserAddr) {
+async function fetchResetCount(dispenserAddr, { bypassCache = false } = {}) {
+    // Serve from the bulk-prefetched map when available (absent address == 0).
+    if (!bypassCache && window.__resetCountReady && window.__resetCountMap instanceof Map) {
+        return window.__resetCountMap.get(ensureDAddress(dispenserAddr)) || 0;
+    }
     try {
         const response = await fetch(`${API_BASE_URL}/power-status/${dispenserAddr}`);
         if (response.ok) {
@@ -1091,15 +1146,15 @@ async function fetchResetCount(dispenserAddr) {
     }
 }
 
-async function updateResetCount(dispenserAddr) {
+async function updateResetCount(dispenserAddr, bypassCache = false) {
     const card = document.querySelector(`div[data-address="${dispenserAddr}"]`);
     if (!card) return;
-    
+
     const resetCountSpan = card.querySelector('.dispenser-reset-count');
     const resetIcon = card.querySelector('.dispenser-reset-container img');
-    
+
     if (resetCountSpan) {
-        const count = await fetchResetCount(dispenserAddr);
+        const count = await fetchResetCount(dispenserAddr, { bypassCache });
         resetCountSpan.textContent = count;
         
         if (count > 0) {

@@ -355,7 +355,17 @@ async function renderDispenser() {
         const dispenserUrl = customerCodeFilter
             ? `${API_BASE_URL}/dispensers-full?customer_code=${encodeURIComponent(customerCodeFilter)}`
             : `${API_BASE_URL}/dispensers-full`;
-        const dispensersResponse = await fetch(dispenserUrl);
+        // Bulk-prefetch error/reset counts concurrently with the dispenser
+        // payload. This replaces the per-card /error-log + /power-status +
+        // /cleared-resets fan-out (3 requests × N dispensers) with 2 requests
+        // total, so createCard()'s count lookups resolve from cache instead of
+        // serializing N network round trips during the render loop.
+        const countScope = customerCodeFilter || null;
+        const [dispensersResponse] = await Promise.all([
+            fetch(dispenserUrl),
+            prefetchErrorCounts(countScope),
+            prefetchResetCounts(countScope)
+        ]);
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
@@ -459,13 +469,7 @@ async function renderDispenser() {
 
             const backBtn = createActionButton();
             backBtn.textContent = '← Back';
-            backBtn.addEventListener('click', () => {
-                if (window.history.length > 1) {
-                    window.history.back();
-                } else {
-                    window.location.href = 'index.html';
-                }
-            });
+            backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
             stage.appendChild(backRow);
@@ -522,8 +526,14 @@ async function renderDispenser() {
                 try {
                     // dispenserUrl already points at /dispensers-full so each tick
                     // pulls dispensers + nozzles in one round trip instead of
-                    // 1 + N fetches.
-                    const updatedDispensersResponse = await fetch(dispenserUrl);
+                    // 1 + N fetches. The bulk count maps are refreshed once per
+                    // tick (2 requests) so each updateDispenserCard reads error/
+                    // reset counts from cache rather than fetching per dispenser.
+                    const [updatedDispensersResponse] = await Promise.all([
+                        fetch(dispenserUrl),
+                        prefetchErrorCounts(countScope),
+                        prefetchResetCounts(countScope)
+                    ]);
                     if (!updatedDispensersResponse.ok) throw new Error('Failed to fetch dispensers');
                     const updatedDispensers = await updatedDispensersResponse.json();
 

@@ -1500,6 +1500,64 @@ app.get('/api/cleared-resets/:dispenser_addr', async (req, res) => {
     }
 });
 
+// Bulk uncleared-error counts for every dispenser (optionally scoped to one
+// station). Lets the dispensers page replace N per-dispenser /error-log calls
+// with a single round trip. Returns { "<D-address>": count, ... }; addresses
+// with zero uncleared errors are simply absent from the map.
+app.get('/api/error-counts', async (req, res) => {
+    try {
+        const { customer_code } = req.query;
+        const params = [];
+        let query = `
+            SELECT ${addressOutSql()} AS addr, COUNT(*) AS cnt
+            FROM errors
+            WHERE cleared = 0
+        `;
+        if (customer_code) {
+            query += ' AND customer_code = ?';
+            params.push(customer_code);
+        }
+        query += ' GROUP BY addr';
+
+        const [rows] = await pool.query(query, params);
+        const counts = {};
+        for (const r of rows) counts[r.addr] = Number(r.cnt) || 0;
+        res.json(counts);
+    } catch (error) {
+        console.error('Database error in /api/error-counts:', error);
+        res.status(500).json({ error: 'Failed to fetch error counts' });
+    }
+});
+
+// Bulk uncleared-reset counts for every dispenser (optionally scoped to one
+// station). Replaces N×2 per-dispenser /power-status + /cleared-resets calls
+// with a single round trip. Returns { "<D-address>": count, ... }; addresses
+// with zero uncleared resets are simply absent from the map.
+app.get('/api/reset-counts', async (req, res) => {
+    try {
+        const { customer_code } = req.query;
+        const params = [];
+        let query = `
+            SELECT ${addressOutSql()} AS addr, COUNT(*) AS cnt
+            FROM resets
+            WHERE cleared = 0
+        `;
+        if (customer_code) {
+            query += ' AND customer_code = ?';
+            params.push(customer_code);
+        }
+        query += ' GROUP BY addr';
+
+        const [rows] = await pool.query(query, params);
+        const counts = {};
+        for (const r of rows) counts[r.addr] = Number(r.cnt) || 0;
+        res.json(counts);
+    } catch (error) {
+        console.error('Database error in /api/reset-counts:', error);
+        res.status(500).json({ error: 'Failed to fetch reset counts' });
+    }
+});
+
 app.get('/api/error-log/:address', async (req, res) => {
     try {
         const { address: rawAddress } = req.params;
