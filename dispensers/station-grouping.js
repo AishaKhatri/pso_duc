@@ -325,7 +325,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         stationHeader.style.backgroundColor = '';
     });
     stationHeader.addEventListener('click', () => {
-        window.location.href = `dispensers.html?customer_code=${encodeURIComponent(stationCode)}`;
+        window.location.href = `dispensers.html?customer_code=${encodeURIComponent(stationCode)}&back=dispensers.html`;
     });
     
     // Left side - Station title

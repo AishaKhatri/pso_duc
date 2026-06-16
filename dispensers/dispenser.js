@@ -335,6 +335,7 @@ async function renderDispenser() {
     // Optional ?customer_code=... filter scopes the page to a single station
     const params = new URLSearchParams(window.location.search);
     const customerCodeFilter = (params.get('customer_code') || '').trim();
+    const backTo = params.get('back') || 'dispensers.html';
 
     const loader = createPageLoader('Loading dispensers…');
     content.appendChild(loader);
@@ -398,9 +399,11 @@ async function renderDispenser() {
             const configButton = createMainButton();
             configButton.textContent = 'Configure';
             configButton.addEventListener('click', () => {
-                const url = customerCodeFilter
-                    ? `dispensers/config-dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}`
-                    : 'dispensers/config-dispensers.html';
+                let url = 'dispensers/config-dispensers.html';
+                if (customerCodeFilter) {
+                    const stationUrl = `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(backTo)}`;
+                    url = `dispensers/config-dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(stationUrl)}`;
+                }
                 window.location.href = url;
             });
 
@@ -456,7 +459,7 @@ async function renderDispenser() {
 
             const backBtn = createActionButton();
             backBtn.textContent = '← Back';
-            backBtn.addEventListener('click', () => { window.location.href = 'index.html'; });
+            backBtn.addEventListener('click', () => { window.location.href = backTo; });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
             stage.appendChild(backRow);

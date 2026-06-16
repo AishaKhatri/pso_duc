@@ -532,7 +532,7 @@ function makeMarkerIcon(status) {
 
 function buildPopupHtml(station) {
     const link = station.duc_count > 0
-        ? `<a class="popup-link" href="dispensers.html?customer_code=${encodeURIComponent(station.customer_code)}">View Dispensers</a>`
+        ? `<a class="popup-link" href="dispensers.html?customer_code=${encodeURIComponent(station.customer_code)}&back=index.html">View Dispensers</a>`
         : `<span class="popup-link disabled">No DUCs Installed</span>`;
     return `
         <div class="station-popup">

@@ -412,9 +412,10 @@ function exportConfigDispensersToCsv() {
 async function renderConfigDispensers() {
     const params = new URLSearchParams(window.location.search);
     const customerCodeFilter = (params.get('customer_code') || '').trim();
-    const backTarget = customerCodeFilter
-        ? `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}`
-        : 'dispensers.html';
+    const backTarget = params.get('back')
+        || (customerCodeFilter
+            ? `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}`
+            : 'dispensers.html');
 
     const { content, addButton } = configPage('Configure Dispensers', '← Back', backTarget, 'Add Dispenser');
     addButton.addEventListener('click', () => editDispenser(window.dispensers.length));
