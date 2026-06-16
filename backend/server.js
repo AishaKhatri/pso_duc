@@ -1595,8 +1595,8 @@ app.get('/api/error-log/:address', async (req, res) => {
         if (showCleared === 'false' || showCleared === '0') {
             query += ' AND cleared = 0';
         }
-        
-        query += ' ORDER BY created_at DESC LIMIT 1000';
+
+        query += ' ORDER BY created_at DESC LIMIT 500';
 
         const [errors] = await pool.query(query, queryParams);
         

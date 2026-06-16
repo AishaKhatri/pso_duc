@@ -1187,7 +1187,7 @@ async function fetchErrorCount(dispenserTopic, { bypassCache = false } = {}) {
 // card builder and the update* functions so the badge rule lives in one place.
 function _applyBadgeCount(icon, span, count) {
     if (!span) return;
-    span.textContent = count;
+    span.textContent = count > 499 ? '499+' : count;
     const display = count > 0 ? 'inline-block' : 'none';
     span.style.display = display;
     if (icon) icon.style.display = display;
