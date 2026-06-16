@@ -116,17 +116,11 @@ function formatCurrency(value) {
     if (num >= 1_000) return 'Rs. ' + (num / 1_000).toFixed(1) + 'k';
     return 'Rs. ' + num.toLocaleString(undefined, { maximumFractionDigits: 0 });
 }
-function formatCurrencyFull(value) {
-    return 'Rs ' + (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-}
 function formatVolume(value) {
     const num = Number(value) || 0;
     if (num >= 1_000_000) return (num / 1_000_000).toFixed(2) + 'M L';
     if (num >= 1_000) return (num / 1_000).toFixed(1) + 'k L';
     return num.toFixed(0) + ' L';
-}
-function formatCount(value) {
-    return (Number(value) || 0).toLocaleString();
 }
 
 function buildKpiStrip(stations, today) {
@@ -868,12 +862,6 @@ function renderDonutBody(panel, products) {
     wrap.appendChild(legend);
 
     panel.appendChild(wrap);
-}
-
-function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, ch => ({
-        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-    }[ch]));
 }
 
 function buildAlertsPanel() {

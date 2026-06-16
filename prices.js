@@ -78,7 +78,7 @@ function showUploadResultPopup({ updated, missingFromFile }) {
     body.appendChild(summary);
 
     const missing = missingFromFile || {};
-    for (const product of ['PMG', 'HSD', 'HOBC']) {
+    for (const product of PRODUCT_OPTIONS) {
         const codes = missing[product] || [];
         if (!codes.length) continue;
         const section = document.createElement('div');
@@ -165,9 +165,6 @@ function showManualEntryPopup(onSaved) {
     form.style.display = 'grid';
     form.style.gap = '14px';
     form.style.padding = '6px 0';
-
-    const titleCase = s => (s || '').split(' ').map(w =>
-        w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
     // --- City dropdown ---
     const cityLabel = document.createElement('label');
@@ -415,9 +412,6 @@ async function renderPrices() {
             tbody.appendChild(tr);
             return;
         }
-
-        const titleCase = s => (s || '').split(' ').map(w =>
-            w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
         rows.forEach(s => {
             const tr = createTableRow([

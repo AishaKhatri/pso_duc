@@ -34,6 +34,11 @@ const LAYOUT_CONFIG = {
     }
 };
 
+// parseFloat that treats non-numeric input as 0.
+function safeNumber(value) {
+    return isNaN(parseFloat(value)) ? 0 : parseFloat(value);
+}
+
 // Create the header section (common)
 function createHeaderSection(fuelType, nozzleId, layoutType) {
     const config = LAYOUT_CONFIG[layoutType];
@@ -71,7 +76,6 @@ function createHeaderSection(fuelType, nozzleId, layoutType) {
 
 // Create status section (common)
 function createStatusSection(data, layoutType) {
-    const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
     const config = LAYOUT_CONFIG[layoutType];
     const section = document.createElement('div');
     section.style.padding = config.sectionPadding;
@@ -175,8 +179,6 @@ function formatRelativeTime(ts) {
 
 // Create metrics section (only for FULL layout)
 function createMetricsSection(data) {
-    const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
-    
     const section = document.createElement('div');
     section.style.padding = '0 12px';
 
@@ -221,8 +223,6 @@ function createMetricsSection(data) {
 
 // Create totals footer (only for FULL layout)
 function createTotalsFooter(data) {
-    const safeNumber = (value) => isNaN(parseFloat(value)) ? 0 : parseFloat(value);
-    
     const footer = document.createElement('div');
     footer.style.padding = '7px 14px';
     footer.style.borderTop = '1px solid var(--border)';

@@ -98,17 +98,10 @@ function renderSidebar() {
         return itemEl;
     });
 
-    // Create logo
-    // const logoEl = document.createElement('img');
-    // logoEl.src = 'assets/graphics/stingray-logo-new.jpeg';
-    // logoEl.alt = 'Stingray Logo';
-    // logoEl.className = 'sidebar-logo';
-
     // Clear sidebar and append elements
     sidebar.innerHTML = '';
     sidebar.appendChild(toggleBtn);
     sidebarItems.forEach(item => sidebar.appendChild(item));
-    // sidebar.appendChild(logoEl);
 
     // Adjust content wrapper based on initial state
     const contentWrapper = document.querySelector('.content-wrapper');
