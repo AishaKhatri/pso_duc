@@ -995,7 +995,7 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     if (!_isPriceUpdateRole(req.authUser?.role)) {
         return res.status(403).json({ error: 'admin only' });
     }
-    const { city, customer_code, prices } = req.body || {};
+    const { city, customer_code, prices, retain } = req.body || {};
     if (!city || !customer_code || !prices || typeof prices !== 'object') {
         return res.status(400).json({ error: 'city, customer_code, and prices required' });
     }
@@ -1017,7 +1017,11 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     }
 
     const cityLower = String(city).toLowerCase();
-    const date = String(Math.floor(Date.now() / 1000));
+    // Effective time: 5 minutes from now (unix seconds). It's the `date` field
+    // in the on-wire payload (when the DUC should apply the new price); also
+    // returned to the operator so the UI can show when it takes effect.
+    const effectiveAt = Math.floor(Date.now() / 1000) + 5 * 60;
+    const date = String(effectiveAt);
 
     // Per product: fetch only the DUCs that have a nozzle for that product
     // (matches the Python find_ducs_for semantics). Empty product lists are
@@ -1044,8 +1048,8 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
             }
             const topic = `pso/${cityLower}/${customer_code}/duc/price/${product.toLowerCase()}`;
             const payload = JSON.stringify({ date, req_type: 0, message: validPrices[product] });
-            await publishMessage(topic, payload, { qos: 1 });
-            items.push({ product, topic, ducs });
+            await publishMessage(topic, payload, { qos: 1, retain: !!retain });
+            items.push({ product, topic, ducs, price: validPrices[product], payload });
         }
     } catch (e) {
         console.error('price-update publish failed:', e);
@@ -1070,6 +1074,8 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
             city: cityLower,
             customer_code,
             prices: validPrices,
+            effectiveAt,
+            retained: !!retain,
             published: items.map(it => ({ product: it.product, ducCount: it.ducs.length })),
             skipped
         }
@@ -1077,9 +1083,13 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
 
     res.json({
         jobId,
+        effectiveAt,
+        retained: !!retain,
         items: items.map(it => ({
             product: it.product,
             topic: it.topic,
+            price: it.price,
+            payload: it.payload,
             totalDucs: it.ducs.length,
             ducs: it.ducs
         })),
@@ -1136,6 +1146,7 @@ app.get('/api/ducs', requireApiKey, async (req, res) => {
                  s.division      AS division,
                  s.city          AS city,
                  ${addressOutSql('d')} AS duc_address,
+                 d.conn_status   AS conn_status,
                  n.dispenser_id  AS dispenser_id,
                  n.nozzle_id     AS nozzle_id,
                  n.product       AS product
