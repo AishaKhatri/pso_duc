@@ -11,47 +11,44 @@ function createBaseRow() {
     return row;
 }
 
-// Helper function to create status rows
-function createStatusRow(label, value) {
+// Label/value row: bold label on the left, value on the right. `valueStyle`
+// overrides the value span's color/fontWeight (used by the status indicator).
+function createLabelValueRow(label, valueText, valueStyle = {}) {
     const row = createBaseRow();
-    
+
     const labelSpan = document.createElement('span');
     labelSpan.textContent = label;
     labelSpan.style.fontWeight = 'bold';
     labelSpan.style.color = 'var(--text-primary)';
 
     const valueSpan = document.createElement('span');
-    valueSpan.textContent = value;
-    valueSpan.style.color = 'var(--text-secondary)';
-    
+    valueSpan.textContent = valueText;
+    valueSpan.style.color = valueStyle.color || 'var(--text-secondary)';
+    if (valueStyle.fontWeight) valueSpan.style.fontWeight = valueStyle.fontWeight;
+
     row.appendChild(labelSpan);
     row.appendChild(valueSpan);
-    
+
     return row;
+}
+
+// Helper function to create status rows
+function createStatusRow(label, value) {
+    return createLabelValueRow(label, value);
 }
 
 // Helper function to create status indicator
 function createStatusIndicator(label, status, trueText = 'Yes', falseText = 'No') {
-    const row = createBaseRow();
-    
-    const labelSpan = document.createElement('span');
-    labelSpan.textContent = label;
-    labelSpan.style.fontWeight = 'bold';
-    labelSpan.style.color = 'var(--text-primary)';
-
-    const valueSpan = document.createElement('span');
-    valueSpan.textContent = status ? trueText : falseText;
-    valueSpan.style.color = status ? 'var(--status-online)' : 'var(--status-offline)';
-    valueSpan.style.fontWeight = 'bold';
-    
-    row.appendChild(labelSpan);
-    row.appendChild(valueSpan);
-    
-    return row;
+    // Positive state uses the heading accent (light blue in dark, teal in
+    // light); only the negative state is red so a problem still stands out.
+    return createLabelValueRow(label, status ? trueText : falseText, {
+        color: status ? 'var(--text-heading)' : 'var(--status-offline)',
+        fontWeight: 'bold'
+    });
 }
 
 // Function to create section header
-function createSectionHeader(title, color = '#2e7d32') {
+function createSectionHeader(title, color = 'var(--text-heading)') {
     const header = document.createElement('h3');
     header.textContent = title;
     header.style.color = color;
@@ -90,46 +87,35 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
     buttonsContainer.style.justifyContent = 'flex-end';
     buttonsContainer.style.gap = '10px';
     
-    const gsmButton = document.createElement('button');
-    gsmButton.textContent = 'GSM';
-    gsmButton.style.padding = '6px 16px';
-    gsmButton.style.border = '1px solid var(--border)';
-    gsmButton.style.background = 'var(--bg-surface-2)';
-    gsmButton.style.color = 'var(--text-primary)';
-    gsmButton.style.borderRadius = '4px';
-    gsmButton.style.fontSize = '14px';
-    gsmButton.style.cursor = gsmEnabled ? 'pointer' : 'not-allowed';
-    gsmButton.disabled = !gsmEnabled;
-    
-    const wifiButton = document.createElement('button');
-    wifiButton.textContent = 'WiFi';
-    wifiButton.style.padding = '6px 16px';
-    wifiButton.style.border = '1px solid var(--border)';
-    wifiButton.style.background = 'var(--bg-surface-2)';
-    wifiButton.style.color = 'var(--text-primary)';
-    wifiButton.style.borderRadius = '4px';
-    wifiButton.style.fontSize = '14px';
-    wifiButton.style.cursor = wifiEnabled ? 'pointer' : 'not-allowed';
-    wifiButton.disabled = !wifiEnabled;
+    const makeConnButton = (label, enabled) => {
+        const btn = document.createElement('button');
+        btn.textContent = label;
+        btn.style.padding = '6px 16px';
+        btn.style.border = '1px solid var(--border)';
+        btn.style.background = 'var(--bg-surface-2)';
+        btn.style.color = 'var(--text-primary)';
+        btn.style.borderRadius = '4px';
+        btn.style.fontSize = '14px';
+        btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+        btn.disabled = !enabled;
+        return btn;
+    };
+
+    const gsmButton = makeConnButton('GSM', gsmEnabled);
+    const wifiButton = makeConnButton('WiFi', wifiEnabled);
     
     let activeButton = gsmEnabled ? 'gsm' : (wifiEnabled ? 'wifi' : 'gsm');
     
+    // Active = accent fill; inactive = secondary surface. Same rule for both
+    // buttons, so derive each from whether it is the active mode.
+    const setButtonActive = (btn, active) => {
+        btn.style.background = active ? 'var(--accent)' : 'var(--bg-surface-2)';
+        btn.style.color = active ? 'var(--text-on-accent)' : 'var(--text-primary)';
+        btn.style.border = active ? '1px solid var(--accent)' : '1px solid var(--border)';
+    };
     const updateButtonStyles = () => {
-        if (activeButton === 'gsm') {
-            gsmButton.style.background = 'var(--status-online)';
-            gsmButton.style.color = '#fff';
-            gsmButton.style.border = '1px solid var(--status-online)';
-            wifiButton.style.background = 'var(--bg-surface-2)';
-            wifiButton.style.color = 'var(--text-primary)';
-            wifiButton.style.border = '1px solid var(--border)';
-        } else {
-            wifiButton.style.background = 'var(--status-online)';
-            wifiButton.style.color = '#fff';
-            wifiButton.style.border = '1px solid var(--status-online)';
-            gsmButton.style.background = 'var(--bg-surface-2)';
-            gsmButton.style.color = 'var(--text-primary)';
-            gsmButton.style.border = '1px solid var(--border)';
-        }
+        setButtonActive(gsmButton, activeButton === 'gsm');
+        setButtonActive(wifiButton, activeButton === 'wifi');
     };
     
     gsmButton.addEventListener('click', () => {
@@ -157,7 +143,7 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
 }
 
 // Function to create main tabs (Connectivity Status, Error Logs, and Reset Logs)
-function createMainTabs(onTabChange) {
+function createMainTabs(onTabChange, initialActive = 'connectivity') {
     const tabsContainer = document.createElement('div');
     tabsContainer.style.display = 'flex';
     tabsContainer.style.marginBottom = '20px';
@@ -166,77 +152,41 @@ function createMainTabs(onTabChange) {
     const role = window.StationAuth?.getUserInfo?.()?.role;
     const showErrorsAndResets = role !== 'operator';
 
-    const connectivityTab = document.createElement('button');
-    connectivityTab.textContent = 'Connectivity Status';
-    connectivityTab.style.padding = '10px 20px';
-    connectivityTab.style.border = 'none';
-    connectivityTab.style.background = 'none';
-    connectivityTab.style.borderBottom = '3px solid #2e7d32';
-    connectivityTab.style.fontWeight = 'bold';
-    connectivityTab.style.color = '#2e7d32';
-    connectivityTab.style.cursor = 'pointer';
-    connectivityTab.style.fontSize = '16px';
-
-    const errorLogsTab = document.createElement('button');
-    errorLogsTab.textContent = 'Error Logs';
-    errorLogsTab.style.padding = '10px 20px';
-    errorLogsTab.style.border = 'none';
-    errorLogsTab.style.background = 'none';
-    errorLogsTab.style.fontWeight = 'normal';
-    errorLogsTab.style.color = '#2e7d32';
-    errorLogsTab.style.cursor = 'pointer';
-    errorLogsTab.style.fontSize = '16px';
-
-    const resetLogsTab = document.createElement('button');
-    resetLogsTab.textContent = 'Reset Logs';
-    resetLogsTab.style.padding = '10px 20px';
-    resetLogsTab.style.border = 'none';
-    resetLogsTab.style.background = 'none';
-    resetLogsTab.style.fontWeight = 'normal';
-    resetLogsTab.style.color = '#2e7d32';
-    resetLogsTab.style.cursor = 'pointer';
-    resetLogsTab.style.fontSize = '16px';
-    
-    const updateTabStyles = (activeTab) => {
-        if (activeTab === 'connectivity') {
-            connectivityTab.style.borderBottom = '3px solid #2e7d32';
-            connectivityTab.style.fontWeight = 'bold';
-            errorLogsTab.style.borderBottom = 'none';
-            errorLogsTab.style.fontWeight = 'normal';
-            resetLogsTab.style.borderBottom = 'none';
-            resetLogsTab.style.fontWeight = 'normal';
-        } else if (activeTab === 'errorLogs') {
-            errorLogsTab.style.borderBottom = '3px solid #2e7d32';
-            errorLogsTab.style.fontWeight = 'bold';
-            connectivityTab.style.borderBottom = 'none';
-            connectivityTab.style.fontWeight = 'normal';
-            resetLogsTab.style.borderBottom = 'none';
-            resetLogsTab.style.fontWeight = 'normal';
-        } else {
-            resetLogsTab.style.borderBottom = '3px solid #2e7d32';
-            resetLogsTab.style.fontWeight = 'bold';
-            connectivityTab.style.borderBottom = 'none';
-            connectivityTab.style.fontWeight = 'normal';
-            errorLogsTab.style.borderBottom = 'none';
-            errorLogsTab.style.fontWeight = 'normal';
-        }
+    const makeTab = (label) => {
+        const tab = document.createElement('button');
+        tab.textContent = label;
+        tab.style.padding = '10px 20px';
+        tab.style.border = 'none';
+        tab.style.background = 'none';
+        tab.style.cursor = 'pointer';
+        tab.style.fontSize = '16px';
+        // Sit on top of the container's border so the active 3px underline
+        // visually replaces it rather than stacking below.
+        tab.style.marginBottom = '-2px';
+        return tab;
     };
-    
-    connectivityTab.addEventListener('click', () => {
-        updateTabStyles('connectivity');
-        onTabChange('connectivity');
-    });
-    
-    errorLogsTab.addEventListener('click', () => {
-        updateTabStyles('errorLogs');
-        onTabChange('errorLogs');
-    });
-    
-    resetLogsTab.addEventListener('click', () => {
-        updateTabStyles('resetLogs');
-        onTabChange('resetLogs');
-    });
-    
+
+    const connectivityTab = makeTab('Connectivity Status');
+    const errorLogsTab = makeTab('Error Logs');
+    const resetLogsTab = makeTab('Reset Logs');
+
+    // Active tab: accent underline + accent bold text. Inactive: muted, plain.
+    const tabs = { connectivity: connectivityTab, errorLogs: errorLogsTab, resetLogs: resetLogsTab };
+    const updateTabStyles = (activeTab) => {
+        Object.entries(tabs).forEach(([key, tab]) => {
+            const active = key === activeTab;
+            tab.style.borderBottom = active ? '3px solid var(--accent)' : '3px solid transparent';
+            tab.style.fontWeight = active ? 'bold' : 'normal';
+            tab.style.color = active ? 'var(--accent)' : 'var(--text-secondary)';
+        });
+    };
+
+    connectivityTab.addEventListener('click', () => { updateTabStyles('connectivity'); onTabChange('connectivity'); });
+    errorLogsTab.addEventListener('click', () => { updateTabStyles('errorLogs'); onTabChange('errorLogs'); });
+    resetLogsTab.addEventListener('click', () => { updateTabStyles('resetLogs'); onTabChange('resetLogs'); });
+
+    updateTabStyles(initialActive);
+
     tabsContainer.appendChild(connectivityTab);
     if (showErrorsAndResets) {
         tabsContainer.appendChild(errorLogsTab);
@@ -304,19 +254,31 @@ function createGsmStatusContent(gsmStatus) {
         const pdpHeader = document.createElement('h4');
         pdpHeader.textContent = 'PDP Contexts';
         pdpHeader.style.margin = '15px 0 10px 0';
-        pdpHeader.style.color = '#2e7d32';
+        pdpHeader.style.color = 'var(--text-primary)';
         pdpHeader.style.fontSize = '14px';
+        // Match the separator under the status rows above/below it.
+        pdpHeader.style.paddingBottom = '5px';
+        pdpHeader.style.borderBottom = '1px solid var(--border-soft)';
         container.appendChild(pdpHeader);
-        
+
+        // All contexts live in a single box, separated by a divider rather than
+        // each sitting in its own box.
+        const pdpBox = createStyledContainer();
         gsmStatus.pdpContexts.forEach((context, index) => {
-            const contextDiv = createStyledContainer();
+            const contextDiv = document.createElement('div');
+            if (index > 0) {
+                contextDiv.style.marginTop = '10px';
+                contextDiv.style.paddingTop = '10px';
+                contextDiv.style.borderTop = '1px solid var(--border-soft)';
+            }
             contextDiv.innerHTML = `
                 <div style="font-weight: bold; margin-bottom: 5px;">Context ${context.ContextId || index + 1}</div>
                 <div>APN: ${context.apn || 'N/A'}</div>
                 <div>IPv4: ${context.ipv4 || 'N/A'}</div>
             `;
-            container.appendChild(contextDiv);
+            pdpBox.appendChild(contextDiv);
         });
+        container.appendChild(pdpBox);
     }
     
     container.appendChild(createLastUpdatedText(gsmStatus.lastUpdated));
@@ -358,7 +320,7 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
     section.style.flex = '1';
     section.style.padding = '0 15px';
     
-    section.appendChild(createSectionHeader('MQTT Communication Link', '#2e7d32'));
+    section.appendChild(createSectionHeader('MQTT Communication Link'));
     
     if (!mqttStatus) {
         section.appendChild(createNoDataMessage('No MQTT status available'));
@@ -393,7 +355,7 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
     sectionGap.style.padding = '15px 15px';
     section.appendChild(sectionGap);
 
-    section.appendChild(createSectionHeader('Power Status', '#2e7d32'));
+    section.appendChild(createSectionHeader('Power Status'));
     
     let powerStatuses = [];
     
@@ -438,14 +400,17 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
     return section;
 }
 
-// Function to create reset logs table
-function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, currentClearedIds = new Set(), currentFilter = 'uncleared') {
-    const container = document.createElement('div');
-    container.style.display = 'flex';
-    container.style.flexDirection = 'column';
-    container.style.gap = '15px';
-    
-    // Action bar with filter dropdown and stats
+// Enable/disable the "Mark as Cleared" button based on the current selection.
+function setMarkButtonEnabled(btn, enabled) {
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '1' : '0.5';
+    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+}
+
+// Build the action bar shared by the error- and reset-log tables: a filter
+// dropdown (All / Uncleared Only), a "Total | Uncleared" stat, and an
+// admin-only "Mark as Cleared" button. Returns the pieces the caller wires up.
+function buildLogActionBar({ allOptionText, currentFilter, totalCount, unclearedCount }) {
     const actionBar = document.createElement('div');
     actionBar.style.display = 'flex';
     actionBar.style.justifyContent = 'space-between';
@@ -454,8 +419,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     actionBar.style.backgroundColor = 'var(--bg-surface-2)';
     actionBar.style.borderRadius = '8px';
     actionBar.style.border = '1px solid var(--border)';
-    
-    // Create filter dropdown
+
     const filterDropdown = document.createElement('select');
     filterDropdown.style.padding = '8px';
     filterDropdown.style.border = '1px solid var(--border)';
@@ -464,33 +428,29 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
     filterDropdown.style.borderRadius = '4px';
     filterDropdown.style.width = '200px';
     filterDropdown.style.marginBottom = '0';
-    
+
     const allOption = document.createElement('option');
     allOption.value = 'all';
-    allOption.textContent = 'All Resets';
+    allOption.textContent = allOptionText;
     filterDropdown.appendChild(allOption);
-    
+
     const unclearedOption = document.createElement('option');
     unclearedOption.value = 'uncleared';
     unclearedOption.textContent = 'Uncleared Only';
     filterDropdown.appendChild(unclearedOption);
-    
+
     filterDropdown.value = currentFilter;
-    
-    // Stats display
-    const totalCount = powerStatuses.length;
-    const unclearedCount = powerStatuses.filter(status => !currentClearedIds.has(status.id)).length;
+
     const statsSpan = document.createElement('span');
     statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
     statsSpan.style.fontSize = '14px';
     statsSpan.style.fontWeight = 'bold';
     statsSpan.style.color = 'var(--text-secondary)';
-    
-    // Mark as cleared button (admin-only)
-    const resetMarkRole = window.StationAuth?.getUserInfo?.()?.role;
-    const canMarkResetCleared = resetMarkRole === 'admin' || resetMarkRole === 'super_admin';
 
-    const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    const canMarkCleared = role === 'admin' || role === 'super_admin';
+
+    const markClearedBtn = createActionButton('var(--accent)', 'var(--accent-hover)');
     markClearedBtn.textContent = '✓ Mark as Cleared';
     markClearedBtn.disabled = true;
     markClearedBtn.style.opacity = '0.5';
@@ -498,19 +458,60 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
 
     actionBar.appendChild(filterDropdown);
     actionBar.appendChild(statsSpan);
-    if (canMarkResetCleared) {
+    if (canMarkCleared) {
         actionBar.appendChild(markClearedBtn);
     }
+
+    return { actionBar, filterDropdown, statsSpan, markClearedBtn, canMarkCleared };
+}
+
+// Inject a select-all checkbox into the first header cell of a log table.
+// Hidden for users who can't mark rows cleared. Returns the checkbox so the
+// caller can wire its change/indeterminate behavior.
+function injectSelectAllCheckbox(tableContainer, canMarkCleared) {
+    const firstTh = tableContainer.querySelector('thead tr th');
+
+    const selectAllContainer = document.createElement('div');
+    selectAllContainer.style.display = 'flex';
+    selectAllContainer.style.alignItems = 'center';
+    selectAllContainer.style.gap = '5px';
+
+    const selectAllCheckbox = document.createElement('input');
+    selectAllCheckbox.type = 'checkbox';
+    selectAllCheckbox.style.margin = '0';
+    if (!canMarkCleared) {
+        selectAllCheckbox.style.visibility = 'hidden';
+        selectAllCheckbox.disabled = true;
+    }
+
+    selectAllContainer.appendChild(selectAllCheckbox);
+    firstTh.innerHTML = '';
+    firstTh.appendChild(selectAllContainer);
+
+    return selectAllCheckbox;
+}
+
+// Function to create reset logs table
+function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, currentClearedIds = new Set(), currentFilter = 'uncleared') {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '15px';
+    
+    // Action bar: filter dropdown, stats, and admin-only mark-cleared button.
+    const totalCount = powerStatuses.length;
+    const unclearedCount = powerStatuses.filter(status => !currentClearedIds.has(status.id)).length;
+    const { actionBar, filterDropdown, markClearedBtn, canMarkCleared: canMarkResetCleared } = buildLogActionBar({
+        allOptionText: 'All Resets',
+        currentFilter,
+        totalCount,
+        unclearedCount
+    });
     container.appendChild(actionBar);
 
     let selectedResetIds = new Set();
-    
-    const updateMarkButtonState = () => {
-        const hasSelected = selectedResetIds.size > 0;
-        markClearedBtn.disabled = !hasSelected;
-        markClearedBtn.style.opacity = hasSelected ? '1' : '0.5';
-        markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
-    };
+
+    const updateMarkButtonState = () => setMarkButtonEnabled(markClearedBtn, selectedResetIds.size > 0);
     
     const renderTable = () => {
         const existingTable = container.querySelector('.reset-table-container');
@@ -608,25 +609,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             tbody.appendChild(row);
         });
         
-        const thead = tableContainer.querySelector('thead');
-        const headerRow = thead.querySelector('tr');
-        const firstTh = headerRow.querySelector('th');
-        const selectAllContainer = document.createElement('div');
-        selectAllContainer.style.display = 'flex';
-        selectAllContainer.style.alignItems = 'center';
-        selectAllContainer.style.gap = '5px';
-        
-        const selectAllCheckbox = document.createElement('input');
-        selectAllCheckbox.type = 'checkbox';
-        selectAllCheckbox.style.margin = '0';
-        if (!canMarkResetCleared) {
-            selectAllCheckbox.style.visibility = 'hidden';
-            selectAllCheckbox.disabled = true;
-        }
-
-        selectAllContainer.appendChild(selectAllCheckbox);
-        firstTh.innerHTML = '';
-        firstTh.appendChild(selectAllContainer);
+        const selectAllCheckbox = injectSelectAllCheckbox(tableContainer, canMarkResetCleared);
 
         const updateSelectAllCheckbox = () => {
             const checkboxes = document.querySelectorAll('.reset-checkbox:not([disabled])');
@@ -707,69 +690,19 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     container.style.flexDirection = 'column';
     container.style.gap = '15px';
     
-    const actionBar = document.createElement('div');
-    actionBar.style.display = 'flex';
-    actionBar.style.justifyContent = 'space-between';
-    actionBar.style.alignItems = 'center';
-    actionBar.style.padding = '10px';
-    actionBar.style.backgroundColor = 'var(--bg-surface-2)';
-    actionBar.style.borderRadius = '8px';
-    actionBar.style.border = '1px solid var(--border)';
-    
-    const filterDropdown = document.createElement('select');
-    filterDropdown.style.padding = '8px';
-    filterDropdown.style.border = '1px solid var(--border)';
-    filterDropdown.style.backgroundColor = 'var(--bg-surface)';
-    filterDropdown.style.color = 'var(--text-primary)';
-    filterDropdown.style.borderRadius = '4px';
-    filterDropdown.style.width = '200px';
-    filterDropdown.style.marginBottom = '0';
-    
-    const allOption = document.createElement('option');
-    allOption.value = 'all';
-    allOption.textContent = 'All Errors';
-    filterDropdown.appendChild(allOption);
-    
-    const unclearedOption = document.createElement('option');
-    unclearedOption.value = 'uncleared';
-    unclearedOption.textContent = 'Uncleared Only';
-    filterDropdown.appendChild(unclearedOption);
-    
-    filterDropdown.value = currentFilterValue;
-
     const totalCount = errorLogs.length;
     const unclearedCount = errorLogs.filter(log => log.cleared !== 1).length;
-    const statsSpan = document.createElement('span');
-    statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
-    statsSpan.style.fontSize = '14px';
-    statsSpan.style.fontWeight = 'bold';
-    statsSpan.style.color = 'var(--text-secondary)';
-    
-    // Mark as cleared button (admin-only)
-    const errorMarkRole = window.StationAuth?.getUserInfo?.()?.role;
-    const canMarkErrorCleared = errorMarkRole === 'admin' || errorMarkRole === 'super_admin';
-
-    const markClearedBtn = createActionButton('#2E7D32', '#1B5E20');
-    markClearedBtn.textContent = '✓ Mark as Cleared';
-    markClearedBtn.disabled = true;
-    markClearedBtn.style.opacity = '0.5';
-    markClearedBtn.style.cursor = 'not-allowed';
-
-    actionBar.appendChild(filterDropdown);
-    actionBar.appendChild(statsSpan);
-    if (canMarkErrorCleared) {
-        actionBar.appendChild(markClearedBtn);
-    }
+    const { actionBar, filterDropdown, markClearedBtn, canMarkCleared: canMarkErrorCleared } = buildLogActionBar({
+        allOptionText: 'All Errors',
+        currentFilter: currentFilterValue,
+        totalCount,
+        unclearedCount
+    });
     container.appendChild(actionBar);
 
     let selectedErrorIds = new Set();
-    
-    const updateMarkButtonState = () => {
-        const hasSelected = selectedErrorIds.size > 0;
-        markClearedBtn.disabled = !hasSelected;
-        markClearedBtn.style.opacity = hasSelected ? '1' : '0.5';
-        markClearedBtn.style.cursor = hasSelected ? 'pointer' : 'not-allowed';
-    };
+
+    const updateMarkButtonState = () => setMarkButtonEnabled(markClearedBtn, selectedErrorIds.size > 0);
     
     const renderTable = () => {
         const existingTable = container.querySelector('.error-table-container');
@@ -866,25 +799,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             tbody.appendChild(row);
         });
         
-        const thead = tableContainer.querySelector('thead');
-        const headerRow = thead.querySelector('tr');
-        const firstTh = headerRow.querySelector('th');
-        const selectAllContainer = document.createElement('div');
-        selectAllContainer.style.display = 'flex';
-        selectAllContainer.style.alignItems = 'center';
-        selectAllContainer.style.gap = '5px';
-        
-        const selectAllCheckbox = document.createElement('input');
-        selectAllCheckbox.type = 'checkbox';
-        selectAllCheckbox.style.margin = '0';
-        if (!canMarkErrorCleared) {
-            selectAllCheckbox.style.visibility = 'hidden';
-            selectAllCheckbox.disabled = true;
-        }
-
-        selectAllContainer.appendChild(selectAllCheckbox);
-        firstTh.innerHTML = '';
-        firstTh.appendChild(selectAllContainer);
+        const selectAllCheckbox = injectSelectAllCheckbox(tableContainer, canMarkErrorCleared);
 
         const updateSelectAllCheckbox = () => {
             const checkboxes = document.querySelectorAll('.error-checkbox');
@@ -977,7 +892,7 @@ function addDeviceInfoFooter(popupElement, deviceIdentifier) {
         left: 0;
         right: 0;
         padding: 5px 20px;
-        border-top: 1px solid #ddd;
+        border-top: 1px solid var(--border);
         font-size: 14px;
         display: flex;
         align-items: center;
@@ -1136,10 +1051,10 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
             console.error('Error loading cleared resets:', error);
         }
         
-        const { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab } = createMainTabs((tab) => {
+        const { tabsContainer } = createMainTabs((tab) => {
             activeTab = tab === 'connectivity' ? 'connectivity' : (tab === 'errorLogs' ? 'errorLogs' : 'resetLogs');
             updateMainContent();
-        });
+        }, defaultTab);
         
         const updateMainContent = () => {
             if (currentContent && contentContainer.contains(currentContent)) {
@@ -1209,7 +1124,9 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                         const table = createResetLogsTable(freshPowerStatus, dispenserTopic, (newFilter) => {
                             loadResets(newFilter);
                             if (typeof window.updateResetCount === 'function') {
-                                window.updateResetCount(dispenserAddress);
+                                // Bypass the bulk-prefetched cache — the count
+                                // just changed, so re-read it live.
+                                window.updateResetCount(dispenserAddress, true);
                             }
                         }, clearedIds, filter);
                         resetContainer.appendChild(table);
@@ -1229,21 +1146,6 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         modal.appendChild(tabsContainer);
         modal.appendChild(contentContainer);
         
-        if (defaultTab === 'errorLogs') {
-            connectivityTab.style.borderBottom = 'none';
-            connectivityTab.style.fontWeight = 'normal';
-            errorLogsTab.style.borderBottom = '3px solid #2e7d32';
-            errorLogsTab.style.fontWeight = 'bold';
-            resetLogsTab.style.borderBottom = 'none';
-            resetLogsTab.style.fontWeight = 'normal';
-        } else if (defaultTab === 'resetLogs') {
-            connectivityTab.style.borderBottom = 'none';
-            connectivityTab.style.fontWeight = 'normal';
-            errorLogsTab.style.borderBottom = 'none';
-            errorLogsTab.style.fontWeight = 'normal';
-            resetLogsTab.style.borderBottom = '3px solid #2e7d32';
-            resetLogsTab.style.fontWeight = 'bold';
-        }
         updateMainContent();
         
         overlay.appendChild(modal);

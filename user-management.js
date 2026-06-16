@@ -60,18 +60,12 @@ async function renderUsersTable(users) {
                 new Date(user.created_at).toLocaleString()
             ]);
 
-            const editBtn = createEditButton('Edit user');
-            if (!canEdit) editBtn.style.cursor = 'not-allowed';
-            else editBtn.addEventListener('click', () => alert('Edit functionality coming soon'));
-
-            const deleteBtn = createDeleteButton('Delete user');
-            if (!canEdit) deleteBtn.style.cursor = 'not-allowed';
-            else deleteBtn.addEventListener('click', () => showDeleteUserConfirmation(user));
-
-            const actionWrap = document.createElement('div');
-            actionWrap.appendChild(editBtn);
-            actionWrap.appendChild(deleteBtn);
-            appendCell(tr, actionWrap);
+            appendRowActions(tr, {
+                onEdit: () => alert('Edit functionality coming soon'),
+                onDelete: () => showDeleteUserConfirmation(user),
+                editTitle: 'Edit user', deleteTitle: 'Delete user',
+                enabled: canEdit
+            });
             tbody.appendChild(tr);
         });
     } catch (error) {
@@ -80,7 +74,7 @@ async function renderUsersTable(users) {
         tbody.innerHTML = '';
         const errorRow = document.createElement('tr');
         const errorCell = document.createElement('td');
-        errorCell.colSpan = 8;
+        errorCell.colSpan = columns.length;
         errorCell.style.color = 'var(--danger)';
         errorCell.style.textAlign = 'center';
         errorCell.style.padding = '20px';

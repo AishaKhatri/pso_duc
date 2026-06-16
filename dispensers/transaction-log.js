@@ -64,7 +64,7 @@ async function showTransactionLogPopup(nozzle_id) {
         // Create fixed footer for buttons (keep as is)
         const footer = document.createElement('div');
         footer.style.paddingTop = '15px';
-        footer.style.borderTop = '1px solid #eee';
+        footer.style.borderTop = '1px solid var(--border-soft)';
         footer.style.borderBottomLeftRadius = '10px';
         footer.style.display = 'flex';
         footer.style.justifyContent = 'space-between';
@@ -169,7 +169,6 @@ async function showTransactionLogPopup(nozzle_id) {
         // Update export button for filtered data
         const exportBtn = footer.querySelector('button');
         if (exportBtn) {
-            const oldClickListener = exportBtn.onclick;
             exportBtn.addEventListener('click', () => {
                 const startDate = document.getElementById('start-date')?.value;
                 const endDate = document.getElementById('end-date')?.value;
@@ -199,6 +198,59 @@ async function showTransactionLogPopup(nozzle_id) {
     }
 }
 
+// A labeled <input type="date"> column, used for both the start and end filters.
+function createLabeledDateField(labelText, inputId) {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'column';
+    container.style.gap = '5px';
+
+    const label = document.createElement('label');
+    label.textContent = labelText;
+    label.style.fontSize = '12px';
+    label.style.fontWeight = 'bold';
+    label.style.color = 'var(--text-secondary)';
+
+    const input = document.createElement('input');
+    input.type = 'date';
+    input.id = inputId;
+    input.style.padding = '8px';
+    input.style.border = '1px solid var(--border)';
+    input.style.backgroundColor = 'var(--bg-surface)';
+    input.style.color = 'var(--text-primary)';
+    input.style.borderRadius = '4px';
+    input.style.fontSize = '14px';
+
+    container.appendChild(label);
+    container.appendChild(input);
+    return container;
+}
+
+// One "Label: value" stat row in the summary panel (amount / volume / count).
+function createSummaryRow(labelText, valueId, valueColor, initialText) {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.justifyContent = 'space-between';
+    container.style.padding = '10px';
+    container.style.backgroundColor = 'var(--bg-surface-2)';
+    container.style.borderRadius = '6px';
+
+    const label = document.createElement('span');
+    label.textContent = labelText;
+    label.style.fontWeight = 'bold';
+    label.style.color = 'var(--text-secondary)';
+
+    const value = document.createElement('span');
+    value.id = valueId;
+    value.textContent = initialText;
+    value.style.color = valueColor;
+    value.style.fontWeight = 'bold';
+
+    container.appendChild(label);
+    container.appendChild(value);
+    return container;
+}
+
 function createDateFilterSection() {
     const section = document.createElement('div');
     section.style.backgroundColor = 'var(--bg-surface)';
@@ -222,55 +274,8 @@ function createDateFilterSection() {
     filterContainer.style.gap = '10px';
     filterContainer.style.marginTop = '10px';
 
-    // Start Date
-    const startDateContainer = document.createElement('div');
-    startDateContainer.style.display = 'flex';
-    startDateContainer.style.flexDirection = 'column';
-    startDateContainer.style.gap = '5px';
-
-    const startLabel = document.createElement('label');
-    startLabel.textContent = 'Start Date';
-    startLabel.style.fontSize = '12px';
-    startLabel.style.fontWeight = 'bold';
-    startLabel.style.color = 'var(--text-secondary)';
-
-    const startDateInput = document.createElement('input');
-    startDateInput.type = 'date';
-    startDateInput.id = 'start-date';
-    startDateInput.style.padding = '8px';
-    startDateInput.style.border = '1px solid var(--border)';
-    startDateInput.style.backgroundColor = 'var(--bg-surface)';
-    startDateInput.style.color = 'var(--text-primary)';
-    startDateInput.style.borderRadius = '4px';
-    startDateInput.style.fontSize = '14px';
-
-    startDateContainer.appendChild(startLabel);
-    startDateContainer.appendChild(startDateInput);
-
-    // End Date
-    const endDateContainer = document.createElement('div');
-    endDateContainer.style.display = 'flex';
-    endDateContainer.style.flexDirection = 'column';
-    endDateContainer.style.gap = '5px';
-
-    const endLabel = document.createElement('label');
-    endLabel.textContent = 'End Date';
-    endLabel.style.fontSize = '12px';
-    endLabel.style.fontWeight = 'bold';
-    endLabel.style.color = 'var(--text-secondary)';
-
-    const endDateInput = document.createElement('input');
-    endDateInput.type = 'date';
-    endDateInput.id = 'end-date';
-    endDateInput.style.padding = '8px';
-    endDateInput.style.border = '1px solid var(--border)';
-    endDateInput.style.backgroundColor = 'var(--bg-surface)';
-    endDateInput.style.color = 'var(--text-primary)';
-    endDateInput.style.borderRadius = '4px';
-    endDateInput.style.fontSize = '14px';
-
-    endDateContainer.appendChild(endLabel);
-    endDateContainer.appendChild(endDateInput);
+    const startDateContainer = createLabeledDateField('Start Date', 'start-date');
+    const endDateContainer = createLabeledDateField('End Date', 'end-date');
 
     // Apply / Clear Filter Buttons
     const buttonRow = document.createElement('div');
@@ -323,75 +328,9 @@ function createSummarySection() {
     summaryContainer.style.gap = '10px';
     summaryContainer.style.marginTop = '10px';
 
-    // Total Amount
-    const amountContainer = document.createElement('div');
-    amountContainer.style.display = 'flex';
-    amountContainer.style.justifyContent = 'space-between';
-    amountContainer.style.padding = '10px';
-    amountContainer.style.backgroundColor = 'var(--bg-surface-2)';
-    amountContainer.style.borderRadius = '6px';
-
-    const amountLabel = document.createElement('span');
-    amountLabel.textContent = 'Total Amount:';
-    amountLabel.style.fontWeight = 'bold';
-    amountLabel.style.color = 'var(--text-secondary)';
-
-    const amountValue = document.createElement('span');
-    amountValue.id = 'total-amount';
-    amountValue.textContent = 'Rs. 0.00';
-    amountValue.style.color = '#28a745';
-    amountValue.style.fontWeight = 'bold';
-
-    amountContainer.appendChild(amountLabel);
-    amountContainer.appendChild(amountValue);
-
-    // Total Volume
-    const volumeContainer = document.createElement('div');
-    volumeContainer.style.display = 'flex';
-    volumeContainer.style.justifyContent = 'space-between';
-    volumeContainer.style.padding = '10px';
-    volumeContainer.style.backgroundColor = 'var(--bg-surface-2)';
-    volumeContainer.style.borderRadius = '6px';
-
-    const volumeLabel = document.createElement('span');
-    volumeLabel.textContent = 'Total Volume:';
-    volumeLabel.style.fontWeight = 'bold';
-    volumeLabel.style.color = 'var(--text-secondary)';
-
-    const volumeValue = document.createElement('span');
-    volumeValue.id = 'total-volume';
-    volumeValue.textContent = '0.00 Ltr';
-    volumeValue.style.color = '#007bff';
-    volumeValue.style.fontWeight = 'bold';
-
-    volumeContainer.appendChild(volumeLabel);
-    volumeContainer.appendChild(volumeValue);
-
-    // Transaction Count
-    const countContainer = document.createElement('div');
-    countContainer.style.display = 'flex';
-    countContainer.style.justifyContent = 'space-between';
-    countContainer.style.padding = '10px';
-    countContainer.style.backgroundColor = 'var(--bg-surface-2)';
-    countContainer.style.borderRadius = '6px';
-
-    const countLabel = document.createElement('span');
-    countLabel.textContent = 'Transactions:';
-    countLabel.style.fontWeight = 'bold';
-    countLabel.style.color = 'var(--text-secondary)';
-
-    const countValue = document.createElement('span');
-    countValue.id = 'transaction-count';
-    countValue.textContent = '0';
-    countValue.style.color = '#17a2b8';
-    countValue.style.fontWeight = 'bold';
-
-    countContainer.appendChild(countLabel);
-    countContainer.appendChild(countValue);
-
-    summaryContainer.appendChild(amountContainer);
-    summaryContainer.appendChild(volumeContainer);
-    summaryContainer.appendChild(countContainer);
+    summaryContainer.appendChild(createSummaryRow('Total Amount:', 'total-amount', '#28a745', 'Rs. 0.00'));
+    summaryContainer.appendChild(createSummaryRow('Total Volume:', 'total-volume', '#007bff', '0.00 Ltr'));
+    summaryContainer.appendChild(createSummaryRow('Transactions:', 'transaction-count', '#17a2b8', '0'));
 
     section.appendChild(summaryContainer);
     return section;
@@ -453,7 +392,7 @@ function createTransactionTable(transactions) {
             const td = document.createElement('td');
             td.textContent = cellText;
             td.style.padding = '12px';
-            td.style.borderBottom = '1px solid #ddd';
+            td.style.borderBottom = '1px solid var(--border)';
             row.appendChild(td);
         });
         

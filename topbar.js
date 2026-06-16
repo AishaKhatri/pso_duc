@@ -69,18 +69,7 @@ function renderTopbar(pageTitle) {
     const themeBtn = document.createElement('button');
     themeBtn.className = 'theme-toggle-btn';
     themeBtn.type = 'button';
-    const setThemeIcon = () => {
-        const isDark = window.AppTheme && window.AppTheme.get() === 'dark';
-        themeBtn.textContent = isDark ? '☀' : '☽';
-        themeBtn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
-        themeBtn.setAttribute('aria-label', themeBtn.title);
-    };
-    setThemeIcon();
-    themeBtn.addEventListener('click', () => {
-        if (window.AppTheme) window.AppTheme.toggle();
-        setThemeIcon();
-    });
-    window.addEventListener('themechange', setThemeIcon);
+    wireThemeToggle(themeBtn, { aria: true });
     userContainer.appendChild(themeBtn);
     
     // User initial circle

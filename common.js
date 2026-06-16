@@ -43,6 +43,10 @@ const productColorConfig = {
       'HOBC': { header: '#1E88E5', accent: '#90CAF9' } // Terracotta, Beige
     };
 
+// The canonical product list, derived from productColorConfig so products are
+// defined in exactly one place. Used by the dispenser-config and filter UIs.
+const PRODUCT_OPTIONS = Object.keys(productColorConfig);
+
 const DASHBOARD_REFRESH_MS = 30 * 1000;
 
 // Dispenser address normalization. Canonical form is D-prefixed (e.g. "D01").
@@ -57,6 +61,41 @@ function ensureDAddress(addr) {
 
 function stripDAddress(addr) {
     return String(addr ?? '').replace(/^D/, '');
+}
+
+// Title-case a string: "karachi city" -> "Karachi City". Used by filter
+// dropdowns and CSV/table rendering across pages.
+function titleCase(s) {
+    return (s || '').split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
+}
+
+// Shared number/currency formatters (dashboard KPIs, station header, etc.).
+function formatCount(value) {
+    return (Number(value) || 0).toLocaleString();
+}
+function formatCurrencyFull(value) {
+    return 'Rs ' + (Number(value) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
+}
+
+// Wire an (already-created and styled) button as a theme toggle: paints its
+// ☀/☽ icon + title from the current theme, flips AppTheme on click, and keeps
+// in sync with external 'themechange' events. Used by the topbar and signin.
+function wireThemeToggle(btn, { aria = false } = {}) {
+    const setIcon = () => {
+        const isDark = window.AppTheme && window.AppTheme.get() === 'dark';
+        btn.textContent = isDark ? '☀' : '☽';
+        btn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
+        if (aria) btn.setAttribute('aria-label', btn.title);
+    };
+    setIcon();
+    btn.addEventListener('click', () => {
+        if (window.AppTheme) window.AppTheme.toggle();
+        setIcon();
+    });
+    window.addEventListener('themechange', setIcon);
+    return btn;
 }
 
 function applyInputStyles(el) {
@@ -407,8 +446,9 @@ function createTable(columns) {
     return { tableContainer , tbody };
 }
 
-// Shared HTML-escape used by the searchable dropdown.
-function _escapeDropdownHtml(s) {
+// Escape HTML special characters for safe interpolation into innerHTML. Shared
+// by the searchable dropdown, dashboard alerts, donut/legend rendering, etc.
+function escapeHtml(s) {
     return String(s ?? '').replace(/[&<>"']/g, ch => ({
         '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
     }[ch]));
@@ -516,9 +556,9 @@ function createSearchableDropdown(opts) {
         results.forEach(item => {
             const row = document.createElement('div');
             row.className = 'filter-search-option';
-            const codePart = `<span class="opt-code">${_escapeDropdownHtml(item.label || '')}</span>`;
+            const codePart = `<span class="opt-code">${escapeHtml(item.label || '')}</span>`;
             const subPart = item.secondary
-                ? `<span class="opt-name">${_escapeDropdownHtml(item.secondary)}</span>`
+                ? `<span class="opt-name">${escapeHtml(item.secondary)}</span>`
                 : '';
             row.innerHTML = codePart + subPart;
             // mousedown so picking fires before the input's blur handler closes us.
@@ -776,6 +816,42 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
     }
 }
 
+// Build a click-to-open count indicator (hidden icon + pill badge) for a
+// dispenser card. The error and reset badges are identical apart from their
+// classes, icon, colors and target popup tab. Returns { container, setCount }.
+function _buildCountIndicator({ containerClass, spanClass, iconSrc, iconAlt, textVar, bgVar, address, popupTab }) {
+    const container = document.createElement('div');
+    container.className = containerClass;
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.gap = '8px';
+    container.style.cursor = 'pointer';
+
+    const icon = createIconFromImage(iconSrc, iconAlt, '18px');
+    icon.style.display = 'none';
+
+    const span = document.createElement('span');
+    span.className = spanClass;
+    span.style.fontSize = '13px';
+    span.style.fontWeight = 'bold';
+    span.style.color = textVar;
+    span.style.backgroundColor = bgVar;
+    span.style.padding = '2px 8px';
+    span.style.borderRadius = '12px';
+    span.style.display = 'none';
+
+    container.appendChild(icon);
+    container.appendChild(span);
+    container.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof window.showDevStatusPopup === 'function') {
+            window.showDevStatusPopup(address, popupTab);
+        }
+    });
+
+    return { container, setCount: count => _applyBadgeCount(icon, span, count) };
+}
+
 // opts: { dispenserId, brand } — when supplied, the card title reads
 // "Dispenser ID: <x>" (styled small, like the brand) and the prominent
 // D-address moves into a floating tab that straddles the card's top edge.
@@ -795,7 +871,8 @@ async function createCard(address, customer_code, opts = {}) {
         width: 'fit-content',
         // Extra top padding leaves room for the floating address/brand tab that
         // straddles the card's top edge (built at the end of this function).
-        padding: '24px 11px 11px'
+        padding: '24px 11px 11px',
+        marginTop: '10px'
     });
 
     const titleContainer = document.createElement('div');
@@ -855,86 +932,33 @@ async function createCard(address, customer_code, opts = {}) {
     leftContainer.style.gap = '15px';
 
     if (showErrorsAndResets) {
-        const errorContainer = document.createElement('div');
-        errorContainer.className = 'dispenser-error-container';
-        errorContainer.style.display = 'flex';
-        errorContainer.style.alignItems = 'center';
-        errorContainer.style.gap = '8px';
-        errorContainer.style.cursor = 'pointer';
-
-        const errorIcon = createIconFromImage('assets/graphics/alert-icon.png', 'Errors', '18px');
-        errorIcon.style.display = 'none';
-
-        const errorCountSpan = document.createElement('span');
-        errorCountSpan.className = 'dispenser-error-count';
-        errorCountSpan.style.fontSize = '13px';
-        errorCountSpan.style.fontWeight = 'bold';
-        errorCountSpan.style.color = 'var(--badge-error-text)';
-        errorCountSpan.style.backgroundColor = 'var(--badge-error-bg)';
-        errorCountSpan.style.padding = '2px 8px';
-        errorCountSpan.style.borderRadius = '12px';
-        errorCountSpan.style.display = 'none';
-
-        const count = await fetchErrorCount(address);
-        errorCountSpan.textContent = count;
-
-        if (count > 0) {
-            errorIcon.style.display = 'inline-block';
-            errorCountSpan.style.display = 'inline-block';
-        }
-
-        errorContainer.appendChild(errorIcon);
-        errorContainer.appendChild(errorCountSpan);
-
-        errorContainer.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (typeof window.showDevStatusPopup === 'function') {
-                window.showDevStatusPopup(address, 'errorLogs');
-            }
+        const errorIndicator = _buildCountIndicator({
+            containerClass: 'dispenser-error-container',
+            spanClass: 'dispenser-error-count',
+            iconSrc: 'assets/graphics/alert-icon.png',
+            iconAlt: 'Errors',
+            textVar: 'var(--badge-error-text)',
+            bgVar: 'var(--badge-error-bg)',
+            address,
+            popupTab: 'errorLogs'
         });
+        errorIndicator.setCount(await fetchErrorCount(address));
 
-        const resetContainer = document.createElement('div');
-        resetContainer.className = 'dispenser-reset-container';
-        resetContainer.style.display = 'flex';
-        resetContainer.style.alignItems = 'center';
-        resetContainer.style.gap = '8px';
-        resetContainer.style.cursor = 'pointer';
-
-        const resetIcon = createIconFromImage('assets/graphics/reset-icon.png', 'Resets', '18px');
-        resetIcon.style.display = 'none';
-
-        const resetCountSpan = document.createElement('span');
-        resetCountSpan.className = 'dispenser-reset-count';
-        resetCountSpan.style.fontSize = '13px';
-        resetCountSpan.style.fontWeight = 'bold';
-        resetCountSpan.style.color = 'var(--badge-reset-text)';
-        resetCountSpan.style.backgroundColor = 'var(--badge-reset-bg)';
-        resetCountSpan.style.padding = '2px 8px';
-        resetCountSpan.style.borderRadius = '12px';
-        resetCountSpan.style.display = 'none';
-
-        // Fetch reset count
-        (async () => {
-            const resetCount = await fetchResetCount(address);
-            resetCountSpan.textContent = resetCount;
-            if (resetCount > 0) {
-                resetIcon.style.display = 'inline-block';
-                resetCountSpan.style.display = 'inline-block';
-            }
-        })();
-
-        resetContainer.appendChild(resetIcon);
-        resetContainer.appendChild(resetCountSpan);
-
-        resetContainer.addEventListener('click', (e) => {
-            e.stopPropagation();
-            if (typeof window.showDevStatusPopup === 'function') {
-                window.showDevStatusPopup(address, 'resetLogs');
-            }
+        const resetIndicator = _buildCountIndicator({
+            containerClass: 'dispenser-reset-container',
+            spanClass: 'dispenser-reset-count',
+            iconSrc: 'assets/graphics/reset-icon.png',
+            iconAlt: 'Resets',
+            textVar: 'var(--badge-reset-text)',
+            bgVar: 'var(--badge-reset-bg)',
+            address,
+            popupTab: 'resetLogs'
         });
+        // Reset count is fetched without blocking card creation (prior behavior).
+        (async () => { resetIndicator.setCount(await fetchResetCount(address)); })();
 
-        leftContainer.appendChild(errorContainer);
-        leftContainer.appendChild(resetContainer);
+        leftContainer.appendChild(errorIndicator.container);
+        leftContainer.appendChild(resetIndicator.container);
     }
 
     // Right side container for uptime
@@ -977,7 +1001,7 @@ async function createCard(address, customer_code, opts = {}) {
     // (#4fc3f7) in dark theme. Bold, 17px — same prominence as the old title.
     addrSpan.style.color = 'var(--dispenser-addr-color)';
     addrSpan.style.fontWeight = '700';
-    addrSpan.style.fontSize = '17px';
+    addrSpan.style.fontSize = '20px';
     tab.appendChild(addrSpan);
 
     const brandText = (opts.brand || '').toString().trim();
@@ -1159,30 +1183,28 @@ async function fetchErrorCount(dispenserTopic, { bypassCache = false } = {}) {
     }
 }
 
+// Show the icon + count span when count > 0, hide both otherwise. Shared by the
+// card builder and the update* functions so the badge rule lives in one place.
+function _applyBadgeCount(icon, span, count) {
+    if (!span) return;
+    span.textContent = count;
+    const display = count > 0 ? 'inline-block' : 'none';
+    span.style.display = display;
+    if (icon) icon.style.display = display;
+}
+
 // Update the dispenser card's error badge. If `precomputedCount` is passed in,
 // reuse it instead of re-fetching /error-log — lets callers share one fetch
 // across multiple consumers (badge + per-nozzle errorCount).
 async function updateErrorCount(dispenserTopic, precomputedCount, { bypassCache = false } = {}) {
     const card = document.querySelector(`div[data-address="${dispenserTopic}"]`);
-    if (!card) return;
+    const errorCountSpan = card?.querySelector('.dispenser-error-count');
+    if (!errorCountSpan) return;
 
-    const errorCountSpan = card.querySelector('.dispenser-error-count');
-    const errorIcon = card.querySelector('.dispenser-error-container img');
-
-    if (errorCountSpan) {
-        const count = (typeof precomputedCount === 'number')
-            ? precomputedCount
-            : await fetchErrorCount(dispenserTopic, { bypassCache });
-        errorCountSpan.textContent = count;
-
-        if (count > 0) {
-            errorCountSpan.style.display = 'inline-block';
-            if (errorIcon) errorIcon.style.display = 'inline-block';
-        } else {
-            errorCountSpan.style.display = 'none';
-            if (errorIcon) errorIcon.style.display = 'none';
-        }
-    }
+    const count = (typeof precomputedCount === 'number')
+        ? precomputedCount
+        : await fetchErrorCount(dispenserTopic, { bypassCache });
+    _applyBadgeCount(card.querySelector('.dispenser-error-container img'), errorCountSpan, count);
 }
 
 async function fetchResetCount(dispenserAddr, { bypassCache = false } = {}) {
@@ -1214,23 +1236,11 @@ async function fetchResetCount(dispenserAddr, { bypassCache = false } = {}) {
 
 async function updateResetCount(dispenserAddr, bypassCache = false) {
     const card = document.querySelector(`div[data-address="${dispenserAddr}"]`);
-    if (!card) return;
+    const resetCountSpan = card?.querySelector('.dispenser-reset-count');
+    if (!resetCountSpan) return;
 
-    const resetCountSpan = card.querySelector('.dispenser-reset-count');
-    const resetIcon = card.querySelector('.dispenser-reset-container img');
-
-    if (resetCountSpan) {
-        const count = await fetchResetCount(dispenserAddr, { bypassCache });
-        resetCountSpan.textContent = count;
-        
-        if (count > 0) {
-            resetCountSpan.style.display = 'inline-block';
-            if (resetIcon) resetIcon.style.display = 'inline-block';
-        } else {
-            resetCountSpan.style.display = 'none';
-            if (resetIcon) resetIcon.style.display = 'none';
-        }
-    }
+    const count = await fetchResetCount(dispenserAddr, { bypassCache });
+    _applyBadgeCount(card.querySelector('.dispenser-reset-container img'), resetCountSpan, count);
 }
 
 function renderPageHeader(pageTitleText) {
@@ -1321,42 +1331,50 @@ function createDeletePopup(confirmationQuestion, opts = {}) {
     return { overlay, popup, confirmButton, cancelButton, buttonContainer };
 }
 
-function createDeleteButton(titleText) {
-    const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'delete-btn';
-    deleteBtn.style.background = 'none';
-    deleteBtn.style.border = 'none';
-    deleteBtn.style.cursor = 'pointer';
-    deleteBtn.style.padding = '0';
-    
-    const deleteIcon = document.createElement('img');
-    deleteIcon.className = 'icon';
-    deleteIcon.src = 'assets/graphics/delete-icon.png';
-    deleteIcon.title = titleText;
-    deleteIcon.style.width = '20px';
-    deleteIcon.style.height = '20px';
-    deleteBtn.appendChild(deleteIcon);
+// A borderless icon-only button (used for the delete/edit row actions).
+function createIconButton(btnClass, iconSrc, titleText) {
+    const btn = document.createElement('button');
+    btn.className = btnClass;
+    btn.style.background = 'none';
+    btn.style.border = 'none';
+    btn.style.cursor = 'pointer';
+    btn.style.padding = '0';
 
-    return deleteBtn    
+    const icon = document.createElement('img');
+    icon.className = 'icon';
+    icon.src = iconSrc;
+    icon.title = titleText;
+    icon.style.width = '20px';
+    icon.style.height = '20px';
+    btn.appendChild(icon);
+
+    return btn;
+}
+
+function createDeleteButton(titleText) {
+    return createIconButton('delete-btn', 'assets/graphics/delete-icon.png', titleText);
 }
 
 function createEditButton(titleText) {
-    const editBtn = document.createElement('button');
-    editBtn.className = 'edit-btn';
-    editBtn.style.background = 'none';
-    editBtn.style.border = 'none';
-    editBtn.style.cursor = 'pointer';
-    editBtn.style.padding = '0';
-    
-    const editIcon = document.createElement('img');
-    editIcon.className = 'icon';
-    editIcon.src = 'assets/graphics/edit-icon.png';
-    editIcon.title = titleText;
-    editIcon.style.width = '20px';
-    editIcon.style.height = '20px';
-    editBtn.appendChild(editIcon);
-                        
-    return editBtn
+    return createIconButton('edit-btn', 'assets/graphics/edit-icon.png', titleText);
+}
+
+// Append a standard Edit + Delete action cell to a table row. With
+// `enabled: false` the buttons render disabled (not-allowed cursor, no handlers).
+function appendRowActions(tr, { onEdit, onDelete, editTitle = 'Edit', deleteTitle = 'Delete', enabled = true } = {}) {
+    const editBtn = createEditButton(editTitle);
+    const deleteBtn = createDeleteButton(deleteTitle);
+    if (enabled) {
+        if (onEdit) editBtn.addEventListener('click', onEdit);
+        if (onDelete) deleteBtn.addEventListener('click', onDelete);
+    } else {
+        editBtn.style.cursor = 'not-allowed';
+        deleteBtn.style.cursor = 'not-allowed';
+    }
+    const wrap = document.createElement('div');
+    wrap.appendChild(editBtn);
+    wrap.appendChild(deleteBtn);
+    appendCell(tr, wrap);
 }
 
 async function deleteFromDB(url) {

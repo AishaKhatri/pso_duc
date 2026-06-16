@@ -118,8 +118,6 @@ async function showCommandDispenserPopup(options = {}) {
             }
         }
 
-        const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
-
         const stationsWithDispensers = Array.from(stationsMap.values()).filter(s => s.dispensers.length > 0);
 
         // Populate City dropdown
@@ -251,7 +249,7 @@ async function showCommandDispenserPopup(options = {}) {
             noDispenserMsg.textContent = 'No dispensers available for this station';
             noDispenserMsg.style.padding = '20px';
             noDispenserMsg.style.textAlign = 'center';
-            noDispenserMsg.style.color = '#666';
+            noDispenserMsg.style.color = 'var(--text-secondary)';
             controlsContainer.appendChild(noDispenserMsg);
         } else {
             controlsContainer.innerHTML = '';
@@ -500,15 +498,9 @@ function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfi
 }
 
 function normalizeFuelType(product) {
-    const productMap = {
-        'pmg': 'PMG',
-        'hsd': 'HSD',
-        'hobc': 'HOBC',
-        'PMG': 'PMG',
-        'HSD': 'HSD',
-        'HOBC': 'HOBC'
-    };
-    return productMap[product?.toLowerCase()] || 'HOBC';
+    // Canonical product code (e.g. 'pmg' -> 'PMG'); unknown products fall back to HOBC.
+    const p = (product || '').toUpperCase();
+    return PRODUCT_OPTIONS.includes(p) ? p : 'HOBC';
 }
 
 async function sendDispenserCommand(topic, customerCode, city, message, button, commandName = 'Command') {

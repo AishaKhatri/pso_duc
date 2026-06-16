@@ -60,17 +60,7 @@ document.addEventListener('DOMContentLoaded', () => {
   themeBtn.style.alignItems = 'center';
   themeBtn.style.justifyContent = 'center';
   themeBtn.style.fontSize = '16px';
-  const setThemeIcon = () => {
-    const isDark = window.AppTheme && window.AppTheme.get() === 'dark';
-    themeBtn.textContent = isDark ? '☀' : '☽';
-    themeBtn.title = isDark ? 'Switch to light theme' : 'Switch to dark theme';
-  };
-  setThemeIcon();
-  themeBtn.addEventListener('click', () => {
-    if (window.AppTheme) window.AppTheme.toggle();
-    setThemeIcon();
-  });
-  window.addEventListener('themechange', setThemeIcon);
+  wireThemeToggle(themeBtn);
   headerContainer.appendChild(themeBtn);
 
   container.appendChild(headerContainer);

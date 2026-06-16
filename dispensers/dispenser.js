@@ -260,15 +260,10 @@ async function attachDispenserHourlyChart(dispenser, parent) {
 }
 
 function buildStationDetailHeader(customerCode, station, stats, dispensers) {
-    const formatNum = v => (Number(v) || 0).toLocaleString();
-    const formatCurrencyFull = v => 'Rs ' + (Number(v) || 0).toLocaleString(undefined, { maximumFractionDigits: 0 });
-
     const totalDucs = dispensers.length;
     const onlineDucs = dispensers.filter(d => d.conn_status).length;
     const offlineDucs = totalDucs - onlineDucs;
-    const cityName = station?.city
-        ? station.city.split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ')
-        : '';
+    const cityName = station?.city ? titleCase(station.city) : '';
     const districtName = station?.district
         ? station.district : '';
     const stationId = station?.station_id || '';
@@ -299,10 +294,10 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const stats_grid = document.createElement('div');
     stats_grid.className = 'station-header-stats';
     const cells = [
-        { label: 'Total DUCs',     value: formatNum(totalDucs),                cls: '' },
-        { label: 'DUCs Online',    value: formatNum(onlineDucs),               cls: 'online' },
-        { label: 'DUCs Offline',   value: formatNum(offlineDucs),              cls: offlineDucs > 0 ? 'offline' : '' },
-        { label: 'Tx Today',       value: formatNum(tx),                       cls: '' },
+        { label: 'Total DUCs',     value: formatCount(totalDucs),                cls: '' },
+        { label: 'DUCs Online',    value: formatCount(onlineDucs),               cls: 'online' },
+        { label: 'DUCs Offline',   value: formatCount(offlineDucs),              cls: offlineDucs > 0 ? 'offline' : '' },
+        { label: 'Tx Today',       value: formatCount(tx),                       cls: '' },
         { label: 'Sales Today',    value: formatCurrencyFull(sales),           cls: 'online' }
     ];
     cells.forEach(c => {
@@ -369,7 +364,13 @@ async function renderDispenser() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        let headerContainer, optionsContainer, gridContainer;
+        let headerContainer = null, optionsContainer;
+
+        const gridContainer = document.createElement('div');
+        gridContainer.style.display = 'flex';
+        gridContainer.style.flexWrap = 'wrap';
+        gridContainer.style.gap = '15px';
+        gridContainer.style.justifyContent = 'flex-start';
 
         if (customerCodeFilter) {
             const [stationInfo, stationStats] = await Promise.all([
@@ -380,27 +381,13 @@ async function renderDispenser() {
                 buildStationDetailHeader(customerCodeFilter, stationInfo, stationStats, dispensers);
             headerContainer = wrap;
             optionsContainer = optsRight;
-
-            gridContainer = document.createElement('div');
-            gridContainer.style.display = 'flex';
-            gridContainer.style.flexWrap = 'wrap';
-            gridContainer.style.gap = '15px';
-            gridContainer.style.justifyContent = 'flex-start';
             gridContainer.style.marginTop = '20px';
         } else {
             // Buttons live inside the filter row (rendered by renderStationWiseDispensers)
-            headerContainer = null;
-
             optionsContainer = document.createElement('div');
             optionsContainer.style.display = 'flex';
             optionsContainer.style.alignItems = 'center';
             optionsContainer.style.gap = '8px';
-
-            gridContainer = document.createElement('div');
-            gridContainer.style.display = 'flex';
-            gridContainer.style.flexWrap = 'wrap';
-            gridContainer.style.gap = '15px';
-            gridContainer.style.justifyContent = 'flex-start';
         }
 
         // Viewers cannot command or configure dispensers
@@ -453,14 +440,14 @@ async function renderDispenser() {
         };
         refreshTimestamp();
 
-        if (customerCodeFilter) {
-            const topRow = document.createElement('div');
-            topRow.style.display = 'flex';
-            topRow.style.justifyContent = 'flex-end';
-            topRow.style.marginBottom = '8px';
-            topRow.appendChild(lastUpdatedEl);
-            stage.appendChild(topRow);
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.justifyContent = 'flex-end';
+        topRow.style.marginBottom = '8px';
+        topRow.appendChild(lastUpdatedEl);
+        stage.appendChild(topRow);
 
+        if (customerCodeFilter) {
             const backRow = document.createElement('div');
             backRow.style.display = 'flex';
             backRow.style.justifyContent = 'space-between';
@@ -473,13 +460,6 @@ async function renderDispenser() {
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
             stage.appendChild(backRow);
-        } else {
-            const topRow = document.createElement('div');
-            topRow.style.display = 'flex';
-            topRow.style.justifyContent = 'flex-end';
-            topRow.style.marginBottom = '8px';
-            topRow.appendChild(lastUpdatedEl);
-            stage.appendChild(topRow);
         }
         if (headerContainer) {
             stage.appendChild(headerContainer);

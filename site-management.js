@@ -34,44 +34,39 @@ function uniqueStationFieldValues(fieldKey) {
     return Array.from(set).sort().map(v => ({ value: v, label: v }));
 }
 
-function buildSiteCitySearchControl() {
-    // items is a function so it re-reads stationsList whenever the dropdown opens
-    // (e.g. after a station is added/edited/deleted).
+// City and Division share the same field-search dropdown; they differ only in
+// the station field they read and the query state they write. items is a
+// function so it re-reads stationsList whenever the dropdown opens (e.g. after
+// a station is added/edited/deleted).
+function buildSiteFieldSearchControl({ placeholder, fieldKey, initialQuery, setQuery }) {
+    const apply = (v) => {
+        setQuery(v);
+        renderStationsTable(getFilteredSiteStations());
+    };
     const dd = createSearchableDropdown({
-        placeholder: 'Search by city',
+        placeholder,
         width: '220px',
         bgWhite: true,
-        items: () => uniqueStationFieldValues('city'),
-        initialQuery: siteCityQuery,
-        onInput: (q) => {
-            siteCityQuery = q;
-            renderStationsTable(getFilteredSiteStations());
-        },
-        onSelect: (value) => {
-            siteCityQuery = value;
-            renderStationsTable(getFilteredSiteStations());
-        }
+        items: () => uniqueStationFieldValues(fieldKey),
+        initialQuery,
+        onInput: apply,
+        onSelect: apply
     });
     return dd.wrap;
 }
 
-function buildSiteDivisionSearchControl() {
-    const dd = createSearchableDropdown({
-        placeholder: 'Search by division',
-        width: '220px',
-        bgWhite: true,
-        items: () => uniqueStationFieldValues('division'),
-        initialQuery: siteDivisionQuery,
-        onInput: (q) => {
-            siteDivisionQuery = q;
-            renderStationsTable(getFilteredSiteStations());
-        },
-        onSelect: (value) => {
-            siteDivisionQuery = value;
-            renderStationsTable(getFilteredSiteStations());
-        }
+function buildSiteCitySearchControl() {
+    return buildSiteFieldSearchControl({
+        placeholder: 'Search by city', fieldKey: 'city',
+        initialQuery: siteCityQuery, setQuery: (v) => { siteCityQuery = v; }
     });
-    return dd.wrap;
+}
+
+function buildSiteDivisionSearchControl() {
+    return buildSiteFieldSearchControl({
+        placeholder: 'Search by division', fieldKey: 'division',
+        initialQuery: siteDivisionQuery, setQuery: (v) => { siteDivisionQuery = v; }
+    });
 }
 
 function buildSiteSearchControl() {
@@ -102,7 +97,6 @@ function buildSiteSearchControl() {
 
 function exportSiteStationsToCsv() {
     const rows = getFilteredSiteStations();
-    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const cols = [
         { header: 'ID',              key: 'id' },
         { header: 'Customer Code',   key: 'customer_code' },
@@ -187,8 +181,6 @@ function renderStationsTable(stations) {
         }
 
         const canEdit = userInfo?.role === 'admin' || userInfo?.role === 'super_admin';
-        const titleCase = s => (s || '').split(' ')
-            .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
         stations.forEach(station => {
             const tr = createTableRow([
@@ -202,18 +194,12 @@ function renderStationsTable(stations) {
                 new Date(station.created_at).toLocaleString()
             ]);
 
-            const editBtn = createEditButton('Edit station');
-            if (!canEdit) editBtn.style.cursor = 'not-allowed';
-            else editBtn.addEventListener('click', () => alert('Edit functionality coming soon'));
-
-            const deleteBtn = createDeleteButton('Delete station');
-            if (!canEdit) deleteBtn.style.cursor = 'not-allowed';
-            else deleteBtn.addEventListener('click', () => showDeleteStationConfirmation(station));
-
-            const actionWrap = document.createElement('div');
-            actionWrap.appendChild(editBtn);
-            actionWrap.appendChild(deleteBtn);
-            appendCell(tr, actionWrap);
+            appendRowActions(tr, {
+                onEdit: () => alert('Edit functionality coming soon'),
+                onDelete: () => showDeleteStationConfirmation(station),
+                editTitle: 'Edit station', deleteTitle: 'Delete station',
+                enabled: canEdit
+            });
             tbody.appendChild(tr);
         });
 
@@ -224,7 +210,7 @@ function renderStationsTable(stations) {
         tbody.innerHTML = '';
         const errorRow = document.createElement('tr');
         const errorCell = document.createElement('td');
-        errorCell.colSpan = 8;
+        errorCell.colSpan = columns.length;
         errorCell.style.color = 'var(--danger)';
         errorCell.style.textAlign = 'center';
         errorCell.style.padding = '20px';

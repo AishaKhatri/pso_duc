@@ -1,12 +1,29 @@
 // Global variable to store stations list
 let stationsList = [];
-const PRODUCT_OPTIONS = ['PMG', 'HSD', 'HOBC'];
 const configFilters = {
     address: '',          // substring match (case-insensitive)
     city: 'all',          // 'all' or a city name from stationsList
     station: 'all',       // 'all' or a customer_code
     product: 'all'        // 'all' or one of PRODUCT_OPTIONS
 };
+
+// Label + control laid out as a two-column grid row, used throughout the
+// dispenser configuration modal. `control` is any input/select element.
+function createFormRow(labelText, control, labelWidth = '100px') {
+    const container = document.createElement('div');
+    container.style.display = 'grid';
+    container.style.gridTemplateColumns = '1fr 2fr';
+    container.style.alignItems = 'center';
+
+    const label = document.createElement('label');
+    label.className = 'label-text';
+    label.textContent = labelText;
+    label.style.width = labelWidth;
+
+    container.appendChild(label);
+    container.appendChild(control);
+    return container;
+}
 
 function getFilteredConfigDispensers() {
     const all = window.dispensers || [];
@@ -44,8 +61,6 @@ function buildConfigFilters(onChange) {
     wrap.style.alignItems = 'center';
     wrap.style.gap = '10px';
     wrap.style.flex = '1 1 auto';
-
-    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
 
     // --- City ---
     const cityOptions = [
@@ -245,20 +260,21 @@ async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserI
       // Nozzles to delete (exist in DB but not in new set)
       const nozzlesToDelete = existingNozzles.filter(n => !newNozzleIds.includes(n.nozzle_id));
 
+      // Persisted shape for an existing/updated nozzle row (same for PUT and POST).
+      const toNozzlePayload = nozzle => ({
+        customer_code: dispenser.customer_code,
+        dispenser_id: dbDispenser.dispenser_id,
+        nozzle_id: nozzle.nozzle_id,
+        product: nozzle.product,
+        status: nozzle.status,
+        lock_unlock: nozzle.lock_unlock,
+        price_per_liter: nozzle.price_per_liter,
+        total_quantity: nozzle.total_quantity,
+        total_amount: nozzle.total_amount
+      });
+
       // Update existing nozzles
       for (const nozzle of nozzlesToUpdate) {
-        const nozzleData = {
-          customer_code: dispenser.customer_code,
-          dispenser_id: dbDispenser.dispenser_id,
-          nozzle_id: nozzle.nozzle_id,
-          product: nozzle.product,
-          status: nozzle.status,
-          lock_unlock: nozzle.lock_unlock,
-          price_per_liter: nozzle.price_per_liter,
-          total_quantity: nozzle.total_quantity,
-          total_amount: nozzle.total_amount
-        };
-
         const nozzleResponse = await fetch(
           `${API_BASE_URL}/nozzles/${encodeURIComponent(dbDispenser.dispenser_id)}/${encodeURIComponent(nozzle.nozzle_id)}?customer_code=${encodeURIComponent(dispenser.customer_code)}`,
           {
@@ -266,7 +282,7 @@ async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserI
             headers: {
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify(nozzleData)
+            body: JSON.stringify(toNozzlePayload(nozzle))
           }
         );
 
@@ -279,24 +295,12 @@ async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserI
 
       // Insert new nozzles
       for (const nozzle of nozzlesToInsert) {
-        const nozzleData = {
-          customer_code: dispenser.customer_code,
-          dispenser_id: dbDispenser.dispenser_id,
-          nozzle_id: nozzle.nozzle_id,
-          product: nozzle.product,
-          status: nozzle.status,
-          lock_unlock: nozzle.lock_unlock,
-          price_per_liter: nozzle.price_per_liter,
-          total_quantity: nozzle.total_quantity,
-          total_amount: nozzle.total_amount
-        };
-
         const nozzleResponse = await fetch(`${API_BASE_URL}/nozzles`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify(nozzleData)
+          body: JSON.stringify(toNozzlePayload(nozzle))
         });
 
         if (!nozzleResponse.ok) {
@@ -329,8 +333,6 @@ async function saveDispenserToDB(dispenser, isUpdate = false, originalDispenserI
 
 async function loadDispensersFromDB() {
   try {
-    const productOptions = ['PMG', 'HSD', 'HOBC'];
-
     const dispenserResponse = await fetch(
       `${API_BASE_URL}/dispensers`
     );
@@ -377,7 +379,7 @@ async function loadDispensersFromDB() {
 
     return {
       dispensers: dispensersWithNozzles,
-      products: productOptions
+      products: PRODUCT_OPTIONS
     };
   } catch (error) {
     console.error('Database load error:', error);
@@ -388,7 +390,6 @@ async function loadDispensersFromDB() {
 function exportConfigDispensersToCsv() {
     const rows = getFilteredConfigDispensers();
     const stationByCode = new Map((stationsList || []).map(s => [s.customer_code, s]));
-    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const cols = [
         { header: 'Customer Code',     get: d => d.customer_code },
         { header: 'Station ID',        get: d => stationByCode.get(d.customer_code)?.station_id || '' },
@@ -472,7 +473,6 @@ async function renderConfigDispensers() {
 
     const columns = ['Customer Code', 'City', 'District', 'Address', 'Nozzles', 'Products', 'Dispenser Brand', 'Status', 'Created At', 'Action'];
 
-    const titleCase = s => (s || '').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
     const stationByCode = new Map(stationsList.map(s => [s.customer_code, s]));
 
     const { tableContainer , tbody } = createTable(columns);
@@ -502,17 +502,6 @@ async function renderConfigDispensers() {
         form.style.gap = '15px';
 
         // Customer Code field (dropdown from stations)
-        const customerCodeContainer = document.createElement('div');
-        customerCodeContainer.style.display = 'grid';
-        customerCodeContainer.style.gridTemplateColumns = '1fr 2fr';
-        customerCodeContainer.style.alignItems = 'center';
-        
-        const customerCodeLabel = document.createElement('label');
-        customerCodeLabel.className = 'label-text';
-        customerCodeLabel.textContent = 'Customer Code:';
-        customerCodeLabel.style.width = '100px';
-        
-        // const customerCodeSelect = document.createElement('select');
         const customerCodeSelect = createDropdown('Select Customer Code');
         customerCodeSelect.name = 'customer_code';
         customerCodeSelect.required = true;
@@ -541,79 +530,28 @@ async function renderConfigDispensers() {
             });
         }
         
-        customerCodeContainer.appendChild(customerCodeLabel);
-        customerCodeContainer.appendChild(customerCodeSelect);
-        form.appendChild(customerCodeContainer);
+        form.appendChild(createFormRow('Customer Code:', customerCodeSelect));
 
         // Address field
-        const addressContainer = document.createElement('div');
-        addressContainer.style.display = 'grid';
-        addressContainer.style.gridTemplateColumns = '1fr 2fr';
-        addressContainer.style.alignItems = 'center';
-
-        const addressLabel = document.createElement('label');
-        addressLabel.className = 'label-text';
-        addressLabel.textContent = 'Address:';
-        addressLabel.style.width = '100px';
-
         const addressInput = createTextInput({ name: 'address', required: true });
         addressInput.style.width = '90%';
-
-        addressContainer.appendChild(addressLabel);
-        addressContainer.appendChild(addressInput);
-        form.appendChild(addressContainer);
+        form.appendChild(createFormRow('Address:', addressInput));
 
         // Dispenser ID field (editable; rename cascades server-side)
-        const dispenserIdContainer = document.createElement('div');
-        dispenserIdContainer.style.display = 'grid';
-        dispenserIdContainer.style.gridTemplateColumns = '1fr 2fr';
-        dispenserIdContainer.style.alignItems = 'center';
-
-        const dispenserIdLabel = document.createElement('label');
-        dispenserIdLabel.className = 'label-text';
-        dispenserIdLabel.textContent = 'Dispenser ID:';
-        dispenserIdLabel.style.width = '100px';
-
         const dispenserIdInput = createTextInput({ name: 'dispenser_id', required: true });
         dispenserIdInput.style.width = '90%';
-
-        dispenserIdContainer.appendChild(dispenserIdLabel);
-        dispenserIdContainer.appendChild(dispenserIdInput);
-        form.appendChild(dispenserIdContainer);
+        form.appendChild(createFormRow('Dispenser ID:', dispenserIdInput));
 
         // DispenserBrand field
-        const DispenserBrandContainer = document.createElement('div');
-        DispenserBrandContainer.style.display = 'grid';
-        DispenserBrandContainer.style.gridTemplateColumns = '1fr 2fr';
-        DispenserBrandContainer.style.alignItems = 'center';
-        
-        const DispenserBrandLabel = document.createElement('label');
-        DispenserBrandLabel.className = 'label-text';
-        DispenserBrandLabel.textContent = 'Dispenser Brand:';
-        DispenserBrandLabel.style.width = '100px';
-        
         const DispenserBrandSelect = applyInputStyles(document.createElement('select'));
         DispenserBrandSelect.name = 'DispenserBrand';
         DispenserBrandSelect.required = true;
         DispenserBrandSelect.style.width = '100%';
-        DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Dispenser Brand</option>' + 
+        DispenserBrandSelect.innerHTML = '<option value="" disabled selected style="color: grey;">Select Dispenser Brand</option>' +
             DispenserBrandOptions.map(opt => `<option value="${opt}">${opt}</option>`).join('');
-        
-        DispenserBrandContainer.appendChild(DispenserBrandLabel);
-        DispenserBrandContainer.appendChild(DispenserBrandSelect);
-        form.appendChild(DispenserBrandContainer);
+        form.appendChild(createFormRow('Dispenser Brand:', DispenserBrandSelect));
 
         // Interface field (ir / keypad)
-        const interfaceContainer = document.createElement('div');
-        interfaceContainer.style.display = 'grid';
-        interfaceContainer.style.gridTemplateColumns = '1fr 2fr';
-        interfaceContainer.style.alignItems = 'center';
-
-        const interfaceLabel = document.createElement('label');
-        interfaceLabel.className = 'label-text';
-        interfaceLabel.textContent = 'Interface:';
-        interfaceLabel.style.width = '100px';
-
         const interfaceSelect = applyInputStyles(document.createElement('select'));
         interfaceSelect.name = 'interface_type';
         interfaceSelect.required = true;
@@ -621,10 +559,7 @@ async function renderConfigDispensers() {
         interfaceSelect.innerHTML =
             '<option value="ir">IR</option>' +
             '<option value="keypad">Keypad</option>';
-
-        interfaceContainer.appendChild(interfaceLabel);
-        interfaceContainer.appendChild(interfaceSelect);
-        form.appendChild(interfaceContainer);
+        form.appendChild(createFormRow('Interface:', interfaceSelect));
 
         // Nozzles configuration
         const nozzlesContainer = document.createElement('div');
@@ -691,32 +626,19 @@ async function renderConfigDispensers() {
             nozzleOptions.forEach(nozzle => {
                 const checkbox = form.querySelector(`input[name="nozzle-${nozzle}"]`);
                 if (checkbox && checkbox.checked) {
-                    const container = document.createElement('div');
-                    container.style.display = 'grid';
-                    container.style.gridTemplateColumns = '1fr 2fr';
-                    container.style.alignItems = 'center';
-                    
-                    const label = document.createElement('label');
-                    label.className = 'label-text';
-                    label.textContent = `Product for ${nozzle}:`;
-                    label.style.width = '130px';
-                    
                     const select = createDropdown('Select Product');
                     select.name = `product-${nozzle}`;
                     select.required = true;
                     select.style.marginBottom = '0';
-                    
+
                     productOptions.forEach(opt => {
-                        const displayName = opt;
                         const option = document.createElement('option');
                         option.value = opt;
-                        option.textContent = displayName;
+                        option.textContent = opt;
                         select.appendChild(option);
                     });
-                    
-                    container.appendChild(label);
-                    container.appendChild(select);
-                    productsContainer.appendChild(container);
+
+                    productsContainer.appendChild(createFormRow(`Product for ${nozzle}:`, select, '130px'));
                 }
             });
         }
@@ -783,16 +705,11 @@ async function renderConfigDispensers() {
                 createdAt
             ]);
 
-            const editBtn = createEditButton('Edit this dispenser');
-            editBtn.addEventListener('click', () => editDispenser(index));
-
-            const deleteBtn = createDeleteButton('Delete this dispenser');
-            deleteBtn.addEventListener('click', () => deleteDispenserPopup(index, tr));
-
-            const actionWrap = document.createElement('div');
-            actionWrap.appendChild(editBtn);
-            actionWrap.appendChild(deleteBtn);
-            appendCell(tr, actionWrap);
+            appendRowActions(tr, {
+                onEdit: () => editDispenser(index),
+                onDelete: () => deleteDispenserPopup(index, tr),
+                editTitle: 'Edit this dispenser', deleteTitle: 'Delete this dispenser'
+            });
             tbody.appendChild(tr);
         });
     }

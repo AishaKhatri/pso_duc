@@ -17,8 +17,6 @@ const _filterState = {
 };
 if (typeof window !== 'undefined') window._filterState = _filterState;
 
-const PRODUCT_OPTIONS = ['PMG', 'HSD', 'HOBC'];
-
 function _applyFilterToSection(stationSection) {
     if (!stationSection) return false;
     const stationCode = stationSection.getAttribute('data-station-code');
@@ -303,7 +301,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationSection.style.backgroundColor = 'var(--bg-surface)';
     stationSection.style.color = 'var(--text-primary)';
     stationSection.style.borderRadius = '10px';
-    stationSection.style.padding = '15px';
+    stationSection.style.padding = '8px';
     stationSection.style.border = '1px solid var(--border)';
     stationSection.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
     stationSection.style.overflowX = 'hidden';
@@ -315,9 +313,8 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationHeader.style.alignItems = 'center';
     stationHeader.style.marginBottom = '5px';
     stationHeader.style.paddingBottom = '10px';
-    stationHeader.style.borderBottom = `2px solid #2E7D32`;
+    stationHeader.style.borderBottom = `2px solid var(--accent)`;
     stationHeader.style.cursor = 'pointer';
-    stationHeader.style.borderRadius = '6px';
     stationHeader.style.padding = '6px 10px 10px';
     stationHeader.style.transition = 'background-color 0.15s ease';
     stationHeader.title = `Open dispenser page for station ${stationCode}`;
@@ -333,9 +330,9 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     
     // Left side - Station title
     const stationTitle = document.createElement('h3');
-    stationTitle.textContent = `Station: ${stationCode}`;
+    stationTitle.textContent = `${stationCode} - ${stationInfo.station_id}`;
     stationTitle.style.margin = '0';
-    stationTitle.style.color = 'var(--status-online)';
+    stationTitle.style.color = 'var(--text-primary)';
     stationTitle.style.fontSize = '22px';
     stationTitle.style.fontWeight = '650';
     
@@ -350,20 +347,13 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '20px');
     
     const locationText = document.createElement('span');
-    let cityName = stationInfo.city || '';
-    if (cityName) {
-        cityName = cityName.split(' ').map(word => 
-            word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-        ).join(' ');
-    }
-    
+    const cityName = titleCase(stationInfo.city || '');
+
     let locationString = '';
-    if (cityName && stationInfo.station_id) {
-        locationString = `${cityName} - ${stationInfo.station_id}`;
+    if (cityName && stationInfo.division) {
+        locationString = `${cityName}, ${stationInfo.division}`;
     } else if (cityName) {
-        locationString = cityName;
-    } else if (stationInfo.station_id) {
-        locationString = stationInfo.station_id;
+        locationString = cityName; 
     } else {
         locationString = 'Location not available';
     }
@@ -407,71 +397,37 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     scrollContainer.style.minWidth = '0';
     scrollContainer.style.scrollbarWidth = 'thin';
     
-    // Left scroll button
-    const leftScrollBtn = document.createElement('button');
-    leftScrollBtn.innerHTML = '‹';
-    leftScrollBtn.style.width = '40px';
-    leftScrollBtn.style.height = '40px';
-    leftScrollBtn.style.borderRadius = '50%';
-    leftScrollBtn.style.border = `1px solid #2E7D32`;
-    leftScrollBtn.style.backgroundColor = '#fff';
-    leftScrollBtn.style.color = '#2E7D32';
-    leftScrollBtn.style.fontSize = '28px';
-    leftScrollBtn.style.fontWeight = 'bold';
-    leftScrollBtn.style.cursor = 'pointer';
-    leftScrollBtn.style.display = 'none';
-    leftScrollBtn.style.alignItems = 'center';
-    leftScrollBtn.style.justifyContent = 'center';
-    leftScrollBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-    leftScrollBtn.style.transition = 'all 0.2s ease';
-    leftScrollBtn.style.flexShrink = '0';
-    leftScrollBtn.style.zIndex = '10';
-    
-    leftScrollBtn.addEventListener('mouseenter', () => {
-        leftScrollBtn.style.backgroundColor = '#2E7D32';
-        leftScrollBtn.style.color = '#fff';
-    });
-    leftScrollBtn.addEventListener('mouseleave', () => {
-        leftScrollBtn.style.backgroundColor = '#fff';
-        leftScrollBtn.style.color = '#2E7D32';
-    });
-    leftScrollBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        scrollContainer.scrollBy({ left: -300, behavior: 'smooth' });
-    });
-    
-    // Right scroll button
-    const rightScrollBtn = document.createElement('button');
-    rightScrollBtn.innerHTML = '›';
-    rightScrollBtn.style.width = '40px';
-    rightScrollBtn.style.height = '40px';
-    rightScrollBtn.style.borderRadius = '50%';
-    rightScrollBtn.style.border = `1px solid #2E7D32`;
-    rightScrollBtn.style.backgroundColor = '#fff';
-    rightScrollBtn.style.color = '#2E7D32';
-    rightScrollBtn.style.fontSize = '28px';
-    rightScrollBtn.style.fontWeight = 'bold';
-    rightScrollBtn.style.cursor = 'pointer';
-    rightScrollBtn.style.display = 'none';
-    rightScrollBtn.style.alignItems = 'center';
-    rightScrollBtn.style.justifyContent = 'center';
-    rightScrollBtn.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
-    rightScrollBtn.style.transition = 'all 0.2s ease';
-    rightScrollBtn.style.flexShrink = '0';
-    rightScrollBtn.style.zIndex = '10';
-    
-    rightScrollBtn.addEventListener('mouseenter', () => {
-        rightScrollBtn.style.backgroundColor = '#2E7D32';
-        rightScrollBtn.style.color = '#fff';
-    });
-    rightScrollBtn.addEventListener('mouseleave', () => {
-        rightScrollBtn.style.backgroundColor = '#fff';
-        rightScrollBtn.style.color = '#2E7D32';
-    });
-    rightScrollBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        scrollContainer.scrollBy({ left: 300, behavior: 'smooth' });
-    });
+    // Simple flat scroll buttons — same understated look as the alarms panel's
+    // collapse/expand toggle. Shown only when the strip overflows.
+    const makeScrollBtn = (glyph, delta) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.innerHTML = glyph;
+        Object.assign(btn.style, {
+            background: 'transparent',
+            border: 'none',
+            cursor: 'pointer',
+            fontSize: '24px',
+            lineHeight: '1',
+            color: 'var(--text-secondary)',
+            padding: '4px 6px',
+            borderRadius: '3px',
+            display: 'none',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexShrink: '0'
+        });
+        btn.addEventListener('mouseover', () => { btn.style.background = 'var(--bg-surface-2, transparent)'; });
+        btn.addEventListener('mouseout', () => { btn.style.background = 'transparent'; });
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            scrollContainer.scrollBy({ left: delta, behavior: 'smooth' });
+        });
+        return btn;
+    };
+
+    const leftScrollBtn = makeScrollBtn('‹', -300);
+    const rightScrollBtn = makeScrollBtn('›', 300);
     
     // Grid container for dispensers in this station (horizontal layout)
     const stationGrid = document.createElement('div');
@@ -606,7 +562,8 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
         if (sampleDisp && sampleDisp.station) {
             stationInfoMap.set(stationCode, {
                 city: sampleDisp.station.city || '',
-                station_id: sampleDisp.station.station_id || ''
+                station_id: sampleDisp.station.station_id || '',
+                division: sampleDisp.station.division || ''
             });
         } else {
             stationsNeedingFetch.push(stationCode);
@@ -620,7 +577,8 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
                 const stationData = await stationResponse.json();
                 stationInfoMap.set(stationCode, {
                     city: stationData.station?.city || '',
-                    station_id: stationData.station?.station_id || ''
+                    station_id: stationData.station?.station_id || '',
+                    division: stationData.station?.division || ''
                 });
             } catch (error) {
                 console.error('Error fetching station info:', error);
