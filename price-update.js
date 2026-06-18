@@ -25,9 +25,114 @@ const _pu = {
     retain: false,                // MQTT retain flag for the published price
     activeJob: null,
     pollTimer: null,
+    disableTimer: null,           // re-enables the Publish button when the job's window ends
+    countdownTimer: null,         // 1 s ticker for the active-job countdown / status line
     lastProgressAt: 0,
     el: {}
 };
+
+// Enable/disable the Publish button with a matching cursor so it visibly reads
+// as unavailable while a job is in flight.
+function _puSetPublishLocked(locked) {
+    const btn = _pu.el.publishBtn;
+    if (!btn) return;
+    btn.disabled = locked;
+    btn.style.cursor = locked ? 'not-allowed' : 'pointer';
+    btn.style.opacity = locked ? '0.6' : '1';
+}
+
+// Lock the Publish button for `ms` (the server-reported remaining window of the
+// active job), then auto-unlock. Clears any prior timer so a fresh/restored job
+// resets the countdown. Server sends the duration so client clock skew is moot.
+// Used for the 409 case (another job active) where we don't show that job here.
+function _puLockPublishFor(ms) {
+    _puSetPublishLocked(true);
+    if (_pu.disableTimer) { clearTimeout(_pu.disableTimer); _pu.disableTimer = null; }
+    _pu.disableTimer = setTimeout(() => {
+        _pu.disableTimer = null;
+        _puSetPublishLocked(false);
+    }, Math.max(0, Number(ms) || 0));
+}
+
+// Paint the job status line. state: 'active' (with remainingMs) | 'completed' |
+// 'dismissed' | null (clear).
+function _puRenderJobStatus(state, remainingMs) {
+    const line = _pu.el.jobStatusLine;
+    if (!line) return;
+    if (state === 'active') {
+        const s = Math.max(0, Math.ceil(remainingMs / 1000));
+        const mm = String(Math.floor(s / 60)).padStart(2, '0');
+        const ss = String(s % 60).padStart(2, '0');
+        line.textContent = `Status: Active · completes in ${mm}:${ss}`;
+        line.style.color = 'var(--badge-reset-text)';
+    } else if (state === 'completed') {
+        line.textContent = 'Status: Completed';
+        line.style.color = 'var(--badge-online-text)';
+    } else if (state === 'dismissed') {
+        line.textContent = 'Status: Dismissed';
+        line.style.color = 'var(--text-secondary)';
+    } else {
+        line.textContent = '';
+    }
+}
+
+// Mark the shown job as active: lock Publish, reveal Dismiss, and run a 1 s
+// countdown to its window end (server-reported `finalizeInMs`). When the
+// countdown hits zero the job is Completed (details stay until refresh).
+function _puBeginActiveJob(finalizeInMs) {
+    _puSetPublishLocked(true);
+    if (_pu.el.dismissBtn) _pu.el.dismissBtn.style.display = '';
+
+    // A countdown timer owns the lock lifecycle here; cancel the plain one.
+    if (_pu.disableTimer) { clearTimeout(_pu.disableTimer); _pu.disableTimer = null; }
+    if (_pu.countdownTimer) { clearInterval(_pu.countdownTimer); _pu.countdownTimer = null; }
+
+    const endAt = Date.now() + Math.max(0, Number(finalizeInMs) || 0);
+    const tick = () => {
+        const remaining = endAt - Date.now();
+        if (remaining <= 0) {
+            clearInterval(_pu.countdownTimer);
+            _pu.countdownTimer = null;
+            _puMarkJobCompleted();
+            return;
+        }
+        _puRenderJobStatus('active', remaining);
+    };
+    tick();
+    _pu.countdownTimer = setInterval(tick, 1000);
+}
+
+// Window elapsed: job is Completed. Re-enable Publish, hide Dismiss, and KEEP
+// the published list + ACK table on screen (cleared only on page refresh).
+function _puMarkJobCompleted() {
+    _puSetPublishLocked(false);
+    if (_pu.el.dismissBtn) _pu.el.dismissBtn.style.display = 'none';
+    _puRenderJobStatus('completed');
+}
+
+// Operator dismissed the job: tell the server (finalizes early as 'dismissed'),
+// then end the live job locally. The view (selectors, DUC table, published
+// list, ACK progress) is left exactly as-is — it's overwritten on the next
+// publish or cleared on page refresh, same as a Completed job.
+async function _puDismiss() {
+    if (_pu.el.dismissBtn) _pu.el.dismissBtn.disabled = true;
+    try {
+        await fetch(`${API_BASE_URL}/admin/price-update/dismiss`, { method: 'POST' });
+    } catch (e) {
+        console.warn('dismiss failed:', e.message);
+    }
+
+    // Stop the live timers, unlock Publish, hide Dismiss — but keep all details.
+    if (_pu.pollTimer) { clearInterval(_pu.pollTimer); _pu.pollTimer = null; }
+    if (_pu.countdownTimer) { clearInterval(_pu.countdownTimer); _pu.countdownTimer = null; }
+    if (_pu.disableTimer) { clearTimeout(_pu.disableTimer); _pu.disableTimer = null; }
+    _puSetPublishLocked(false);
+    if (_pu.el.dismissBtn) {
+        _pu.el.dismissBtn.disabled = false;
+        _pu.el.dismissBtn.style.display = 'none';
+    }
+    _puRenderJobStatus('dismissed');
+}
 
 function _puFormatStationLabel(customerCode) {
     const sid = _pu.customerToStationId.get(customerCode) || '';
@@ -346,12 +451,29 @@ function _puRenderForm(container) {
     publishBtn.addEventListener('click', () => _puPublish(publishBtn, statusLine));
     actionRow.appendChild(publishBtn);
 
+    // Dismiss — manually ends the in-flight job early. Hidden unless a job is active.
+    const dismissBtn = createActionButton('#7a3b3b', '#5a2a2a');
+    dismissBtn.textContent = 'Dismiss';
+    dismissBtn.style.padding = '8px 18px';
+    dismissBtn.style.display = 'none';
+    dismissBtn.addEventListener('click', () => _puDismiss());
+    actionRow.appendChild(dismissBtn);
+    _pu.el.dismissBtn = dismissBtn;
+
     const statusLine = document.createElement('div');
     statusLine.style.fontSize = '13px';
     statusLine.style.color = 'var(--text-secondary)';
     actionRow.appendChild(statusLine);
 
     priceCard.appendChild(actionRow);
+
+    // Job status line (Active · countdown / Completed / Dismissed).
+    const jobStatusLine = document.createElement('div');
+    jobStatusLine.style.fontSize = '13px';
+    jobStatusLine.style.fontWeight = '600';
+    jobStatusLine.style.marginTop = '10px';
+    priceCard.appendChild(jobStatusLine);
+    _pu.el.jobStatusLine = jobStatusLine;
 
     // List of messages from the last publish (topic + price + DUC count) so the
     // operator can see/debug exactly what went out.
@@ -497,7 +619,7 @@ function _puRenderPublished(data) {
     head.style.color = 'var(--text-primary)';
     head.style.marginBottom = '8px';
     const bits = [`Published ${items.length} message${items.length === 1 ? '' : 's'}`];
-    if (effDate) bits.push(`effective ${effDate.toLocaleString()}`);
+    if (effDate) bits.push(`Effective Date: ${effDate.toLocaleString()}`);
     if (data.retained) bits.push('retained');
     head.textContent = bits.join('  ·  ');
     host.appendChild(head);
@@ -560,19 +682,15 @@ async function _puPublish(button, statusLine) {
         return alert('Enable at least one product and enter a price.');
     }
 
-    // Stop any prior poll loop — fresh job starts now.
-    if (_pu.pollTimer) {
-        clearInterval(_pu.pollTimer);
-        _pu.pollTimer = null;
-    }
-    _pu.activeJob = null;
-
+    // Don't tear down any in-progress job view yet — if the server rejects the
+    // publish (e.g. 409 while another job is active), we want the current job's
+    // published list + ACK table to stay on screen. Teardown happens only on a
+    // confirmed-successful publish below.
     button.disabled = true;
+    button.style.cursor = 'wait';
     button.textContent = 'Publishing…';
-    statusLine.textContent = '';
-    statusLine.style.color = 'var(--text-secondary)';
-    if (_pu.el.publishedList) _pu.el.publishedList.innerHTML = '';
 
+    let data = {}, ok = false, status = 0;
     try {
         const resp = await fetch(`${API_BASE_URL}/admin/price-update/publish`, {
             method: 'POST',
@@ -584,51 +702,53 @@ async function _puPublish(button, statusLine) {
                 retain: !!_pu.retain
             })
         });
-        const data = await resp.json().catch(() => ({}));
-        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
-
-        _pu.activeJob = {
-            jobId: data.jobId,
-            items: data.items || [],
-            startedAt: Date.now(),
-            ackedByDuc: new Map()  // "address|product" -> ackedAt (ISO)
-        };
-        _pu.lastProgressAt = Date.now();
-
-        // Reset all status cells to "Pending" for rows that match a published item.
-        _pu.el.ducTableHost.querySelectorAll('tr[data-address]').forEach(tr => {
-            const addr = tr.dataset.address;
-            const product = tr.dataset.product;
-            const item = _pu.activeJob.items.find(it => it.product === product);
-            const statusCell = tr.querySelector('.pu-status-cell');
-            const ackCell = tr.querySelector('.pu-ackat-cell');
-            if (item && item.ducs && item.ducs.includes(addr)) {
-                statusCell.textContent = 'Pending';
-                statusCell.style.color = 'var(--badge-reset-text)';
-                ackCell.textContent = '';
-            } else {
-                statusCell.textContent = 'Not in batch';
-                statusCell.style.color = 'var(--text-secondary)';
-                ackCell.textContent = '';
-            }
-        });
-
-        // Show the list of published messages (topics + price + DUC counts +
-        // effective time) so the operator can see exactly what went out.
-        _puRenderPublished(data);
-
-        const totalDucs = (data.items || []).reduce((s, it) => s + it.totalDucs, 0);
-        statusLine.textContent = `Awaiting ${totalDucs} ACK${totalDucs === 1 ? '' : 's'}…`;
-
-        // Begin polling.
-        _pu.pollTimer = setInterval(_puPollAcks, ACK_POLL_INTERVAL_MS);
+        status = resp.status;
+        data = await resp.json().catch(() => ({}));
+        ok = resp.ok;
     } catch (e) {
-        statusLine.textContent = `Publish failed: ${e.message}`;
-        statusLine.style.color = 'var(--badge-reset-text)';
-    } finally {
-        button.disabled = false;
-        button.textContent = 'Publish';
+        data = { error: e.message };
     }
+    button.textContent = 'Publish';
+
+    if (!ok) {
+        statusLine.textContent = `Publish failed: ${data.error || `HTTP ${status}`}`;
+        statusLine.style.color = 'var(--badge-reset-text)';
+        // A 409 means another job is still active — keep the button locked for
+        // its remaining window. Any other failure just frees the button.
+        if (status === 409 && data.finalizeInMs != null) {
+            _puLockPublishFor(data.finalizeInMs);
+        } else {
+            _puSetPublishLocked(false);
+        }
+        return;
+    }
+
+    // Success — replace any prior job view with this one.
+    if (_pu.pollTimer) { clearInterval(_pu.pollTimer); _pu.pollTimer = null; }
+    if (_pu.el.publishedList) _pu.el.publishedList.innerHTML = '';
+
+    _pu.activeJob = {
+        jobId: data.jobId,
+        items: data.items || [],
+        startedAt: Date.now(),
+        ackedByDuc: new Map()  // "address|product" -> ackedAt (ISO)
+    };
+    _pu.lastProgressAt = Date.now();
+
+    // Reset all status cells to "Pending" for rows that match a published item.
+    _puMarkPendingCells();
+
+    // Show the list of published messages (topics + price + DUC counts +
+    // effective time) so the operator can see exactly what went out.
+    _puRenderPublished(data);
+
+    const totalDucs = (data.items || []).reduce((s, it) => s + it.totalDucs, 0);
+    statusLine.textContent = `Awaiting ${totalDucs} ACK${totalDucs === 1 ? '' : 's'}…`;
+    statusLine.style.color = 'var(--text-secondary)';
+
+    // Mark active (locks Publish, shows Dismiss + countdown), then begin polling.
+    _puBeginActiveJob(data.finalizeInMs);
+    _pu.pollTimer = setInterval(_puPollAcks, ACK_POLL_INTERVAL_MS);
 }
 
 async function _puPollAcks() {
@@ -684,6 +804,59 @@ async function _puPollAcks() {
     }
 }
 
+// Paint each DUC row's status cell for the current _pu.activeJob: "Pending" for
+// rows in the published batch, "Not in batch" otherwise. Used right after a
+// publish and when restoring an in-flight job on page load.
+function _puMarkPendingCells() {
+    if (!_pu.activeJob || !_pu.el.ducTableHost) return;
+    _pu.el.ducTableHost.querySelectorAll('tr[data-address]').forEach(tr => {
+        const item = _pu.activeJob.items.find(it => it.product === tr.dataset.product);
+        const statusCell = tr.querySelector('.pu-status-cell');
+        const ackCell = tr.querySelector('.pu-ackat-cell');
+        if (!statusCell || !ackCell) return;
+        if (item && item.ducs && item.ducs.includes(tr.dataset.address)) {
+            statusCell.textContent = 'Pending';
+            statusCell.style.color = 'var(--badge-reset-text)';
+        } else {
+            statusCell.textContent = 'Not in batch';
+            statusCell.style.color = 'var(--text-secondary)';
+        }
+        ackCell.textContent = '';
+    });
+}
+
+// Rebuild the page state for a job that's still in flight on the server (e.g.
+// after a refresh), so the operator sees the same published list + ACK table as
+// right after publishing instead of a blank form. `data` is the
+// /price-update/active payload. Selection/DUC table are restored by the caller
+// before the form renders; here we wire up the job, repaint, and resume polling.
+function _puRestoreActiveJob(data) {
+    _pu.activeJob = {
+        jobId: data.jobId,
+        items: data.items || [],
+        startedAt: Date.now(),
+        ackedByDuc: new Map()
+    };
+    _pu.lastProgressAt = Date.now();
+
+    _puMarkPendingCells();
+    _puRenderPublished(data);
+
+    // Resume the active-job state (lock Publish, show Dismiss, countdown) for
+    // whatever's left of this job's window.
+    _puBeginActiveJob(data.finalizeInMs);
+
+    if (_pu.el.statusLine) {
+        _pu.el.statusLine.textContent = 'Restoring in-progress update…';
+        _pu.el.statusLine.style.color = 'var(--text-secondary)';
+    }
+
+    // Immediate paint of any ACKs already in, then resume the poll loop.
+    if (_pu.pollTimer) { clearInterval(_pu.pollTimer); _pu.pollTimer = null; }
+    _puPollAcks();
+    _pu.pollTimer = setInterval(_puPollAcks, ACK_POLL_INTERVAL_MS);
+}
+
 function _puPaintAckStatus() {
     if (!_pu.activeJob) return;
     _pu.el.ducTableHost.querySelectorAll('tr[data-address]').forEach(tr => {
@@ -736,6 +909,25 @@ async function renderPriceUpdate() {
         return;
     }
 
+    // If a price update is still in flight on the server (page was refreshed
+    // mid-job), fetch it so we can restore the same view. Pre-select its station
+    // *before* rendering the form, so the dropdowns and DUC table populate for it.
+    let activeJob = null;
+    try {
+        const resp = await fetch(`${API_BASE_URL}/admin/price-update/active`);
+        if (resp.ok) {
+            const d = await resp.json();
+            if (d && d.active && _pu.customerToCity.has(d.customer_code)) activeJob = d;
+        }
+    } catch (e) {
+        console.warn('active price-update check failed:', e.message);
+    }
+    if (activeJob) {
+        _pu.selectedCustomer = activeJob.customer_code;
+        _pu.selectedCity = _pu.customerToCity.get(activeJob.customer_code) || '';
+        _pu.ducsForCustomer = _puDucsForCustomer(activeJob.customer_code);
+    }
+
     const wrap = document.createElement('div');
     wrap.style.maxWidth = '760px';
 
@@ -759,6 +951,9 @@ async function renderPriceUpdate() {
     content.appendChild(wrap);
 
     _puRenderForm(formHost);
+
+    // Restore the in-flight job's published list + ACK table and resume polling.
+    if (activeJob) _puRestoreActiveJob(activeJob);
 }
 
 window.renderPriceUpdate = renderPriceUpdate;

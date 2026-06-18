@@ -21,6 +21,10 @@ const {
     refreshConnStatusSubscriptions,
     registerPriceUpdateJob,
     getPriceUpdateJob,
+    acquirePriceAckSubscription,
+    releasePriceAckSubscription,
+    isPriceAckSubscribed,
+    hasActivePriceUpdate,
     shutdownMqtt } = require('./mqtt-service');
 
 const {
@@ -30,6 +34,7 @@ const {
     fetchStationSheetRows,
     getClientIp,
     logActivity,
+    logPriceDebug,
     ensureDAddress,
     stripDAddress,
     addressOutSql,
@@ -987,8 +992,170 @@ app.post('/api/admin/refresh-conn-status', async (req, res) => {
 // job_id so the page can poll /price-update/acks/:job_id and render progress.
 const PRICE_PRODUCTS = ['PMG', 'HSD', 'HOBC'];
 
+// Grace period after a fresh duc/acked_msgs subscription before we publish, so
+// the SUBACK has fully settled and no early ACK is missed.
+const PRICE_ACK_SETTLE_MS = 2000;
+
+// Snapshot of the single in-flight price-update job (publish payload + identity),
+// or null when none is active. Lets a refreshed page restore the job view.
+let _activePriceUpdate = null;
+// Control handle for the in-flight job: { jobId, finalize(status) }. Lets the
+// dismiss endpoint finalize the job early. Not serialized to clients.
+let _activeJobControl = null;
+
+// Milliseconds until the active job finalizes (its window closes and a new
+// publish is allowed). 0 when none is active. The client uses this to keep the
+// Publish button disabled for exactly that long.
+function _priceUpdateFinalizeInMs() {
+    if (!_activePriceUpdate || !_activePriceUpdate.finalizesAt) return 0;
+    return Math.max(0, _activePriceUpdate.finalizesAt - Date.now());
+}
+
 function _isPriceUpdateRole(role) {
     return role === 'admin' || role === 'super_admin';
+}
+
+// nozzles.status tri-state, same mapping the dispensers page shows:
+//   1 = Auto (device + MB reachable), 0 = Manual (device up, MB silent),
+//   2 = No Ping (no recent ping). Used to annotate the audit trail.
+const NOZZLE_STATUS_LABELS = { 0: 'Manual', 1: 'Auto', 2: 'No Ping' };
+
+// Snapshot the DUCs targeted by a price update: every D-address that has a
+// nozzle for one of the published products, annotated with its connection
+// state, whether it ACKed (per product), and the status of each of its nozzles
+// (Auto/Manual/No Ping, per product). Scoped to `products` so we don't record
+// nozzle states for products that weren't part of this update.
+//
+// `ackByProduct` is { PRODUCT -> Set<addrD> } of DUCs that ACKed each product.
+// Best-effort: returns [] on failure so logging never blocks anything.
+async function _collectDucNozzleStatus(customer_code, products, ackByProduct) {
+    const productList = Array.from(products);
+    if (productList.length === 0) return [];
+    try {
+        const placeholders = productList.map(() => '?').join(', ');
+        const [rows] = await pool.query(
+            `SELECT ${addressOutSql('d')} AS address,
+                    d.conn_status         AS conn_status,
+                    UPPER(n.product)      AS product,
+                    n.nozzle_id           AS nozzle_id,
+                    n.status              AS status
+               FROM dispensers d
+               JOIN nozzles n
+                    ON n.dispenser_id = d.dispenser_id
+                   AND n.customer_code = d.customer_code
+              WHERE d.customer_code = ?
+                AND UPPER(n.product) IN (${placeholders})
+              ORDER BY address, product, n.nozzle_id`,
+            [customer_code, ...productList]
+        );
+
+        const byAddr = new Map();
+        for (const r of rows) {
+            const address = ensureDAddress(r.address);
+            if (!byAddr.has(address)) {
+                byAddr.set(address, {
+                    addr: address,
+                    conn: Number(r.conn_status) === 1 ? 'Connected' : 'Disconnected',
+                    products: {}
+                });
+            }
+            const entry = byAddr.get(address);
+            const product = r.product;
+            if (!entry.products[product]) {
+                const ackMap = ackByProduct[product];
+                const ackedAt = ackMap ? ackMap.get(address) : undefined;
+                entry.products[product] = ackedAt
+                    ? { ack: true, ackedAt, noz: {} }
+                    : { ack: false, noz: {} };
+            }
+            // nozzle_id is "D<addr>-<side><number>" (e.g. "D01-A1"); key the
+            // status by the short "A1"/"B1" label after the dash.
+            const dash = String(r.nozzle_id || '').lastIndexOf('-');
+            const nozLabel = dash >= 0 ? r.nozzle_id.slice(dash + 1) : (r.nozzle_id || '?');
+            entry.products[product].noz[nozLabel] = NOZZLE_STATUS_LABELS[Number(r.status)] || 'Unknown';
+        }
+        return Array.from(byAddr.values());
+    } catch (e) {
+        console.error('collect DUC nozzle status failed:', e);
+        return [];
+    }
+}
+
+// Deferred audit write for a price update. Runs on a timer after the publish
+// response has already returned, so ACKs (which land on duc/acked_msgs over the
+// following seconds/minutes) are captured in the same log entry — no second
+// row to correlate by hand. For retained publishes it also clears the retained
+// message off the broker first, so DUCs connecting later don't pick up a stale
+// price. `actor` carries the captured user/ip since `req` is no longer live.
+async function _finalizePriceUpdateLog({ actor, jobId, cityLower, customer_code, validPrices, effectiveAt, publishedAt, retain, retainTimeoutMs, ackSubscribed, status, items, skipped }) {
+  try {
+    logPriceDebug(`FINALIZE START jobId=${jobId} status=${status} customer=${customer_code} retain=${!!retain}`);
+    // Clear retained price messages now that the effective window has passed.
+    if (retain) {
+        for (const it of items) {
+            try {
+                await publishMessage(it.topic, '', { qos: 1, retain: true });
+            } catch (e) {
+                console.error(`failed to clear retained price on ${it.topic}:`, e);
+            }
+        }
+    }
+
+    // Pull the final ACK tally from the in-memory job ledger.
+    const job = getPriceUpdateJob(jobId);
+    const ackByProduct = {};          // PRODUCT -> Map<addrD, ackedAt ISO>
+    const ackedCountByProduct = {};   // PRODUCT -> number
+    if (job) {
+        for (const it of job.items) {
+            const product = String(it.product).toUpperCase();
+            ackByProduct[product] = new Map(it.acked.map(a => [a.device, a.at]));
+            ackedCountByProduct[product] = it.ackedCount;
+        }
+    }
+
+    const publishedProducts = new Set(items.map(it => String(it.product).toUpperCase()));
+    const ducs = await _collectDucNozzleStatus(customer_code, publishedProducts, ackByProduct);
+
+    // Key order is intentional: identity first (city, customer, prices), then
+    // delivery flags, then the per-product/per-DUC breakdown.
+    await logActivity(null, 'price_update_publish', {
+        user_id: actor.user_id,
+        username: actor.username,
+        ip_address: actor.ip_address,
+        entity_type: 'prices',
+        entity_id: customer_code,
+        details: {
+            city: cityLower,
+            customer_code,
+            status,
+            prices: validPrices,
+            retained: !!retain,
+            ...(retain ? { retainTimeoutMs } : {}),
+            ackSubscribed: !!ackSubscribed,
+            effectiveAt,
+            publishedAt,
+            // Time the job actually ended, labelled by how it ended.
+            [status === 'dismissed' ? 'dismissedAt' : 'completedAt']: new Date().toISOString(),
+            skipped,
+            published: items.map(it => ({
+                product: it.product,
+                ducCount: it.ducs.length,
+                acked: ackedCountByProduct[String(it.product).toUpperCase()] ?? 0
+            })),
+            ducs
+        }
+    });
+    const ackSummary = items.map(it =>
+        `${it.product}:${ackedCountByProduct[String(it.product).toUpperCase()] ?? 0}/${it.ducs.length}`).join(', ');
+    logPriceDebug(`FINALIZE DONE jobId=${jobId} status=${status} — activity-log entry written. ACKs [${ackSummary}]`);
+  } finally {
+    // Job's window is over: clear the in-flight snapshot/control (if still this
+    // job) and drop our hold on the ACK subscription. A leaked refcount would
+    // keep duc/acked_msgs subscribed indefinitely.
+    if (_activePriceUpdate && _activePriceUpdate.jobId === jobId) _activePriceUpdate = null;
+    if (_activeJobControl && _activeJobControl.jobId === jobId) _activeJobControl = null;
+    await releasePriceAckSubscription();
+  }
 }
 
 app.post('/api/admin/price-update/publish', async (req, res) => {
@@ -1016,6 +1183,17 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
         return res.status(400).json({ error: 'At least one valid price required' });
     }
 
+    // One price update at a time: while a job is still inside its ACK-collection
+    // window, reject a new publish so jobs don't overlap (which muddies ACK
+    // attribution and the shared duc/acked_msgs subscription).
+    if (hasActivePriceUpdate()) {
+        logPriceDebug(`PUBLISH REJECTED customer=${customer_code} — a price update is already in progress`);
+        return res.status(409).json({
+            error: 'A price update is already in progress. Please wait for it to finish before publishing another.',
+            finalizeInMs: _priceUpdateFinalizeInMs()
+        });
+    }
+
     const cityLower = String(city).toLowerCase();
     // Effective time: 5 minutes from now (unix seconds). It's the `date` field
     // in the on-wire payload (when the DUC should apply the new price); also
@@ -1023,11 +1201,12 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     const effectiveAt = Math.floor(Date.now() / 1000) + 5 * 60;
     const date = String(effectiveAt);
 
-    // Per product: fetch only the DUCs that have a nozzle for that product
-    // (matches the Python find_ducs_for semantics). Empty product lists are
+    // Phase 1 — resolve which DUCs each product targets. No MQTT publish yet:
+    // we want to subscribe to ACKs *before* anything goes out, so we first work
+    // out whether there's anything to publish at all. Empty product lists are
     // surfaced as "skipped" so the operator can see what didn't go out.
-    const items = [];
     const skipped = [];
+    const targets = [];
 
     try {
         for (const product of Object.keys(validPrices)) {
@@ -1048,53 +1227,144 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
             }
             const topic = `pso/${cityLower}/${customer_code}/duc/price/${product.toLowerCase()}`;
             const payload = JSON.stringify({ date, req_type: 0, message: validPrices[product] });
-            await publishMessage(topic, payload, { qos: 1, retain: !!retain });
-            items.push({ product, topic, ducs, price: validPrices[product], payload });
+            // `date` + `price` are echoed back in the ACK payload, so the job
+            // ledger stores them to tell a fresh ACK from a stale/retained one.
+            targets.push({ product, topic, ducs, price: validPrices[product], date, payload });
         }
     } catch (e) {
-        console.error('price-update publish failed:', e);
+        console.error('price-update target lookup failed:', e);
         return res.status(500).json({ error: `Publish failed: ${e.message}` });
     }
 
-    if (items.length === 0) {
+    if (targets.length === 0) {
         return res.status(404).json({
             error: 'No registered DUCs match the selected products',
             skipped
         });
     }
 
+    // Phase 2 — subscribe to duc/acked_msgs and register the job BEFORE
+    // publishing, so an ACK that comes back during the settle/publish window
+    // still matches (otherwise it's dropped as "no active job" — a real race we
+    // saw in testing). Stale/retained ACKs redelivered on subscribe can't
+    // false-match because matching also checks the echoed price + date. The
+    // subscription is released when this job finalizes (→ _finalizePriceUpdateLog).
     const jobId = crypto.randomUUID();
-    registerPriceUpdateJob(jobId, items);
-
-    await logActivity(req, 'price_update_publish', {
-        entity_type: 'prices',
-        entity_id: customer_code,
-        details: {
-            jobId,
-            city: cityLower,
-            customer_code,
-            prices: validPrices,
-            effectiveAt,
-            retained: !!retain,
-            published: items.map(it => ({ product: it.product, ducCount: it.ducs.length })),
-            skipped
+    const FINALIZE_DELAY_MS = retain ? 5 * 60 * 1000 : 15 * 1000;
+    const items = targets;
+    let subAcquired = false;
+    let ackSubscribed = false;
+    try {
+        // Mark held before awaiting so the catch always releases the refcount.
+        subAcquired = true;
+        const freshSub = await acquirePriceAckSubscription();
+        ackSubscribed = isPriceAckSubscribed();
+        registerPriceUpdateJob(jobId, items);
+        if (freshSub) await new Promise(r => setTimeout(r, PRICE_ACK_SETTLE_MS));
+        for (const it of items) {
+            await publishMessage(it.topic, it.payload, { qos: 1, retain: !!retain });
         }
-    });
+    } catch (e) {
+        if (subAcquired) await releasePriceAckSubscription();
+        logPriceDebug(`PUBLISH FAILED customer=${customer_code}: ${e.message}`);
+        console.error('price-update publish failed:', e);
+        return res.status(500).json({ error: `Publish failed: ${e.message}` });
+    }
+
+    logPriceDebug(`PUBLISHED customer=${customer_code} retain=${!!retain} ackSubscribed=${ackSubscribed} ` +
+        `products=[${items.map(it => `${it.product}:${it.price}(${it.ducs.length} ducs)`).join(', ')}] ` +
+        `jobId=${jobId} — will finalize in ${FINALIZE_DELAY_MS / 1000}s`);
+
+    // Audit logging is deferred so the entry can carry the DUCs' ACK statuses,
+    // which trickle in over the next seconds/minutes. We wait longer for
+    // retained publishes (the 5-min effective window, after which we also clear
+    // the retained message); for non-retained, a short window is enough since
+    // online DUCs ACK promptly. Capture the actor now — `req` won't be live when
+    // the timer fires.
+    const actor = {
+        user_id: req.authUser?.id ?? null,
+        username: req.authUser?.username ?? null,
+        ip_address: getClientIp(req)
+    };
+    const publishedAt = new Date().toISOString();
+    const finalizesAt = Date.now() + FINALIZE_DELAY_MS;
+
+    // Finalize runner — fires automatically when the window elapses (status
+    // 'completed') or early when the operator dismisses (status 'dismissed').
+    // Guarded so it runs exactly once regardless of which path triggers it.
+    let finalized = false;
+    let finalizeTimer = null;
+    const runFinalize = async (status) => {
+        if (finalized) return;
+        finalized = true;
+        if (finalizeTimer) { clearTimeout(finalizeTimer); finalizeTimer = null; }
+        try {
+            await _finalizePriceUpdateLog({
+                actor, jobId, cityLower, customer_code, validPrices, effectiveAt,
+                publishedAt, retain: !!retain, retainTimeoutMs: FINALIZE_DELAY_MS,
+                ackSubscribed, status, items, skipped
+            });
+        } catch (e) {
+            logPriceDebug(`FINALIZE FAILED jobId=${jobId}: ${e.message}`);
+            console.error('price-update audit finalize failed:', e);
+        }
+    };
+    finalizeTimer = setTimeout(() => runFinalize('completed'), FINALIZE_DELAY_MS);
+    _activeJobControl = { jobId, finalize: runFinalize };
+
+    const responseItems = items.map(it => ({
+        product: it.product,
+        topic: it.topic,
+        price: it.price,
+        payload: it.payload,
+        totalDucs: it.ducs.length,
+        ducs: it.ducs
+    }));
+
+    // Snapshot the in-flight job so a page that loads/refreshes mid-job can
+    // restore the same view (published list + ACK table) instead of looking
+    // blank. Cleared when the job finalizes. Mirrors the publish response.
+    _activePriceUpdate = {
+        jobId, city: cityLower, customer_code,
+        effectiveAt, retained: !!retain, publishedAt, finalizesAt,
+        items: responseItems, skipped
+    };
 
     res.json({
-        jobId,
-        effectiveAt,
-        retained: !!retain,
-        items: items.map(it => ({
-            product: it.product,
-            topic: it.topic,
-            price: it.price,
-            payload: it.payload,
-            totalDucs: it.ducs.length,
-            ducs: it.ducs
-        })),
-        skipped
+        jobId, effectiveAt, retained: !!retain,
+        items: responseItems, skipped,
+        finalizeInMs: FINALIZE_DELAY_MS
     });
+});
+
+// Returns the price-update job currently in flight (published, not yet
+// finalized) so the page can rebuild its state after a refresh. The live ACK
+// state is what the /acks/:job_id poll provides; this just restores the job
+// identity + published payload.
+app.get('/api/admin/price-update/active', (req, res) => {
+    if (!_isPriceUpdateRole(req.authUser?.role)) {
+        return res.status(403).json({ error: 'admin only' });
+    }
+    if (!_activePriceUpdate || !hasActivePriceUpdate()) {
+        return res.json({ active: false });
+    }
+    res.json({ active: true, ..._activePriceUpdate, finalizeInMs: _priceUpdateFinalizeInMs() });
+});
+
+// Operator-initiated early end: finalize the in-flight job NOW with status
+// 'dismissed' (writes the audit log, clears any retained message, frees the
+// ACK subscription) so a new publish can start immediately.
+app.post('/api/admin/price-update/dismiss', async (req, res) => {
+    if (!_isPriceUpdateRole(req.authUser?.role)) {
+        return res.status(403).json({ error: 'admin only' });
+    }
+    const ctrl = _activeJobControl;
+    if (!ctrl || !hasActivePriceUpdate()) {
+        return res.json({ dismissed: false });
+    }
+    logPriceDebug(`DISMISS requested jobId=${ctrl.jobId}`);
+    await ctrl.finalize('dismissed');
+    res.json({ dismissed: true });
 });
 
 app.get('/api/admin/price-update/acks/:job_id', (req, res) => {

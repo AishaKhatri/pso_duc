@@ -3,7 +3,7 @@ const chalk = require('chalk');
 const crypto = require('crypto');
 const pool = require('./db');
 const fs = require('fs').promises;
-const { getFormattedTimestamp, logPing, writeToLogFile, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
+const { getFormattedTimestamp, logPing, writeToLogFile, logPriceDebug, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 
@@ -119,8 +119,7 @@ function startOfflineCheck() {
 async function initializeMQTTSubscriptions() {
     try {
         await subscribeToTopic('duc/registration', statusTopics);
-        await subscribeToTopic(PRICE_ACK_TOPIC, statusTopics);
-
+        
         // Fetch all dispensers from the database — address normalized to D-prefixed.
         const [dispensers] = await pool.query(`
             SELECT d.dispenser_id, ${addressOutSql('d')} AS address, s.customer_code, s.city
@@ -1330,9 +1329,10 @@ mqttClient.on('message', async (receivedTopic, message) => {
         try {
             if (!messageStr.trim()) return;
             const payload = JSON.parse(messageStr);
+            logPriceDebug(`RX duc/acked_msgs: ${messageStr}`);
             handlePriceAck(payload);
         } catch (err) {
-            errorWithTimestamp(`Failed to parse price ACK: ${err.message}`);
+            logPriceDebug(`RX duc/acked_msgs PARSE ERROR: ${err.message} — raw: ${messageStr}`);
         }
         return;
     }
@@ -1669,6 +1669,9 @@ function registerPriceUpdateJob(jobId, items) {
             product: it.product,
             topic: it.topic,
             ducs: new Set(it.ducs),
+            // Echoed back in the ACK payload; used to reject stale/retained ACKs.
+            expectedMessage: it.price != null ? String(it.price) : null,
+            expectedDate: it.date != null ? String(it.date) : null,
             acked: new Map(),  // addrD -> ISO timestamp
         }))
     });
@@ -1694,11 +1697,76 @@ function getPriceUpdateJob(jobId) {
     };
 }
 
+// ----- Price-ACK subscription lifecycle -----
+//
+// duc/acked_msgs is only useful in the window right after a price publish.
+// Subscribing permanently means retained-message redelivery and device
+// reconnects spray ACKs at the server forever. Instead we subscribe on demand
+// and reference-count it, so overlapping jobs (e.g. a 5-min retained job still
+// running when a 15-sec non-retained one starts and ends) keep the single
+// subscription alive until the LAST in-flight job finalizes.
+let priceAckSubCount = 0;
+let priceAckSubscribed = false;   // reflects the broker SUBACK result
+
+// SUBSCRIBE to the ACK topic, resolving with whether the broker accepted it
+// (callback err === null). Lets the caller record subscription health.
+function _subscribePriceAck() {
+    return new Promise((resolve) => {
+        if (!mqttClient || !mqttClient.connected) return resolve(false);
+        mqttClient.subscribe(PRICE_ACK_TOPIC, { qos: 1 }, (err) => resolve(!err));
+    });
+}
+
+// Bump the refcount; subscribe (waiting for SUBACK) if this is the first
+// in-flight job. Returns true when it established a fresh subscription, so the
+// caller can let it settle before publishing.
+async function acquirePriceAckSubscription() {
+    priceAckSubCount++;
+    if (priceAckSubCount === 1) {
+        priceAckSubscribed = await _subscribePriceAck();
+        if (priceAckSubscribed) {
+            logPriceDebug(`SUBSCRIBED to ${PRICE_ACK_TOPIC} (price-update active, refcount=1)`);
+        } else {
+            logPriceDebug(`FAILED to subscribe to ${PRICE_ACK_TOPIC} — ACKs will be missed`);
+        }
+        return true;
+    }
+    logPriceDebug(`subscription already active (refcount=${priceAckSubCount})`);
+    return false;
+}
+
+// Drop the refcount; unsubscribe once no job needs ACKs anymore.
+async function releasePriceAckSubscription() {
+    if (priceAckSubCount === 0) return;
+    priceAckSubCount--;
+    if (priceAckSubCount === 0) {
+        await _mqttUnsubscribe(PRICE_ACK_TOPIC);
+        priceAckSubscribed = false;
+        logPriceDebug(`UNSUBSCRIBED from ${PRICE_ACK_TOPIC} (no price-update active, refcount=0)`);
+    } else {
+        logPriceDebug(`released hold, subscription kept (refcount=${priceAckSubCount})`);
+    }
+}
+
+// Whether the server currently holds an active duc/acked_msgs subscription.
+function isPriceAckSubscribed() {
+    return priceAckSubscribed;
+}
+
+// Whether a price-update job is currently in flight (published but not yet
+// finalized). The refcount is the source of truth: >0 means at least one job is
+// still inside its ACK-collection window.
+function hasActivePriceUpdate() {
+    return priceAckSubCount > 0;
+}
+
 // Called when a price-update ACK lands on duc/acked_msgs. Payload shape:
-//   { device: 'D13846', topic: 'PSO/karachi/102563/duc/price/pmg' }
-// Walks every active job; if any item's topic matches AND the device is in
-// that item's expected DUC set, records the ack. Multiple jobs for the same
-// (topic, device) all get marked — harmless overlap.
+//   { device: 'D13846', topic: 'PSO/.../duc/price/pmg',
+//     payload: { date: '...', req_type: 0, message: '272.50' } }
+// Walks every active job; records the ack only if the item's topic matches, the
+// device is in its expected DUC set, AND the echoed price+date match what the
+// job published — the last check rejects stale/retained ACKs redelivered on
+// (re)subscribe, which carry an older price/date.
 function handlePriceAck(payload) {
     const device = payload && payload.device;
     const topic = payload && payload.topic;
@@ -1706,13 +1774,49 @@ function handlePriceAck(payload) {
     const addrD = ensureDAddress(device);
     const topicLower = String(topic).toLowerCase();
 
+    // Echoed price/date from the original message, if the broker includes them.
+    const inner = (payload && typeof payload.payload === 'object') ? payload.payload : null;
+    const ackMessage = inner && inner.message != null ? String(inner.message) : null;
+    const ackDate = inner && inner.date != null ? String(inner.date) : null;
+
+    let matched = 0;
+    let topicSeen = false;       // some active item targets this topic
+    let inDucSet = false;        // ...and the device is one of its expected DUCs
+    let payloadMatched = false;  // ...and the echoed price/date match this job
     for (const job of priceUpdateJobs.values()) {
         for (const item of job.items) {
             if (item.topic !== topicLower) continue;
+            topicSeen = true;
             if (!item.ducs.has(addrD)) continue;
+            inDucSet = true;
+            // Reject stale/retained ACKs: when the ACK echoes a price/date, it
+            // must equal what this job published. (Lenient if the ACK omits them.)
+            if (ackMessage != null && item.expectedMessage != null && ackMessage !== item.expectedMessage) continue;
+            if (ackDate != null && item.expectedDate != null && ackDate !== item.expectedDate) continue;
+            payloadMatched = true;
             if (item.acked.has(addrD)) continue;
             item.acked.set(addrD, new Date().toISOString());
+            matched++;
         }
+    }
+
+    // Debug aid: ACKs that don't register are otherwise invisible. Logs why a
+    // match did/didn't happen so mismatches surface.
+    if (matched > 0) {
+        logPriceDebug(`ACK MATCHED device=${addrD} topic=${topicLower} msg=${ackMessage} (${matched} item(s))`);
+    } else {
+        const active = [];
+        for (const job of priceUpdateJobs.values()) {
+            for (const item of job.items) {
+                active.push(`${item.topic} ducs=[${Array.from(item.ducs).join(', ')}] price=${item.expectedMessage}`);
+            }
+        }
+        const reason = !topicSeen ? 'no active job for this topic'
+            : !inDucSet ? `device ${addrD} not in targeted DUC set`
+            : !payloadMatched ? `echoed price/date (${ackMessage}/${ackDate}) doesn't match active job — stale/retained ACK`
+            : 'already acked';
+        logPriceDebug(`ACK DROPPED device=${addrD} topic=${topicLower} — ${reason}. ` +
+            `Active items: ${active.join(' | ') || 'none'}`);
     }
 }
 
@@ -1738,5 +1842,9 @@ module.exports = {
     refreshConnStatusSubscriptions,
     registerPriceUpdateJob,
     getPriceUpdateJob,
+    acquirePriceAckSubscription,
+    releasePriceAckSubscription,
+    isPriceAckSubscribed,
+    hasActivePriceUpdate,
     shutdownMqtt
 };

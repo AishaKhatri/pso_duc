@@ -25,11 +25,16 @@ function makeRotatingStream(name) {
 const pingLogStream = makeRotatingStream('ping');
 const allMessagesLogStream = makeRotatingStream('all_messages');
 const errorLogStream = makeRotatingStream('errors');
+// Dedicated channel for price-update / ACK debugging, kept out of the noisy
+// main console. Tail it live with:
+//   PowerShell:  Get-Content -Wait .\logs\price-update.log
+//   bash:        tail -f logs/price-update.log
+const priceDebugLogStream = makeRotatingStream('price-update');
 
 // Surface stream-level write failures to stderr (e.g. disk full). Without
 // this listener the stream would emit an unhandled 'error' that crashes the
 // process.
-for (const s of [pingLogStream, allMessagesLogStream, errorLogStream]) {
+for (const s of [pingLogStream, allMessagesLogStream, errorLogStream, priceDebugLogStream]) {
     s.on('error', err => console.error(chalk.red(`Log stream error: ${err.message}`)));
 }
 
@@ -47,6 +52,12 @@ function logPing(message) {
 
 function writeToLogFile(message) {
     allMessagesLogStream.write(message + '\n');
+}
+
+// Price-update / ACK debug log. Timestamped, file-only (does NOT hit the main
+// console) so the flood of regular MQTT traffic doesn't bury it.
+function logPriceDebug(message) {
+    priceDebugLogStream.write(`${getFormattedTimestamp()} ${message}\n`);
 }
 
 // Utility function to format timestamp
@@ -590,6 +601,7 @@ function startLongOutageService() {
 module.exports = {
     logPing,
     writeToLogFile,
+    logPriceDebug,
     getFormattedTimestamp,
     logWithTimestamp,
     errorWithTimestamp,
