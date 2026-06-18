@@ -1087,11 +1087,11 @@ async function _collectDucNozzleStatus(customer_code, products, ackByProduct) {
 // row to correlate by hand. For retained publishes it also clears the retained
 // message off the broker first, so DUCs connecting later don't pick up a stale
 // price. `actor` carries the captured user/ip since `req` is no longer live.
-async function _finalizePriceUpdateLog({ actor, jobId, cityLower, customer_code, validPrices, effectiveAt, publishedAt, retain, retainTimeoutMs, ackSubscribed, status, items, skipped }) {
+async function _finalizePriceUpdateLog({ actor, jobId, cityLower, customer_code, validPrices, effectiveAt, effMinutes, publishedAt, retain, retainTimeoutMs, clearRetained, ackSubscribed, status, items, skipped }) {
   try {
-    logPriceDebug(`FINALIZE START jobId=${jobId} status=${status} customer=${customer_code} retain=${!!retain}`);
-    // Clear retained price messages now that the effective window has passed.
-    if (retain) {
+    logPriceDebug(`FINALIZE START jobId=${jobId} status=${status} customer=${customer_code} retain=${!!retain} clearRetained=${!!clearRetained}`);
+    // Clear retained price messages unless the operator chose to keep them.
+    if (retain && clearRetained) {
         for (const it of items) {
             try {
                 await publishMessage(it.topic, '', { qos: 1, retain: true });
@@ -1130,9 +1130,10 @@ async function _finalizePriceUpdateLog({ actor, jobId, cityLower, customer_code,
             status,
             prices: validPrices,
             retained: !!retain,
-            ...(retain ? { retainTimeoutMs } : {}),
+            ...(retain ? { retainTimeoutMs, retainedCleared: !!clearRetained } : {}),
             ackSubscribed: !!ackSubscribed,
             effectiveAt,
+            effectiveInMinutes: effMinutes,
             publishedAt,
             // Time the job actually ended, labelled by how it ended.
             [status === 'dismissed' ? 'dismissedAt' : 'completedAt']: new Date().toISOString(),
@@ -1162,9 +1163,15 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     if (!_isPriceUpdateRole(req.authUser?.role)) {
         return res.status(403).json({ error: 'admin only' });
     }
-    const { city, customer_code, prices, retain } = req.body || {};
+    const { city, customer_code, prices, retain, effectiveInMinutes } = req.body || {};
     if (!city || !customer_code || !prices || typeof prices !== 'object') {
         return res.status(400).json({ error: 'city, customer_code, and prices required' });
+    }
+
+    // Effective delay: 0 = now, else N whole minutes from now. Defaults to 0.
+    const effMinutes = effectiveInMinutes == null ? 0 : Number(effectiveInMinutes);
+    if (!Number.isInteger(effMinutes) || effMinutes < 0) {
+        return res.status(400).json({ error: 'effectiveInMinutes must be a non-negative integer' });
     }
 
     // Validate and normalize each provided price into a two-decimal string —
@@ -1195,10 +1202,10 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     }
 
     const cityLower = String(city).toLowerCase();
-    // Effective time: 5 minutes from now (unix seconds). It's the `date` field
-    // in the on-wire payload (when the DUC should apply the new price); also
-    // returned to the operator so the UI can show when it takes effect.
-    const effectiveAt = Math.floor(Date.now() / 1000) + 5 * 60;
+    // Effective time (unix seconds): now, or `effMinutes` minutes out — the
+    // operator's choice. It's the `date` field in the on-wire payload (when the
+    // DUC applies the new price); also returned/logged so the UI can show it.
+    const effectiveAt = Math.floor(Date.now() / 1000) + effMinutes * 60;
     const date = String(effectiveAt);
 
     // Phase 1 — resolve which DUCs each product targets. No MQTT publish yet:
@@ -1294,14 +1301,14 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
     // Guarded so it runs exactly once regardless of which path triggers it.
     let finalized = false;
     let finalizeTimer = null;
-    const runFinalize = async (status) => {
+    const runFinalize = async (status, clearRetained = true) => {
         if (finalized) return;
         finalized = true;
         if (finalizeTimer) { clearTimeout(finalizeTimer); finalizeTimer = null; }
         try {
             await _finalizePriceUpdateLog({
-                actor, jobId, cityLower, customer_code, validPrices, effectiveAt,
-                publishedAt, retain: !!retain, retainTimeoutMs: FINALIZE_DELAY_MS,
+                actor, jobId, cityLower, customer_code, validPrices, effectiveAt, effMinutes,
+                publishedAt, retain: !!retain, retainTimeoutMs: FINALIZE_DELAY_MS, clearRetained,
                 ackSubscribed, status, items, skipped
             });
         } catch (e) {
@@ -1362,8 +1369,10 @@ app.post('/api/admin/price-update/dismiss', async (req, res) => {
     if (!ctrl || !hasActivePriceUpdate()) {
         return res.json({ dismissed: false });
     }
-    logPriceDebug(`DISMISS requested jobId=${ctrl.jobId}`);
-    await ctrl.finalize('dismissed');
+    // Default to clearing the retained message unless the operator chose to keep it.
+    const clearRetained = (req.body && req.body.clearRetained === false) ? false : true;
+    logPriceDebug(`DISMISS requested jobId=${ctrl.jobId} clearRetained=${clearRetained}`);
+    await ctrl.finalize('dismissed', clearRetained);
     res.json({ dismissed: true });
 });
 
