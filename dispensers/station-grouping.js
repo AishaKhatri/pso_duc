@@ -205,6 +205,10 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
             state.station = 'all';
             stationCtl.setItems(buildStationOptions(v));
             stationCtl.setValue('all');
+            // Rescope address suggestions to the new city and reset the address filter.
+            state.address = '';
+            addressCtl.setItems(buildAddressOptions(v, 'all'));
+            addressCtl.setQuery('');
             emitChange();
         }
     });
@@ -215,7 +219,13 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
         options: buildStationOptions('all'),
         getSelected: () => state.station,
         setSelected: (v) => { state.station = v; },
-        onPick: () => emitChange()
+        onPick: (v) => {
+            // Rescope address suggestions to the selected station and reset the address filter.
+            state.address = '';
+            addressCtl.setItems(buildAddressOptions(state.city, v));
+            addressCtl.setQuery('');
+            emitChange();
+        }
     });
 
     const connectionCtl = buildPickerDropdown({
@@ -242,27 +252,34 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     });
 
     // Address — free-text substring search with autocomplete suggestions
-    // pulled from the unique D-addresses across all stations on this page.
-    const addressOptions = (() => {
+    // pulled from the unique D-addresses across the stations on this page.
+    const buildAddressOptions = (forCity, forStation) => {
+        const codes = allStationCodes.filter(code => {
+            if (forCity !== 'all' && getStationCity(code) !== forCity) return false;
+            if (forStation !== 'all' && code !== forStation) return false;
+            return true;
+        });
         const seen = new Set();
         const out = [];
-        for (const code of allStationCodes) {
+        for (const code of codes) {
+            const sid = getStationId(code);
+            const secondary = sid ? `${code} - ${sid}` : code;
             for (const d of (stations[code]?.dispensers || [])) {
                 const addr = d.address ? ensureDAddress(d.address) : '';
                 if (addr && !seen.has(addr)) {
                     seen.add(addr);
-                    out.push({ value: addr, label: addr });
+                    out.push({ value: addr, label: addr, secondary });
                 }
             }
         }
         return out.sort((a, b) => a.label.localeCompare(b.label));
-    })();
+    };
 
     const addressCtl = createSearchableDropdown({
         placeholder: 'Search by Address',
         width: FILTER_WIDTH_SMALL,
         bgWhite: true,
-        items: addressOptions,
+        items: buildAddressOptions('all', 'all'),
         initialQuery: state.address,
         emptyText: 'No matching address',
         onInput: (q) => { state.address = q; emitChange(); },
