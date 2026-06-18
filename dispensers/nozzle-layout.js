@@ -1,25 +1,27 @@
 // Common configuration for both layouts
 const LAYOUT_CONFIG = {
     [NOZZLE_LAYOUTS.FULL]: {
-        width: '190px',
-        minWidth: '190px',
-        maxWidth: '190px',
-        iconSize: '32px',
-        fontSize: '28px',
+        width: '195px',
+        minWidth: '195px',
+        maxWidth: '195px',
+        iconSize: '36px',
+        fontSize: '30px',
         showKeypad: true,
         showLockStatus: true,
         showMetrics: true,
         showTotals: true,
         showLastUpdated: false,
-        headerPadding: '3px 7px 3px',
-        sectionPadding: '8px 12px',
-        statusFontSize: '12px'
+        headerPadding: '3px 18px 3px 8px',
+        sectionPadding: '12px 12px',
+        statusFontSize: '12px',
+        ViewTransactionsFontSize: '14px',
+        cardTopPadding: '10px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
         width: '160px',
-        minWidth: '140px',
+        minWidth: '145px',
         maxWidth: '160px',
-        iconSize: '25px',
+        iconSize: '26px',
         fontSize: '24px',
         showKeypad: false,
         showLockStatus: false,
@@ -27,10 +29,11 @@ const LAYOUT_CONFIG = {
         showPricePerLitre: true,
         showTotals: false,
         showLastUpdated: false,
-        headerPadding: '2px 16px 2px',
+        headerPadding: '2px 14px 2px 6px',
         sectionPadding: '10px 10px',
         statusFontSize: '12px',
-        ViewTransactionsFontSize: '12px'
+        ViewTransactionsFontSize: '12px',
+        cardTopPadding: '2px'
     }
 };
 
@@ -39,25 +42,31 @@ function safeNumber(value) {
     return isNaN(parseFloat(value)) ? 0 : parseFloat(value);
 }
 
-// Create the header section (common)
-function createHeaderSection(fuelType, nozzleId, layoutType) {
+function createNozzleTag(fuelType, nozzleId, layoutType) {
     const config = LAYOUT_CONFIG[layoutType];
     const colorConfig = productColorConfig[fuelType];
-    
-    const header = document.createElement('div');
-    header.style.background = colorConfig.header;
-    header.style.color = '#111111';
-    header.style.padding = config.headerPadding;
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.borderBottom = `4px solid ${colorConfig.accent}`;
-    // Keep header readable in both themes — fuel header colors are brand identifiers
 
-    // Left: Nozzle icon + number
-    const nozzleLeft = document.createElement('div');
-    nozzleLeft.style.display = 'flex';
-    nozzleLeft.style.alignItems = 'center';
-    nozzleLeft.style.gap = '8px';
+    const tag = document.createElement('div');
+    Object.assign(tag.style, {
+        position: 'absolute',
+        top: '0',
+        left: '-3px',
+        transform: 'translateY(18%)',
+        zIndex: '3',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '4px',
+        padding: config.headerPadding,
+        background: colorConfig.header,
+        color: '#111111',
+        // Accent strip on the left edge only.
+        borderLeft: `4px solid ${colorConfig.accent}`,
+        // Square on the left, strongly rounded on the right — a tab look.
+        borderRadius: '10px 18px 18px 0',
+        boxShadow: 'var(--shadow-card)',
+        whiteSpace: 'nowrap'
+    });
+    // Keep tag readable in both themes — fuel colours are brand identifiers
 
     const nozzleIcon = createIconFromImage('assets/graphics/nozzle-icon.png', 'Nozzle Icon', config.iconSize, config.iconSize);
     nozzleIcon.style.objectFit = 'contain';
@@ -65,38 +74,16 @@ function createHeaderSection(fuelType, nozzleId, layoutType) {
     const nozzleNumber = document.createElement('div');
     nozzleNumber.style.fontSize = config.fontSize;
     nozzleNumber.style.fontWeight = 'bold';
+    nozzleNumber.style.letterSpacing = '-2px';
     nozzleNumber.textContent = nozzleId?.toString().padStart(2, '0') ?? '--';
 
-    nozzleLeft.appendChild(nozzleIcon);
-    nozzleLeft.appendChild(nozzleNumber);
-    header.appendChild(nozzleLeft);
-    
-    return header;
+    tag.appendChild(nozzleIcon);
+    tag.appendChild(nozzleNumber);
+    return tag;
 }
 
-// Create status section (common)
-function createStatusSection(data, layoutType) {
-    const config = LAYOUT_CONFIG[layoutType];
-    const section = document.createElement('div');
-    section.style.padding = config.sectionPadding;
-
-    const statusWrapper = document.createElement('div');
-    statusWrapper.style.display = 'flex';
-    statusWrapper.style.justifyContent = 'space-between';
-    statusWrapper.style.alignItems = 'center';
-    statusWrapper.style.marginBottom = '12px';
-
-    // Compact price/litre (SUMMARY layout) — sits to the left of the status badge.
-    if (config.showPricePerLitre) {
-        const price = document.createElement('div');
-        price.style.fontSize = '13px';
-        price.style.fontWeight = '700';
-        price.style.color = 'var(--text-heading)';
-        price.textContent = `Rs. ${safeNumber(data.pricePerLitre).toFixed(2)}`;
-        statusWrapper.appendChild(price);
-    }
-
-    // Status badge (right-aligned). Tri-state palette:
+function createStatusBadge(data, config) {
+    // Tri-state palette:
     //   1 → green (badge-online)   = device + MB OK
     //   0 → amber (badge-reset)    = device online, MB silent
     //   2 → red   (badge-offline)  = no recent ping
@@ -119,20 +106,20 @@ function createStatusSection(data, layoutType) {
     status.style.fontSize = config.statusFontSize;
     status.style.cursor = 'pointer';
     status.style.userSelect = 'none';
+    status.style.whiteSpace = 'nowrap';
     status.textContent = data.status ?? 'Unknown';
     status.title = data.lastPingAt
         ? `Last ping: ${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
         : 'No ping received yet';
 
     // Tap-to-reveal "Last ping" — touch panels can't surface the title= tooltip,
-    // so the same info toggles inline below the badge on tap/click.
+    // so the same info toggles inline in the body on tap/click of the badge.
     const pingNote = document.createElement('div');
     pingNote.style.fontSize = '10px';
     pingNote.style.color = 'var(--text-secondary)';
     pingNote.style.textAlign = 'right';
-    pingNote.style.marginTop = '3px';
-    // Show the last-ping timestamp by default; the badge click below still
-    // toggles it off/on, and the hover tooltip (status.title) is unchanged.
+    pingNote.style.marginTop = '22px';
+    // Show the last-ping timestamp by default; the badge click below toggles it.
     pingNote.textContent = data.lastPingAt
         ? `${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
         : 'No ping received yet';
@@ -152,9 +139,59 @@ function createStatusSection(data, layoutType) {
         }
     });
 
-    statusWrapper.appendChild(status);
+    return { badge: status, pingNote };
+}
+
+function createStatusSection(data, layoutType) {
+    const config = LAYOUT_CONFIG[layoutType];
+    const section = document.createElement('div');
+    section.style.padding = config.sectionPadding;
+    section.style.borderBottom = '2px solid var(--border)';
+    section.style.marginBottom = '8px';
+
+    const { badge, pingNote } = createStatusBadge(data, config);
+
+    const statusWrapper = document.createElement('div');
+    statusWrapper.style.display = 'flex';
+    statusWrapper.style.justifyContent = 'flex-end';
+    statusWrapper.style.alignItems = 'center';
+    statusWrapper.style.marginBottom = '8px';
+
+    statusWrapper.appendChild(badge);
     section.appendChild(statusWrapper);
     section.appendChild(pingNote);
+
+    // Price/litre as a metric row below the ping note (SUMMARY layout). Placed here,
+    if (config.showPricePerLitre) {
+        const priceRow = document.createElement('div');
+        priceRow.style.display = 'flex';
+        priceRow.style.justifyContent = 'space-between';
+        priceRow.style.alignItems = 'center';
+        priceRow.style.marginTop = '8px';
+
+        const label = document.createElement('div');
+        label.style.fontSize = '12px';
+        label.style.fontWeight = '500';
+        label.style.color = 'var(--text-primary)';
+        label.textContent = 'Price/Ltr';
+
+        const value = document.createElement('div');
+        value.style.fontSize = '13px';
+        value.style.fontWeight = '700';
+        value.style.color = 'var(--metric-highlight-text)';
+        value.style.background = 'var(--metric-highlight-bg)';
+        value.style.border = '1px solid var(--metric-highlight-border)';
+        value.style.borderRadius = '2px';
+        value.style.padding = '2px 5px';
+        value.style.minWidth = '60px';
+        value.style.textAlign = 'right';
+        value.style.boxShadow = 'inset 1px 1px 2px rgba(0,0,0,0.2)';
+        value.textContent = safeNumber(data.pricePerLitre).toFixed(2);
+
+        priceRow.appendChild(label);
+        priceRow.appendChild(value);
+        section.appendChild(priceRow);
+    }
 
     return section;
 }
@@ -180,7 +217,6 @@ function formatRelativeTime(ts) {
 // Create metrics section (only for FULL layout)
 function createMetricsSection(data) {
     const section = document.createElement('div');
-    section.style.padding = '0 12px';
 
     const metricBox = (label, value, opts = {}) => {
         const div = document.createElement('div');
@@ -188,6 +224,7 @@ function createMetricsSection(data) {
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
         div.style.marginBottom = '7px';
+        div.style.padding = '0 12px';
 
         const labelDiv = document.createElement('div');
         labelDiv.style.fontSize = '12px';
@@ -214,10 +251,35 @@ function createMetricsSection(data) {
         return div;
     };
 
-    section.appendChild(metricBox("Price (PKR)", `${safeNumber(data.price).toFixed(2)}`));
-    section.appendChild(metricBox("Quantity (Ltr)", `${safeNumber(data.quantity).toFixed(2)}`));
+    // "Last Sale" groups Amount + Volume under a shared heading.
+    const lastSale = document.createElement('div');
+    lastSale.style.marginBottom = '10px';
+    // lastSale.style.marginTop = '4px';
+    // lastSale.style.borderTop = '2px solid var(--border)';
+    lastSale.style.borderBottom = '2px solid var(--border)';
+
+    const lastSaleHeading = document.createElement('div');
+    lastSaleHeading.style.fontSize = '11px';
+    lastSaleHeading.style.fontWeight = '700';
+    lastSaleHeading.style.color = 'var(--text-secondary)';
+    lastSaleHeading.style.textAlign = 'center';
+    lastSaleHeading.style.textTransform = 'uppercase';
+    lastSaleHeading.style.letterSpacing = '0.5px';
+    lastSaleHeading.style.padding = '0 12px';
+    lastSaleHeading.style.marginBottom = '5px';
+    lastSaleHeading.style.marginTop = '5px';
+    lastSaleHeading.textContent = 'Last Sale';
+    lastSale.appendChild(lastSaleHeading);
+
+    const amountRow = metricBox("Amount (PKR)", `${safeNumber(data.price).toFixed(2)}`);
+    const volumeRow = metricBox("Volume (Ltr)", `${safeNumber(data.quantity).toFixed(2)}`);
+    lastSale.appendChild(amountRow);
+    lastSale.appendChild(volumeRow);
+    section.appendChild(lastSale);
+
     section.appendChild(metricBox("Price/Ltr (PKR)", `${safeNumber(data.pricePerLitre).toFixed(2)}`, { highlight: true }));
     
+
     return section;
 }
 
@@ -361,22 +423,26 @@ window.createNozzleLayout = function(containerId, data, layoutType = NOZZLE_LAYO
         card.style.minWidth = config.minWidth;
         card.style.maxWidth = config.maxWidth;
         card.style.borderRadius = '10px';
-        card.style.background = 'var(--bg-surface)';
+        card.style.background = 'var(--bg-surface-3)';
         card.style.fontFamily = 'Segoe UI, sans-serif';
         card.style.color = 'var(--text-primary)';
+        // Flat tile (no shadow) inside the dispenser card; a hairline border + grid
+        // gap define each nozzle without adding background tinting or shadow clutter.
         card.style.boxShadow = 'var(--shadow-card)';
-        card.style.overflow = 'hidden';
+        // Visible (not hidden) so the floating tag/badge can straddle the top edge.
+        card.style.overflow = 'visible';
         card.style.flexShrink = '0';
-        card.style.padding = '0px';
-        card.style.border = data.locked ? '3px solid var(--danger)' : '0.5px solid var(--border)';
-        
-        // Header
-        const header = createHeaderSection(data.fuelType, data.nozzleId, layoutType);
-        card.appendChild(header);
-        
+        card.style.padding = `${config.cardTopPadding} 0 0`;
+        card.style.border = data.locked ? '3px solid var(--danger)' : '2px solid var(--border)';
+
+        // Floating nozzle tag straddling the top-left corner like the dispenser
+        // card's floating tab.
+        const nozzleTag = createNozzleTag(data.fuelType, data.nozzleId, layoutType);
+        card.appendChild(nozzleTag);
+
         const bodyWrapper = document.createElement('div');
         bodyWrapper.style.position = 'relative';
-        
+
         // Status section
         const statusSection = createStatusSection(data, layoutType);
         bodyWrapper.appendChild(statusSection);

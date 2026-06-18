@@ -347,7 +347,7 @@ function createTitle() {
 function createLink() {
     const link = document.createElement('div');
     link.style.fontSize = '16px';
-    link.style.color = '#006effff';
+    link.style.color = 'var(--link)';
     link.style.cursor = 'pointer';
     link.style.transition = 'text-decoration 0.2s ease';
     link.style.textAlign = 'center';
@@ -871,7 +871,7 @@ async function createCard(address, customer_code, opts = {}) {
         width: 'fit-content',
         // Extra top padding leaves room for the floating address/brand tab that
         // straddles the card's top edge (built at the end of this function).
-        padding: '24px 11px 11px',
+        padding: '24px 16px 16px',
         marginTop: '10px'
     });
 
@@ -891,12 +891,12 @@ async function createCard(address, customer_code, opts = {}) {
     titleText.style.margin = '0';
     const hasDispId = opts.dispenserId != null && opts.dispenserId !== '';
     if (hasDispId) {
-        titleText.textContent = `Dispenser ID: ${opts.dispenserId}`;
+        titleText.textContent = `Dispenser: ${opts.dispenserId}`;
         titleText.style.fontSize = '16px';
         titleText.style.fontWeight = '500';
         titleText.style.color = 'var(--text-primary)';
     } else {
-        titleText.textContent = address;
+        titleText.textContent = 'N/A';
         titleText.style.fontSize = '17px';
     }
 
@@ -988,11 +988,11 @@ async function createCard(address, customer_code, opts = {}) {
         alignItems: 'baseline',
         gap: '6px',
         background: 'var(--bg-surface-2)',
-        border: '1px solid var(--border)',
+        border: '2px solid var(--border)',
         borderRadius: '20px',
         padding: '4px 16px',
         whiteSpace: 'nowrap',
-        boxShadow: 'var(--shadow-card)'
+        boxShadow: 'var(--shadow-tag)'
     });
 
     const addrSpan = document.createElement('span');

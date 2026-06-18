@@ -593,7 +593,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
     nozzleGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    nozzleGrid.style.gap = '11px';
+    nozzleGrid.style.gap = '16px';
     nozzleGrid.style.marginTop = '8px';
     // Reserve approximate vertical space so the page doesn't reflow violently
     // when off-screen cards eventually materialize as the user scrolls.

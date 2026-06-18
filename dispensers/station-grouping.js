@@ -298,12 +298,12 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationSection.setAttribute('data-station-code', stationCode);
     stationSection.setAttribute('data-city', stationInfo.city || '');
     stationSection.style.marginBottom = '5px';
-    stationSection.style.backgroundColor = 'var(--bg-surface)';
+    stationSection.style.backgroundColor = 'var(--bg-surface-1)';
     stationSection.style.color = 'var(--text-primary)';
     stationSection.style.borderRadius = '10px';
     stationSection.style.padding = '8px';
-    stationSection.style.border = '1px solid var(--border)';
-    stationSection.style.boxShadow = '0 4px 12px rgba(0,0,0,0.08)';
+    stationSection.style.border = '3px solid var(--border)';
+    stationSection.style.boxShadow = 'var(--shadow-card)';
     stationSection.style.overflowX = 'hidden';
     
     // Station header
