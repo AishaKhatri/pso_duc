@@ -7,8 +7,10 @@ const nozzleLayoutType = new Map();
 //   2 = no recent ping                       (offline detector after 10 min)
 function nozzleStatusLabel(code) {
     switch (Number(code)) {
-        case 1: return 'Active';
-        case 0: return 'Inactive';
+        // case 1: return 'Active';
+        // case 0: return 'Inactive';
+        case 1: return 'Auto';
+        case 0: return 'Manual';
         case 2: return 'No Ping';
         default: return 'Unknown';
     }
