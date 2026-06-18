@@ -23,6 +23,8 @@ const _pu = {
     ducsForCustomer: [],          // [{address, products: [PMG, ...]}]
     enabled: { PMG: false, HSD: false, HOBC: false },
     retain: false,                // MQTT retain flag for the published price
+    effectiveMode: 'now',         // 'now' | 'minutes' — when DUCs apply the price
+    effectiveMinutes: 5,          // used when effectiveMode === 'minutes'
     activeJob: null,
     pollTimer: null,
     disableTimer: null,           // re-enables the Publish button when the job's window ends
@@ -115,9 +117,17 @@ function _puMarkJobCompleted() {
 // list, ACK progress) is left exactly as-is — it's overwritten on the next
 // publish or cleared on page refresh, same as a Completed job.
 async function _puDismiss() {
+    const isRetained = !!(_pu.activeJob && _pu.activeJob.retained);
+    const choice = await _puConfirmDismiss(isRetained);
+    if (!choice || !choice.confirmed) return;   // cancelled
+
     if (_pu.el.dismissBtn) _pu.el.dismissBtn.disabled = true;
     try {
-        await fetch(`${API_BASE_URL}/admin/price-update/dismiss`, { method: 'POST' });
+        await fetch(`${API_BASE_URL}/admin/price-update/dismiss`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ clearRetained: choice.clearRetained })
+        });
     } catch (e) {
         console.warn('dismiss failed:', e.message);
     }
@@ -132,6 +142,93 @@ async function _puDismiss() {
         _pu.el.dismissBtn.style.display = 'none';
     }
     _puRenderJobStatus('dismissed');
+}
+
+// Confirmation modal for dismiss. Resolves to { confirmed, clearRetained }.
+// When the job was published retained, offers a checkbox to clear or keep the
+// retained message on the broker (defaults to clear).
+function _puConfirmDismiss(isRetained) {
+    return new Promise(resolve => {
+        const overlay = document.createElement('div');
+        Object.assign(overlay.style, {
+            position: 'fixed', inset: '0', background: 'rgba(0,0,0,0.5)',
+            zIndex: '1000', display: 'flex', alignItems: 'center', justifyContent: 'center'
+        });
+
+        const popup = document.createElement('div');
+        Object.assign(popup.style, {
+            background: 'var(--bg-surface)', border: '1px solid var(--border)',
+            borderRadius: '8px', padding: '20px', width: '380px', maxWidth: '90vw',
+            boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
+        });
+
+        const title = document.createElement('h3');
+        title.textContent = 'Dismiss Price Update';
+        title.style.margin = '0 0 10px';
+        title.style.color = 'var(--text-heading)';
+        popup.appendChild(title);
+
+        const msg = document.createElement('div');
+        msg.textContent = 'End this price update now? Its ACK window will close and you can publish a new one.';
+        msg.style.fontSize = '13px';
+        msg.style.color = 'var(--text-primary)';
+        msg.style.marginBottom = '14px';
+        popup.appendChild(msg);
+
+        let clearCheck = null;
+        if (isRetained) {
+            const row = document.createElement('label');
+            Object.assign(row.style, {
+                display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px',
+                color: 'var(--text-primary)', cursor: 'pointer', marginBottom: '6px'
+            });
+            clearCheck = document.createElement('input');
+            clearCheck.type = 'checkbox';
+            clearCheck.checked = true;
+            const span = document.createElement('span');
+            span.textContent = 'Clear the retained message from the broker';
+            row.appendChild(clearCheck);
+            row.appendChild(span);
+            popup.appendChild(row);
+
+            const hint = document.createElement('div');
+            hint.textContent = 'If unchecked, the last price stays retained for DUCs that connect later.';
+            hint.style.fontSize = '12px';
+            hint.style.color = 'var(--text-secondary)';
+            hint.style.marginBottom = '16px';
+            popup.appendChild(hint);
+        }
+
+        const btnRow = document.createElement('div');
+        btnRow.style.display = 'flex';
+        btnRow.style.justifyContent = 'flex-end';
+        btnRow.style.gap = '10px';
+
+        const cancelBtn = createActionButton('#626262', '#424242');
+        cancelBtn.textContent = 'Cancel';
+        const dismissBtn = createActionButton('#7a3b3b', '#5a2a2a');
+        dismissBtn.textContent = 'Dismiss';
+        btnRow.appendChild(cancelBtn);
+        btnRow.appendChild(dismissBtn);
+        popup.appendChild(btnRow);
+
+        let done = false;
+        const close = (result) => {
+            if (done) return;
+            done = true;
+            if (overlay.parentNode) document.body.removeChild(overlay);
+            resolve(result);
+        };
+        overlay.addEventListener('click', e => { if (e.target === overlay) close({ confirmed: false }); });
+        cancelBtn.addEventListener('click', () => close({ confirmed: false }));
+        dismissBtn.addEventListener('click', () => close({
+            confirmed: true,
+            clearRetained: isRetained ? clearCheck.checked : false
+        }));
+
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+    });
 }
 
 function _puFormatStationLabel(customerCode) {
@@ -438,6 +535,73 @@ function _puRenderForm(container) {
     retainRow.appendChild(retainLbl);
     priceCard.appendChild(retainRow);
 
+    // Effective time 
+    const effRow = document.createElement('div');
+    effRow.style.display = 'flex';
+    effRow.style.alignItems = 'center';
+    effRow.style.gap = '14px';
+    effRow.style.marginTop = '12px';
+    effRow.style.flexWrap = 'wrap';
+
+    const effLabel = document.createElement('span');
+    effLabel.textContent = 'Effective:';
+    effLabel.style.fontSize = '13px';
+    effLabel.style.fontWeight = '600';
+    effLabel.style.color = 'var(--text-primary)';
+
+    const minInput = document.createElement('input');
+    minInput.type = 'number';
+    minInput.min = '1';
+    minInput.step = '1';
+    minInput.value = String(_pu.effectiveMinutes);
+    minInput.style.width = '64px';
+    minInput.style.padding = '4px 6px';
+    minInput.disabled = _pu.effectiveMode !== 'minutes';
+    minInput.addEventListener('input', () => {
+        const n = parseInt(minInput.value, 10);
+        if (Number.isFinite(n) && n > 0) _pu.effectiveMinutes = n;
+    });
+
+    const mkEffOption = (val, prefixText) => {
+        const wrap = document.createElement('label');
+        wrap.style.display = 'flex';
+        wrap.style.alignItems = 'center';
+        wrap.style.gap = '6px';
+        wrap.style.fontSize = '13px';
+        wrap.style.color = 'var(--text-primary)';
+        wrap.style.cursor = 'pointer';
+        const radio = document.createElement('input');
+        radio.type = 'radio';
+        radio.name = 'pu-eff';
+        radio.value = val;
+        radio.checked = _pu.effectiveMode === val;
+        radio.addEventListener('change', () => {
+            if (!radio.checked) return;
+            _pu.effectiveMode = val;
+            minInput.disabled = val !== 'minutes';
+            if (val === 'minutes') minInput.focus();
+        });
+        const span = document.createElement('span');
+        span.textContent = prefixText;
+        wrap.appendChild(radio);
+        wrap.appendChild(span);
+        return wrap;
+    };
+
+    const nowWrap = mkEffOption('now', 'Now');
+    const minWrap = mkEffOption('minutes', 'In');
+    const minSuffix = document.createElement('span');
+    minSuffix.textContent = 'minutes from now';
+    minSuffix.style.fontSize = '13px';
+    minSuffix.style.color = 'var(--text-secondary)';
+    minWrap.appendChild(minInput);
+    minWrap.appendChild(minSuffix);
+
+    effRow.appendChild(effLabel);
+    effRow.appendChild(nowWrap);
+    effRow.appendChild(minWrap);
+    priceCard.appendChild(effRow);
+
     // Publish button + status line
     const actionRow = document.createElement('div');
     actionRow.style.display = 'flex';
@@ -452,7 +616,7 @@ function _puRenderForm(container) {
     actionRow.appendChild(publishBtn);
 
     // Dismiss — manually ends the in-flight job early. Hidden unless a job is active.
-    const dismissBtn = createActionButton('#7a3b3b', '#5a2a2a');
+    const dismissBtn = createActionButton('#a72929', '#7a2b2b');
     dismissBtn.textContent = 'Dismiss';
     dismissBtn.style.padding = '8px 18px';
     dismissBtn.style.display = 'none';
@@ -682,6 +846,15 @@ async function _puPublish(button, statusLine) {
         return alert('Enable at least one product and enter a price.');
     }
 
+    // Effective delay: 0 for "now", else the entered whole minutes.
+    let effectiveInMinutes = 0;
+    if (_pu.effectiveMode === 'minutes') {
+        effectiveInMinutes = parseInt(_pu.effectiveMinutes, 10);
+        if (!Number.isInteger(effectiveInMinutes) || effectiveInMinutes < 1) {
+            return alert('Enter a whole number of minutes (1 or more) for the effective time.');
+        }
+    }
+
     // Don't tear down any in-progress job view yet — if the server rejects the
     // publish (e.g. 409 while another job is active), we want the current job's
     // published list + ACK table to stay on screen. Teardown happens only on a
@@ -699,7 +872,8 @@ async function _puPublish(button, statusLine) {
                 city: _pu.selectedCity,
                 customer_code: _pu.selectedCustomer,
                 prices,
-                retain: !!_pu.retain
+                retain: !!_pu.retain,
+                effectiveInMinutes
             })
         });
         status = resp.status;
@@ -730,6 +904,7 @@ async function _puPublish(button, statusLine) {
     _pu.activeJob = {
         jobId: data.jobId,
         items: data.items || [],
+        retained: !!data.retained,
         startedAt: Date.now(),
         ackedByDuc: new Map()  // "address|product" -> ackedAt (ISO)
     };
@@ -834,6 +1009,7 @@ function _puRestoreActiveJob(data) {
     _pu.activeJob = {
         jobId: data.jobId,
         items: data.items || [],
+        retained: !!data.retained,
         startedAt: Date.now(),
         ackedByDuc: new Map()
     };
