@@ -47,6 +47,8 @@ function renderSidebar() {
         items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'overview.html' });
     }
 
+    items.push({ page: 'analytics', label: 'Analytics', icon: 'analytics-icon.png', url: 'analytics.html' });
+
     if (!isOperator) {
         items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
         items.push({ page: 'sites', label: 'Site Management', icon: 'sites-icon.png', url: 'site-management.html' });
@@ -66,6 +68,7 @@ function renderSidebar() {
     const pageMap = {
         'index': 'dashboard',
         'overview': 'overview',
+        'analytics': 'analytics',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
         'user-management': 'users',
