@@ -1776,3 +1776,241 @@ td {
 @keyframes page-loader-spin {
     to { transform: rotate(360deg); }
 }
+
+/* ---- analytics page: fleet-wide bar charts + collapsible list panel ---- */
+/* Responsive two-pane layout: charts on the left, list panel on the right.
+   They sit side by side while the viewport fits (chart-card min + panel min +
+   gap); below that the panel wraps to a full-width row beneath the charts, and
+   when even the panel's max-width can't fit it shrinks to the available width. */
+.analysis-layout {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+.analysis-charts {
+    flex: 1 1 320px;
+    min-width: 220px;            /* == chart-card min-width; drives the wrap point */
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: stretch; /* equal-height cards regardless of the filter toolbar */
+}
+.analysis-card {
+    /* Small basis + grow (no max-width) so cards always fill their row — three
+       fit side by side when there's room, otherwise they grow to fill the row
+       instead of leaving a blank gap. */
+    flex: 1 1 280px;
+    min-width: 240px;
+    min-height: 430px;       /* fixed chart-card height */
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 18px 20px 22px;
+    transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+/* The chart whose rows are open in the list panel is ringed with the accent. */
+.analysis-card.active-source {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent), var(--shadow-card);
+}
+.analysis-header-right {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+.analysis-list-btn {
+    white-space: nowrap;
+}
+.analysis-view-tabs {
+    margin-bottom: 14px;
+}
+
+/* Right-side collapsible list panel — an in-flow flex item (wraps responsively).
+   ↓↓↓ Change max-width to make the expanded panel wider/narrower. ↓↓↓ */
+.analysis-viewer-panel {
+    flex: 1 1 420px;
+    min-width: 340px;            /* with chart-card min, sets the side-by-side cutoff */
+    max-width: 640px;
+    box-sizing: border-box;
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: var(--shadow-card);
+    padding: 16px 18px;
+    min-height: 320px;
+    transition: max-width 0.2s ease, padding 0.2s ease;
+}
+.analysis-viewer-panel.collapsed {
+    flex: 0 0 auto;
+    width: 40px;
+    min-width: 40px;
+    max-width: 40px;
+    min-height: 0;
+    padding: 12px 6px;
+}
+.analysis-viewer-panel.collapsed .analysis-viewer-title-box,
+.analysis-viewer-panel.collapsed .analysis-viewer-body {
+    display: none;
+}
+.analysis-viewer-panel.collapsed .analysis-viewer-header {
+    justify-content: center;
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.analysis-viewer-title-box {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    min-width: 0;
+}
+.analysis-viewer-toggle {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    color: var(--text-secondary);
+    padding: 2px 4px;
+    line-height: 1;
+    border-radius: 3px;
+    flex-shrink: 0;
+}
+.analysis-viewer-toggle:hover {
+    background: var(--bg-surface-2);
+}
+.analysis-viewer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 14px;
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 10px;
+}
+.analysis-viewer-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+.analysis-viewer-count {
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.analysis-viewer-body {
+    min-width: 0;
+}
+.analysis-viewer-table-host {
+    min-width: 0;
+    max-height: 65vh;
+    overflow: auto;     /* long lists scroll vertically; wide tables horizontally */
+}
+.analysis-viewer-search-row {
+    margin-bottom: 10px;
+}
+.analysis-viewer-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 7px 10px;
+    font-size: 13px;
+    color: var(--text-primary);
+    background: var(--bg-surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+}
+.analysis-viewer-search:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+.analysis-sortable-th:hover {
+    background: var(--bg-sidebar-hover) !important;
+}
+/* Generic click-to-sort header cells (common.js makeTableSortable). */
+th.sortable-th {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+}
+th.sortable-th:hover {
+    background: var(--bg-sidebar-hover);
+}
+.analysis-viewer-placeholder {
+    margin: auto;
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+    padding: 40px 20px;
+}
+.status-pill {
+    display: inline-block;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.4;
+    white-space: nowrap;
+}
+.analysis-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    margin-bottom: 18px;
+    border-bottom: 1px solid var(--border-soft);
+    padding-bottom: 10px;
+}
+.analysis-card-header h2 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-heading);
+}
+.analysis-card-total {
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+.analysis-card .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    gap: 16px;
+    flex: 1 1 auto;       /* fill the card so both charts' bars share a baseline */
+    min-height: 260px;
+    padding: 8px 4px 0;
+}
+.analysis-card .bar-col {
+    flex: 1 1 0;
+    max-width: 70px;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+}
+.analysis-card .bar-value {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+}
+.analysis-card .bar {
+    width: 100%;
+    max-width: 38px;
+    border-radius: 5px 5px 0 0;
+    min-height: 0;
+    transition: height 0.4s ease;
+}
+.analysis-card .bar-label {
+    margin-top: 10px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    text-align: center;
+}
