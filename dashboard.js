@@ -293,6 +293,7 @@ function buildOfflineDucsPopup(rows) {
         });
     }
     table.appendChild(tbody);
+    makeTableSortable(table);
     tableWrap.appendChild(table);
     popup.appendChild(tableWrap);
 

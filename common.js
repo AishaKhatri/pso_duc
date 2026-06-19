@@ -402,6 +402,53 @@ function createNoDataMessage(message) {
     return noData;
 }
 
+function makeTableSortable(table) {
+    if (!table || table._sortableWired) return;
+    const headRow = table.tHead && table.tHead.rows[0];
+    const tbody = table.tBodies && table.tBodies[0];
+    if (!headRow || !tbody) return;
+    table._sortableWired = true;
+
+    const ths = Array.from(headRow.cells);
+    let sortCol = null;
+    let sortDir = 1; // 1 = ascending, -1 = descending
+
+    const cellValue = (row, ci) => {
+        const cell = row.cells[ci];
+        if (!cell) return '';
+        const ds = cell.dataset ? cell.dataset.sort : null;
+        return ds != null ? ds : cell.textContent.trim();
+    };
+
+    const apply = () => {
+        const rows = Array.from(tbody.rows);
+        rows.sort((a, b) =>
+            String(cellValue(a, sortCol)).localeCompare(
+                String(cellValue(b, sortCol)), undefined,
+                { numeric: true, sensitivity: 'base' }) * sortDir);
+        const frag = document.createDocumentFragment();
+        rows.forEach(r => frag.appendChild(r));
+        tbody.appendChild(frag);
+        ths.forEach((th, ci) => {
+            if (th.dataset.noSort) return;
+            const arrow = ci === sortCol ? (sortDir === 1 ? '  ▲' : '  ▼') : '';
+            th.textContent = th.dataset.sortLabel + arrow;
+        });
+    };
+
+    ths.forEach((th, ci) => {
+        if (th.dataset.noSort) return;
+        th.dataset.sortLabel = th.textContent; // base label, sans arrow
+        th.classList.add('sortable-th');
+        th.addEventListener('click', () => {
+            if (sortCol === ci) sortDir = -sortDir;
+            else { sortCol = ci; sortDir = 1; }
+            apply();
+        });
+    });
+}
+window.makeTableSortable = makeTableSortable;
+
 function createTable(columns) {
     const tableContainer = document.createElement('div');
     tableContainer.className = 'app-table-container';
@@ -430,6 +477,9 @@ function createTable(columns) {
         th.style.fontWeight = '600';
         th.style.color = 'var(--text-primary)';
         th.textContent = headerText;
+        // Action/button columns (and blank headers) carry no sortable value.
+        const label = String(headerText || '').trim().toLowerCase();
+        if (label === '' || label === 'actions') th.dataset.noSort = '1';
         headerRow.appendChild(th);
     });
     headerRow.lastChild.style.borderRight = 'none';
@@ -442,6 +492,10 @@ function createTable(columns) {
     table.appendChild(tbody);
 
     tableContainer.appendChild(table);
+
+    // Every createTable-based table gets click-to-sort headers for free. Rows
+    // are read live on click, so this is fine even though callers add them after.
+    makeTableSortable(table);
 
     return { tableContainer , tbody };
 }

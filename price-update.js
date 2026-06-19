@@ -758,6 +758,9 @@ function _puRenderDucTable() {
         }
     }
     table.appendChild(tbody);
+    // Click-to-sort headers. Sorting only reorders the existing <tr> nodes; the
+    // live ACK repaint finds cells by row dataset/class, so it keeps working.
+    makeTableSortable(table);
     host.appendChild(table);
 
     // If a job is currently running, repaint any cells whose ACK already
