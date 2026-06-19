@@ -101,10 +101,18 @@ const StationAuth = {
   },
 
   clearAuth() {
-    // Preserve user theme preference across sign-out
-    const theme = localStorage.getItem('theme');
+    // Sign-out should drop credentials but keep the user's device/UI
+    // preferences — theme, sidebar collapse, and alarms-panel collapse are
+    // per-browser display choices, not session state, so they should survive
+    // across sign-out instead of resetting on every login.
+    const preservedKeys = ['theme', 'sidebarCollapsed', 'alarmsPanelCollapsed'];
+    const preserved = {};
+    preservedKeys.forEach(k => {
+      const v = localStorage.getItem(k);
+      if (v !== null) preserved[k] = v;
+    });
     localStorage.clear();
-    if (theme) localStorage.setItem('theme', theme);
+    Object.entries(preserved).forEach(([k, v]) => localStorage.setItem(k, v));
   }
 };
 
@@ -120,9 +128,13 @@ async function checkAuthentication() {
   }
 
   try {
-    // Verify user exists in database
+    // Verify user exists in database. Force a network round-trip — never let
+    // the browser satisfy this from its HTTP cache. A cached 200 here is what
+    // makes a reopened tab show data while the very next navigation (a fresh
+    // network request) gets the real 401 and bounces to signin.
     const token = localStorage.getItem('authToken');
     const response = await fetch(`${API_BASE_URL}/auth/verify`, {
+      cache: 'no-store',
       headers: { 'Authorization': `Bearer ${token}` }
     });
     

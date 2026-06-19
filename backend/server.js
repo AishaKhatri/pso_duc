@@ -519,6 +519,13 @@ app.get('/api/long-outages', async (req, res) => {
 });
 
 app.get('/api/auth/verify', async (req, res) => {
+  // Auth state must always be revalidated against the live session — never
+  // served stale from any HTTP cache. Without this, a browser can hand a
+  // reopened tab a cached "authenticated" 200 (page renders), then return the
+  // real 401 on the next navigation, bouncing the user to signin.
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
   try {
     const token = req.headers.authorization?.split(' ')[1];
     
