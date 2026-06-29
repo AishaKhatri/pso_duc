@@ -26,6 +26,8 @@ let nozzleMode = 'nozzle';  // 'nozzle' | 'dispenser'  (nozzle chart aggregation
 let viewerMode = null;      // null | 'device' | 'nozzle'  (which list the panel shows)
 let chartsColEl = null;
 let nozzleCardEl = null;
+let priceCardEl = null;
+let priceMatchDecimals = 1;  // 1 | 2  — precision the price chart compares at (1 = first decimal only)
 
 // Viewer-panel element refs + state (set by createViewerPanel).
 let viewerBodyEl = null;
@@ -119,16 +121,22 @@ function computeNozzleStatsDispenserWise(dispensers) {
 // ---- price match classification (mirrors the dispensers Alarms "Check Prices") ----
 //   filed = nozzle.actual_price    (the station's filed / notified price)
 //   live  = nozzle.price_per_liter (the price the nozzle is actually set to)
-// Missing filed (or live) price → "Unlisted"; within half a paisa → "Matched";
-// otherwise "Mismatched".
-const PRICE_MATCH_EPSILON = 0.005;
+// Missing filed (or live) price → "Unlisted"; otherwise the two prices are
+// keyed at the current precision (priceMatchDecimals) and compared for equality.
+// Snap to exact paisa first (kills float noise); at 1-decimal precision the last
+// paisa digit is dropped (truncate, not round), so 272.34 and 272.37 both key to
+// 2723 → "Matched"; at full precision they're compared paisa-for-paisa.
+function priceKey(x, decimals) {
+    const paisa = Math.round(x * 100);
+    return decimals >= 2 ? paisa : Math.floor(paisa / 10);
+}
 function priceMatchMeta(n) {
     const filed = Number(n.actual_price);
     const live = Number(n.price_per_liter);
     if (!(Number.isFinite(filed) && filed > 0) || !Number.isFinite(live)) {
         return { label: 'Unlisted', kind: 'accent' };
     }
-    return Math.abs(filed - live) < PRICE_MATCH_EPSILON
+    return priceKey(filed, priceMatchDecimals) === priceKey(live, priceMatchDecimals)
         ? { label: 'Matched', kind: 'online' }
         : { label: 'Mismatched', kind: 'offline' };
 }
@@ -323,8 +331,31 @@ function buildNozzleCard(dispensers) {
 function buildPriceCard(dispensers) {
     return buildBarChartCard(PRICE_CHART_TITLE, computePriceStats(dispensers), {
         action: makeViewListButton('price'),
+        toolbar: buildPricePrecisionTabs(),
         sourceKey: 'price',
     });
+}
+
+// Toggle the precision the price chart matches at: first decimal only vs. full
+// price. Mirrors buildNozzleViewTabs.
+function buildPricePrecisionTabs() {
+    const tabs = document.createElement('div');
+    tabs.className = 'chart-range-tabs analysis-view-tabs';
+    [[1, '1 Decimal'], [2, 'Full Price']].forEach(([value, text]) => {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'chart-range-tab';
+        btn.dataset.mode = String(value);
+        btn.textContent = text;
+        if (value === priceMatchDecimals) btn.classList.add('active');
+        btn.addEventListener('click', () => {
+            if (btn.classList.contains('active')) return;
+            priceMatchDecimals = value;
+            rebuildPriceCard();
+        });
+        tabs.appendChild(btn);
+    });
+    return tabs;
 }
 
 // Highlight the active chart's "View List" button and ring its card.
@@ -349,6 +380,19 @@ function rebuildNozzleCard() {
     nozzleCardEl = fresh;
     syncActiveStates();
     if (viewerMode === 'nozzle') renderViewer();
+}
+
+function rebuildPriceCard() {
+    if (!chartsColEl) return;
+    const fresh = buildPriceCard(latestDispensers);
+    if (priceCardEl && priceCardEl.parentNode === chartsColEl) {
+        chartsColEl.replaceChild(fresh, priceCardEl);
+    } else {
+        chartsColEl.appendChild(fresh);
+    }
+    priceCardEl = fresh;
+    syncActiveStates();
+    if (viewerMode === 'price') renderViewer();
 }
 
 // ---- collapsible viewer panel (in-flow flex item) ----
@@ -687,7 +731,8 @@ async function renderAnalysis() {
         chartsCol.appendChild(buildDeviceCard(dispensers));
         nozzleCardEl = buildNozzleCard(dispensers);
         chartsCol.appendChild(nozzleCardEl);
-        chartsCol.appendChild(buildPriceCard(dispensers));
+        priceCardEl = buildPriceCard(dispensers);
+        chartsCol.appendChild(priceCardEl);
         syncActiveStates();
         renderViewer();
         lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;

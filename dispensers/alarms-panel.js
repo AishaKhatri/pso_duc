@@ -16,6 +16,15 @@
 // page reloads — re-clicking "Check Prices" still excludes these.
 const _dismissedMismatches = new Set();
 
+// Two prices "match" when they agree to the first decimal place — anything past
+// the first decimal (the 2nd paisa digit and finer) is ignored. We key a price
+// to integer + first-decimal by snapping to exact paisa first (kills float
+// noise), then dropping the last paisa digit (truncate, not round). So 272.34
+// and 272.37 both key to 2723 → matched; 272.39 vs 272.40 (2723 vs 2724) don't.
+function priceKey1dp(x) {
+    return Math.floor(Math.round(x * 100) / 10);
+}
+
 // Panel widths (px). The host page's stage paddingRight tracks these via the
 // 'alarms-panel-resize' event so cards reclaim the freed space when collapsed.
 const ALARMS_PANEL_WIDTH_EXPANDED = 280;
@@ -275,7 +284,7 @@ function collectPriceMismatches() {
                 unlistedItems.push({ ...baseItem, type: 'unlisted', live: null });
                 return;
             }
-            if (Math.abs(filed - live) < 0.005) {
+            if (priceKey1dp(filed) === priceKey1dp(live)) {
                 matched++;
                 return;
             }
