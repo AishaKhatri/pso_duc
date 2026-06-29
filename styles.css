@@ -229,7 +229,7 @@ body {
 }
 
 .sidebar-item {
-    padding: 15px 15px;
+    padding: 12px 15px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -258,6 +258,113 @@ body {
     opacity: 0;
     width: 0;
 }
+
+/* Super-admin tools group */
+.sidebar-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.sidebar-group-header {
+    justify-content: flex-start;
+}
+
+.sidebar-group-chevron {
+    margin-left: auto;
+    font-size: 28px;
+    line-height: 1;
+    transform: rotate(-90deg);
+    transition: transform 0.2s ease;
+}
+
+.sidebar-group.expanded .sidebar-group-chevron {
+    transform: rotate(0deg);
+}
+
+.sidebar-submenu {
+    display: none;
+    flex-direction: column;
+}
+
+.sidebar-group.expanded .sidebar-submenu {
+    display: flex;
+}
+
+/* Sub-items are indented page links / action buttons. The button reset keeps
+   <button> sub-items visually identical to <a> sub-items. */
+.sidebar-subitem {
+    padding-left: 40px;
+    padding: 8px 0 8px 40px;
+    font-size: 13px;
+    background: none;
+    border: none;
+    width: 100%;
+    text-align: left;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.sidebar.collapsed .sidebar-subitem {
+    padding-left: 15px;
+}
+
+/* Collapsed rail: the submenu becomes a flyout popup, shown on hover or when
+   click-locked open. position:fixed (coords set in JS) so it escapes the
+   sidebar's horizontal overflow clipping. */
+.sidebar.collapsed .sidebar-group .sidebar-submenu {
+    display: none;
+    position: fixed;
+    min-width: 190px;
+    background-color: var(--bg-sidebar);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    box-shadow: var(--shadow-card);
+    padding: 6px 0;
+    z-index: 1200;
+}
+
+.sidebar.collapsed .sidebar-group.flyout-hover .sidebar-submenu,
+.sidebar.collapsed .sidebar-group.flyout-open .sidebar-submenu {
+    display: flex;
+}
+
+/* Inside the flyout, show full text labels and give items breathing room. */
+.sidebar.collapsed .sidebar-group .sidebar-submenu .sidebar-subitem {
+    padding: 10px 18px;
+}
+
+.sidebar.collapsed .sidebar-group .sidebar-submenu .sidebar-label {
+    opacity: 1;
+    width: auto;
+}
+
+/* Transient toast raised by sidebar actions (e.g. Scan Dispensers) */
+.sidebar-toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(12px);
+    background-color: var(--bg-card, #1e2530);
+    color: var(--text-primary, #fff);
+    border: 1px solid var(--border, #333);
+    border-left: 4px solid var(--accent, #2a8bf2);
+    padding: 12px 18px;
+    border-radius: 6px;
+    font-size: 14px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    z-index: 10000;
+    max-width: 80vw;
+}
+
+.sidebar-toast.visible {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+}
+
+.sidebar-toast.success { border-left-color: #2e9e5b; }
+.sidebar-toast.error { border-left-color: #d9534f; }
 
 .sidebar-logo {
     width: 65px;

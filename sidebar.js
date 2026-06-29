@@ -58,9 +58,20 @@ function renderSidebar() {
         items.push({ page: 'price-update', label: 'Price Update', icon: 'prices-icon.png', url: 'price-update.html' });
     }
 
+    // Super-admin-only tools group: a collapsible section holding page links
+    // (e.g. the price-file upload page, activity logs) and action buttons
+    // (e.g. Scan Dispensers) that only a super admin may use.
+    let adminGroup = null;
     if (isSuperAdmin) {
-        items.push({ page: 'prices', label: 'Prices', icon: 'prices-icon.png', url: 'prices.html' });
-        items.push({ page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' });
+        adminGroup = {
+            label: 'Admin Tools',
+            icon: 'config-icon.png',
+            children: [
+                { type: 'link', page: 'prices', label: 'Upload Price File', icon: 'prices-icon.png', url: 'prices.html' },
+                { type: 'link', page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' },
+                { type: 'action', action: 'scan-dispensers', label: 'Scan Dispensers', icon: 'search-icon.svg' },
+            ]
+        };
     }
 
     // Determine current page based on window location
@@ -106,6 +117,12 @@ function renderSidebar() {
     sidebar.appendChild(toggleBtn);
     sidebarItems.forEach(item => sidebar.appendChild(item));
 
+    // Render the super-admin tools group (links + action buttons) below the
+    // regular flat items.
+    if (adminGroup) {
+        sidebar.appendChild(renderSidebarGroup(adminGroup, activePage));
+    }
+
     // Adjust content wrapper based on initial state
     const contentWrapper = document.querySelector('.content-wrapper');
     if (contentWrapper) {
@@ -127,6 +144,182 @@ function renderSidebar() {
             contentWrapper.style.marginLeft = isNowCollapsed ? '55px' : '220px';
         }
     });
+}
+
+// Build a collapsible sidebar group: a header row that toggles a submenu of
+// page links and/or action buttons. Expand/collapse state is persisted, and
+// the group auto-expands when one of its child pages is the active page.
+function renderSidebarGroup(group, activePage) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sidebar-group';
+
+    const childPages = group.children
+        .filter(c => c.type === 'link')
+        .map(c => c.page);
+    const containsActive = childPages.includes(activePage);
+
+    const stored = localStorage.getItem('sidebarAdminToolsExpanded');
+    // Default to expanded on first visit (stored === null); always expand when
+    // a child page is the one currently open.
+    const expanded = containsActive || stored === null || stored === 'true';
+    if (expanded) wrapper.classList.add('expanded');
+
+    // Header row.
+    const header = document.createElement('div');
+    header.className = 'sidebar-item sidebar-group-header';
+
+    const headerIcon = document.createElement('img');
+    headerIcon.src = `assets/graphics/${group.icon}`;
+    headerIcon.alt = group.label;
+    headerIcon.className = 'sidebar-icon';
+
+    const headerLabel = document.createElement('span');
+    headerLabel.className = 'sidebar-label';
+    headerLabel.textContent = group.label;
+
+    const chevron = document.createElement('span');
+    chevron.className = 'sidebar-group-chevron sidebar-label';
+    chevron.textContent = '▾';
+
+    header.appendChild(headerIcon);
+    header.appendChild(headerLabel);
+    header.appendChild(chevron);
+
+    // Submenu.
+    const submenu = document.createElement('div');
+    submenu.className = 'sidebar-submenu';
+
+    group.children.forEach(child => {
+        let el;
+        if (child.type === 'link') {
+            el = document.createElement('a');
+            el.href = child.url;
+            el.className = `sidebar-item sidebar-subitem ${activePage === child.page ? 'active' : ''}`;
+            el.setAttribute('data-page', child.page);
+        } else {
+            el = document.createElement('button');
+            el.type = 'button';
+            el.className = 'sidebar-item sidebar-subitem';
+            el.setAttribute('data-action', child.action);
+            if (child.action === 'scan-dispensers') {
+                el.addEventListener('click', handleScanDispensers);
+            }
+        }
+
+        // Sub-items are text-only — no icon.
+        const label = document.createElement('span');
+        label.className = 'sidebar-label';
+        label.textContent = child.label;
+
+        el.appendChild(label);
+        submenu.appendChild(el);
+    });
+
+    const isRailCollapsed = () => {
+        const el = document.getElementById('sidebar');
+        return !!el && el.classList.contains('collapsed');
+    };
+
+    // When the rail is collapsed the submenu is a fixed-position flyout, so its
+    // coords must be computed live (it can't sit inline — the sidebar's
+    // overflow clips anything past its right edge).
+    const positionFlyout = () => {
+        const sidebarEl = document.getElementById('sidebar');
+        if (!sidebarEl) return;
+        const headerRect = header.getBoundingClientRect();
+        const railRect = sidebarEl.getBoundingClientRect();
+        submenu.style.top = `${headerRect.top}px`;
+        submenu.style.left = `${railRect.right}px`;
+    };
+
+    // Collapsed: reveal the flyout on hover; expanded: no-op (inline submenu).
+    wrapper.addEventListener('mouseenter', function () {
+        if (!isRailCollapsed()) return;
+        positionFlyout();
+        wrapper.classList.add('flyout-hover');
+    });
+    wrapper.addEventListener('mouseleave', function () {
+        wrapper.classList.remove('flyout-hover');
+    });
+
+    header.addEventListener('click', function () {
+        // Collapsed: click locks the flyout open (so it survives mouse-out);
+        // a second click — or a click anywhere outside — closes it.
+        if (isRailCollapsed()) {
+            const willOpen = !wrapper.classList.contains('flyout-open');
+            if (willOpen) positionFlyout();
+            wrapper.classList.toggle('flyout-open', willOpen);
+            return;
+        }
+        // Expanded: toggle the inline accordion and remember the choice.
+        const nowExpanded = !wrapper.classList.contains('expanded');
+        wrapper.classList.toggle('expanded', nowExpanded);
+        localStorage.setItem('sidebarAdminToolsExpanded', String(nowExpanded));
+    });
+
+    // Dismiss a click-locked flyout when the user clicks outside the group.
+    document.addEventListener('click', function (e) {
+        if (!wrapper.contains(e.target)) {
+            wrapper.classList.remove('flyout-open');
+        }
+    });
+
+    wrapper.appendChild(header);
+    wrapper.appendChild(submenu);
+    return wrapper;
+}
+
+// "Scan Dispensers" action: asks the backend to publish the broadcast scan
+// command on duc/broadcast. The clientid/ip in the payload are filled in
+// server-side from variables — the frontend just triggers the action.
+async function handleScanDispensers(e) {
+    const btn = e.currentTarget;
+    if (btn.disabled) return;
+
+    const labelEl = btn.querySelector('.sidebar-label');
+    const originalLabel = labelEl ? labelEl.textContent : '';
+
+    btn.disabled = true;
+    if (labelEl) labelEl.textContent = 'Scanning…';
+
+    try {
+        const userInfo = (typeof StationAuth !== 'undefined' && StationAuth.getUserInfo && StationAuth.getUserInfo()) || null;
+        const response = await fetch(`${API_BASE_URL}/dispensers/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                userId: userInfo?.id ?? null,
+                username: userInfo?.username ?? null
+            })
+        });
+
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || 'Failed to start scan');
+        }
+        showSidebarToast('Dispenser scan broadcast sent', 'success');
+    } catch (err) {
+        console.error('Scan dispensers failed:', err);
+        showSidebarToast(`Scan failed: ${err.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        if (labelEl) labelEl.textContent = originalLabel;
+    }
+}
+
+// Lightweight transient toast — sidebar.js loads on every page, so it can't
+// rely on a page-specific status helper being present.
+function showSidebarToast(message, type = 'success') {
+    const toast = document.createElement('div');
+    toast.className = `sidebar-toast ${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    // Force reflow so the entry transition runs, then show.
+    requestAnimationFrame(() => toast.classList.add('visible'));
+    setTimeout(() => {
+        toast.classList.remove('visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 3000);
 }
 
 window.renderSidebar = renderSidebar;
