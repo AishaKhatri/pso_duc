@@ -6,6 +6,8 @@ const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
+const dgram = require('dgram');
 const crypto = require('crypto');
 const pool = require('./db'); // Use shared pool from db.js
 const {
@@ -1961,14 +1963,22 @@ app.get('/api/device-info/:address', async (req, res) => {
     }
 });
 
-// Brute-force guard: 5 attempts per 15 minutes per IP. Successful sign-ins
-// don't count toward the limit, so a normal user never hits it.
+// Brute-force guard: 5 attempts per 15 minutes, scoped per account+IP.
+// Successful sign-ins don't count toward the limit, so a normal user never
+// hits it.
 const signinLimiter = rateLimit({
     windowMs: 15 * 60 * 1000,
     max: 5,
     standardHeaders: true,
     legacyHeaders: false,
     skipSuccessfulRequests: true,
+    keyGenerator: (req) => {
+        const username = (req.body && req.body.username ? String(req.body.username) : '')
+            .trim()
+            .toLowerCase();
+        const ip = getClientIp(req) || 'unknown';
+        return `${ip}|${username}`;
+    },
     message: { error: 'Too many sign-in attempts. Try again in 15 minutes.' }
 });
 
@@ -2291,6 +2301,74 @@ app.post('/api/dispensers/publish', async (req, res) => {
     } catch (error) {
         console.error('MQTT publish error:', error);
         res.status(500).json({ success: false, error: error.message || 'Failed to publish' });
+    }
+});
+
+// Identity the central server presents in broadcast control messages.
+const SCAN_BROADCAST_TOPIC = 'duc/broadcast';
+const SERVER_CLIENT_ID = process.env.MQTT_CLIENT_ID || 'unknown';
+
+// Host of the MQTT broker, parsed from MQTT_BROKER_URL (e.g. tcp://1.2.3.4:1883).
+// Used as the route target when resolving this server's outbound IP.
+function getBrokerHost() {
+    try {
+        return new URL(process.env.MQTT_BROKER_URL).hostname || null;
+    } catch {
+        return null;
+    }
+}
+
+function getServerIp() {
+    return new Promise((resolve) => {
+        const target = getBrokerHost() || '8.8.8.8'; // any routable host works
+        const socket = dgram.createSocket('udp4');
+        let settled = false;
+        const finish = (ip) => {
+            if (settled) return;
+            settled = true;
+            try { socket.close(); } catch { /* already closed */ }
+            resolve(ip);
+        };
+        try {
+            socket.connect(1883, target, () => {
+                try {
+                    finish(socket.address().address || null);
+                } catch {
+                    finish(null);
+                }
+            });
+            socket.on('error', () => finish(null));
+        } catch {
+            finish(null);
+        }
+    });
+}
+
+// Trigger a fleet-wide dispenser scan: publish a broadcast control message
+// (msg_type 16, request_type 1) on duc/broadcast that every DUC listens for.
+// Super-admin-only action surfaced by the sidebar "Scan Dispensers" button.
+app.post('/api/dispensers/scan', async (req, res) => {
+    try {
+        const { userId, username } = req.body || {};
+        const payload = JSON.stringify({
+            clientid: SERVER_CLIENT_ID,
+            ip: await getServerIp(),
+            msg_type: 16,
+            request_type: 1
+        });
+        await publishMessage(SCAN_BROADCAST_TOPIC, payload);
+
+        logActivity(req, 'dispenser_scan', {
+            user_id: userId,
+            username: username,
+            entity_type: 'mqtt_topic',
+            entity_id: SCAN_BROADCAST_TOPIC,
+            details: { payload }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Dispenser scan publish error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to start scan' });
     }
 });
 
