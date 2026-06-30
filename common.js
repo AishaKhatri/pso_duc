@@ -454,6 +454,7 @@ function createTable(columns) {
     tableContainer.className = 'app-table-container';
     tableContainer.style.backgroundColor = 'var(--bg-surface)';
     tableContainer.style.borderRadius = '5px';
+    tableContainer.style.border = '1px solid var(--border)';
     tableContainer.style.boxShadow = 'var(--shadow-card)';
     tableContainer.style.overflow = 'hidden';
 
@@ -964,8 +965,16 @@ async function createCard(address, customer_code, opts = {}) {
         showDevStatusPopup(address);
     });
 
+    // The status sits in a right-aligned group so callers can append adornments
+    // (e.g. the dispenser refresh button) immediately to its right.
+    const statusContainer = document.createElement('div');
+    statusContainer.style.display = 'flex';
+    statusContainer.style.alignItems = 'center';
+    statusContainer.style.gap = '8px';
+    statusContainer.appendChild(statusText);
+
     titleContainer.appendChild(titleText);
-    titleContainer.appendChild(statusText);
+    titleContainer.appendChild(statusContainer);
     card.appendChild(titleContainer);
 
     const nextContainer = document.createElement('div');
@@ -1075,7 +1084,78 @@ async function createCard(address, customer_code, opts = {}) {
 
     card.appendChild(tab);
 
-    return { card, titleContainer };
+    return { card, titleContainer, statusContainer };
+}
+
+// Remark/comment block shown below a dispenser's nozzle cards. Shows the latest
+// remark inline (text + time) for every role, plus a link that opens the
+// device-status popup on its "Remarks" tab — where the full archived timeline
+// (with author + IP) lives and, for admin / super_admin, the add-remark box.
+// The latest value comes from the dispenser row already returned by
+// /api/dispensers[-full]. Returns a DOM node the card builders append after the
+// nozzle grid.
+function buildDispenserRemarkSection(dispenser) {
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    const canEdit = role === 'admin' || role === 'super_admin';
+
+    const wrap = document.createElement('div');
+    wrap.className = 'dispenser-remark';
+    Object.assign(wrap.style, {
+        marginTop: '14px',
+        paddingTop: '10px',
+        borderTop: '1px solid var(--border-soft)'
+    });
+
+    // Header row: "Remark" label + link into the Remarks tab.
+    const headRow = document.createElement('div');
+    Object.assign(headRow.style, {
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: '6px'
+    });
+    const label = document.createElement('div');
+    label.textContent = 'Remark';
+    Object.assign(label.style, { fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' });
+    const historyLink = document.createElement('span');
+    historyLink.textContent = canEdit ? 'View / add remarks' : 'View history';
+    Object.assign(historyLink.style, { fontSize: '12px', color: 'var(--link)', cursor: 'pointer' });
+    historyLink.addEventListener('click', () => {
+        if (typeof window.showDevStatusPopup === 'function') {
+            window.showDevStatusPopup(ensureDAddress(dispenser.address), 'remarks');
+        }
+    });
+    headRow.appendChild(label);
+    headRow.appendChild(historyLink);
+    wrap.appendChild(headRow);
+
+    // Latest remark + when it was added (author/IP live in the Remarks tab).
+    const current = document.createElement('div');
+    Object.assign(current.style, {
+        fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+    });
+    const hasRemark = dispenser.remark && String(dispenser.remark).trim() !== '';
+    current.textContent = hasRemark ? dispenser.remark : 'No remark added.';
+    current.style.color = hasRemark ? 'var(--text-primary)' : 'var(--text-secondary)';
+    current.style.fontStyle = hasRemark ? 'normal' : 'italic';
+    wrap.appendChild(current);
+
+    if (dispenser.remark_at) {
+        const meta = document.createElement('div');
+        Object.assign(meta.style, { fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' });
+        const dt = new Date(dispenser.remark_at);
+        meta.textContent = `Logged at: ${isNaN(dt.getTime()) ? dispenser.remark_at : dt.toLocaleString()}`;
+        wrap.appendChild(meta);
+    }
+
+    return wrap;
+}
+
+// Re-render a card's inline remark block from fresh dispenser data. Called by
+// the periodic refresh so a remark added via the popup (or by another user)
+// shows up without a page reload.
+function refreshDispenserRemarkSection(card, dispenser) {
+    if (!card) return;
+    const existing = card.querySelector('.dispenser-remark');
+    if (existing) existing.replaceWith(buildDispenserRemarkSection(dispenser));
 }
 
 function createInterfaceStatusIndicator(dispenser) {
@@ -1169,6 +1249,142 @@ function createRefreshConnStatusButton() {
         };
     });
     return btn;
+}
+
+// Small popup menu anchored beneath an element. `items` is an array of
+// { label, onClick }. Opens on hover (mouse) and on click/tap (touch); closes
+// when the cursor leaves both the anchor and the menu, on outside-click, on
+// Escape, or after an item is chosen. Generic — reusable for any per-element
+// action menu.
+function createAnchoredMenu(anchorEl, items) {
+    let menu = null;
+
+    const onDocClick = (e) => {
+        if (menu && !menu.contains(e.target) && e.target !== anchorEl) close();
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+
+    const close = () => {
+        if (!menu) return;
+        menu.remove();
+        menu = null;
+        document.removeEventListener('click', onDocClick, true);
+        document.removeEventListener('keydown', onKey);
+    };
+
+    const open = () => {
+        if (menu) return;
+        menu = document.createElement('div');
+        Object.assign(menu.style, {
+            position: 'fixed',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--border)',
+            borderRadius: '8px',
+            boxShadow: 'var(--shadow-card)',
+            padding: '4px',
+            zIndex: '9000',
+            display: 'flex',
+            flexDirection: 'column',
+            minWidth: '120px'
+        });
+
+        items.forEach(item => {
+            const opt = document.createElement('button');
+            opt.type = 'button';
+            opt.textContent = item.label;
+            Object.assign(opt.style, {
+                background: 'none',
+                border: 'none',
+                textAlign: 'left',
+                padding: '8px 12px',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                color: 'var(--text-primary)',
+                fontSize: '14px',
+                fontFamily: 'inherit',
+                whiteSpace: 'nowrap'
+            });
+            opt.addEventListener('mouseover', () => { opt.style.background = 'var(--bg-sidebar-hover)'; });
+            opt.addEventListener('mouseout', () => { opt.style.background = 'none'; });
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                close();
+                item.onClick?.();
+            });
+            menu.appendChild(opt);
+        });
+
+        // Close when the cursor leaves the menu for anywhere but the anchor.
+        menu.addEventListener('mouseleave', (e) => {
+            if (e.relatedTarget !== anchorEl && !anchorEl.contains(e.relatedTarget)) close();
+        });
+
+        document.body.appendChild(menu);
+
+        // Position flush under the anchor (no gap, so the cursor can move from
+        // the anchor into the menu without crossing dead space and dismissing
+        // it), nudged left if it would overflow the right edge.
+        const a = anchorEl.getBoundingClientRect();
+        const m = menu.getBoundingClientRect();
+        const left = Math.min(a.left, window.innerWidth - m.width - 8);
+        menu.style.top = `${a.bottom}px`;
+        menu.style.left = `${Math.max(8, left)}px`;
+
+        // Defer outside-click wiring so the opening click doesn't instantly close it.
+        setTimeout(() => document.addEventListener('click', onDocClick, true), 0);
+        document.addEventListener('keydown', onKey);
+    };
+
+    // Mouse: hover to open, leave (without heading into the menu) to close.
+    anchorEl.addEventListener('mouseenter', open);
+    anchorEl.addEventListener('mouseleave', (e) => {
+        if (!menu || (e.relatedTarget !== menu && !menu.contains(e.relatedTarget))) close();
+    });
+    // Touch / click: toggle.
+    anchorEl.addEventListener('click', (e) => {
+        e.stopPropagation();
+        menu ? close() : open();
+    });
+
+    return { open, close };
+}
+
+// Per-dispenser conn_status refresh — the per-card "Refresh Status" action.
+// Mirrors the bulk "Refresh Conn Status" button but scoped to one address.
+async function refreshDispenserConnStatus(dispenser) {
+    const addr = ensureDAddress(dispenser.address);
+    try {
+        const resp = await fetch(`${API_BASE_URL}/dispensers/refresh-conn-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ address: addr })
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+        window.showNotification?.(`Connection status refresh requested for ${addr}`, 'success');
+    } catch (e) {
+        console.error('refresh-conn-status (single) failed:', e);
+        window.showNotification?.(`Refresh failed: ${e.message}`, 'error');
+    }
+}
+
+// The dispenser card's refresh icon + its hover/tap action menu:
+//   - "GET Data"       → request fresh values from the dispenser (sendGetCommandsForDispenser)
+//   - "Refresh Status" → re-cycle this dispenser's conn_status subscription
+// Available to every role. Returns the icon element to drop next to the status.
+function createDispenserRefreshButton(dispenser) {
+    const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '20px');
+    refreshButton.style.cursor = 'pointer';
+    refreshButton.style.transition = 'transform 0.2s ease';
+    refreshButton.addEventListener('mouseover', () => { refreshButton.style.transform = 'scale(1.05)'; });
+    refreshButton.addEventListener('mouseout', () => { refreshButton.style.transform = 'scale(1)'; });
+
+    createAnchoredMenu(refreshButton, [
+        { label: 'GET Data', onClick: () => window.sendGetCommandsForDispenser?.(dispenser) },
+        { label: 'Refresh Status', onClick: () => refreshDispenserConnStatus(dispenser) }
+    ]);
+
+    return refreshButton;
 }
 
 // Bulk-prefetch uncleared error/reset counts for the whole page (or a single

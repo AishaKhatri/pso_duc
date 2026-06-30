@@ -552,7 +552,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     const paddedAddress = dispenser.address;
     const dispenserTopic = ensureDAddress(paddedAddress);
 
-    const { card, titleContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`, {
+    const { card, titleContainer, statusContainer } = await createCard(dispenserTopic, `Station: ${dispenser.customer_code}`, {
         dispenserId: dispenser.dispenser_id,
         brand: dispenser.DispenserBrand
     });
@@ -565,30 +565,9 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
 
     titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
 
-    // Refresh button issues commands and is only available to admin/operator
-    const cardRole = window.StationAuth?.getUserInfo?.()?.role;
-    if (cardRole === 'admin' || cardRole === 'super_admin' || cardRole === 'operator') {
-        const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '20px');
-        refreshButton.style.position = 'absolute';
-        refreshButton.style.top = '0';
-        refreshButton.style.left = '65%';
-        refreshButton.style.cursor = 'pointer';
-        refreshButton.style.transition = 'transform 0.2s ease';
-        refreshButton.title = 'Refresh';
-        refreshButton.addEventListener('click', () => {
-            sendGetCommandsForDispenser(dispenser);
-        });
-
-        refreshButton.addEventListener('mouseover', () => {
-            refreshButton.style.transform = 'scale(1.05)';
-        });
-
-        refreshButton.addEventListener('mouseout', () => {
-            refreshButton.style.transform = 'scale(1)';
-        });
-
-        titleContainer.appendChild(refreshButton);
-    }
+    // Refresh icon sits to the right of the conn-status text; its hover/tap menu
+    // offers "GET Data" and "Refresh Status". Available to every role.
+    statusContainer.appendChild(createDispenserRefreshButton(dispenser));
 
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
@@ -599,6 +578,10 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // when off-screen cards eventually materialize as the user scrolls.
     nozzleGrid.style.minHeight = `${Math.ceil(nozzles.length / 2) * 110}px`;
     card.appendChild(nozzleGrid);
+
+    // Operator remark below the nozzle cards (editable for admin/super_admin).
+    card.appendChild(buildDispenserRemarkSection(dispenser));
+
     gridContainer.appendChild(card);
 
     // Apply the initial conn_status badge now — without this, the card shows
@@ -680,6 +663,8 @@ async function updateDispenserCard(dispenser) {
     if (Array.isArray(dispenser.nozzles)) {
         card._dispenserNozzles = dispenser.nozzles;
     }
+
+    refreshDispenserRemarkSection(card, dispenser);
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 

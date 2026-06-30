@@ -37,16 +37,6 @@ function createStatusRow(label, value) {
     return createLabelValueRow(label, value);
 }
 
-// Helper function to create status indicator
-function createStatusIndicator(label, status, trueText = 'Yes', falseText = 'No') {
-    // Positive state uses the heading accent (light blue in dark, teal in
-    // light); only the negative state is red so a problem still stands out.
-    return createLabelValueRow(label, status ? trueText : falseText, {
-        color: status ? 'var(--text-heading)' : 'var(--status-offline)',
-        fontWeight: 'bold'
-    });
-}
-
 // Function to create section header
 function createSectionHeader(title, color = 'var(--text-heading)') {
     const header = document.createElement('h3');
@@ -169,9 +159,10 @@ function createMainTabs(onTabChange, initialActive = 'connectivity') {
     const connectivityTab = makeTab('Connectivity Status');
     const errorLogsTab = makeTab('Error Logs');
     const resetLogsTab = makeTab('Reset Logs');
+    const remarksTab = makeTab('Remarks');
 
     // Active tab: accent underline + accent bold text. Inactive: muted, plain.
-    const tabs = { connectivity: connectivityTab, errorLogs: errorLogsTab, resetLogs: resetLogsTab };
+    const tabs = { connectivity: connectivityTab, errorLogs: errorLogsTab, resetLogs: resetLogsTab, remarks: remarksTab };
     const updateTabStyles = (activeTab) => {
         Object.entries(tabs).forEach(([key, tab]) => {
             const active = key === activeTab;
@@ -184,6 +175,7 @@ function createMainTabs(onTabChange, initialActive = 'connectivity') {
     connectivityTab.addEventListener('click', () => { updateTabStyles('connectivity'); onTabChange('connectivity'); });
     errorLogsTab.addEventListener('click', () => { updateTabStyles('errorLogs'); onTabChange('errorLogs'); });
     resetLogsTab.addEventListener('click', () => { updateTabStyles('resetLogs'); onTabChange('resetLogs'); });
+    remarksTab.addEventListener('click', () => { updateTabStyles('remarks'); onTabChange('remarks'); });
 
     updateTabStyles(initialActive);
 
@@ -192,8 +184,10 @@ function createMainTabs(onTabChange, initialActive = 'connectivity') {
         tabsContainer.appendChild(errorLogsTab);
         tabsContainer.appendChild(resetLogsTab);
     }
+    // Remarks are viewable by every role (operators included).
+    tabsContainer.appendChild(remarksTab);
 
-    return { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab, showErrorsAndResets };
+    return { tabsContainer, connectivityTab, errorLogsTab, resetLogsTab, remarksTab, showErrorsAndResets };
 }
 
 // Function to create wireless connectivity section
@@ -325,9 +319,6 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
     if (!mqttStatus) {
         section.appendChild(createNoDataMessage('No MQTT status available'));
     } else {
-        section.appendChild(createStatusIndicator('MQTT Started', mqttStatus.started));
-        section.appendChild(createStatusIndicator('Client Acquired', mqttStatus.clientAcquired));
-        section.appendChild(createStatusIndicator('Broker Connected', mqttStatus.brokerConnected));
         section.appendChild(createStatusRow('Subscribed Topics', mqttStatus.subscribedCount.toString()));
         
         if (mqttStatus.subscribedTopics && mqttStatus.subscribedTopics.length > 0) {
@@ -553,7 +544,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             const isCleared = currentClearedIds.has(status.id);
             
             const row = document.createElement('tr');
-            row.style.backgroundColor = isCleared ? 'var(--bg-row-cleared)' : (index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
+            row.style.backgroundColor = isCleared ? 'var(--bg-row-cleared)' : (index % 2 === 1 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
             row.style.color = 'var(--text-primary)';
             row.style.opacity = isCleared ? '0.6' : '1';
             
@@ -737,7 +728,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         
         displayErrors.forEach((log, index) => {
             const row = document.createElement('tr');
-            row.style.backgroundColor = log.cleared ? 'var(--bg-row-cleared)' : (index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
+            row.style.backgroundColor = log.cleared ? 'var(--bg-row-cleared)' : (index % 2 === 1 ? 'var(--bg-surface-2)' : 'var(--bg-surface)');
             row.style.color = 'var(--text-primary)';
             row.style.opacity = log.cleared ? '0.6' : '1';
             
@@ -866,6 +857,156 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
         }
     });
     
+    return container;
+}
+
+// Remarks tab: an append-only history table on the left (no Clear option,
+// unlike errors / resets) plus, for admin / super_admin, an "Add Remark" panel
+// on the right. Keyed by the dispenser's D-address. Author + IP come from the
+// history rows.
+function createRemarksTab(dispenserTopic) {
+    const container = document.createElement('div');
+    container.style.display = 'flex';
+    container.style.flexDirection = 'row';
+    container.style.alignItems = 'flex-start';
+    container.style.gap = '15px';
+
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    const canEdit = role === 'admin' || role === 'super_admin';
+
+    const tableHost = document.createElement('div');
+    tableHost.style.flex = '1';
+    tableHost.style.minWidth = '0';  // let a wide table scroll instead of overflowing
+
+    const loadRemarks = async () => {
+        tableHost.innerHTML = '';
+        let rows = [];
+        try {
+            const resp = await fetch(`${API_BASE_URL}/dispensers/${encodeURIComponent(dispenserTopic)}/remarks`);
+            if (resp.ok) rows = await resp.json();
+        } catch (e) {
+            console.error('Failed to load remarks:', e);
+        }
+
+        if (!Array.isArray(rows) || rows.length === 0) {
+            const noData = createNoDataMessage('No remarks recorded for this dispenser yet.');
+            noData.style.padding = '40px';
+            tableHost.appendChild(noData);
+            return;
+        }
+
+        const { tableContainer, tbody } = createTable(['Time', 'Remark', 'Added By', 'IP']);
+        rows.forEach((r, index) => {
+            const tr = document.createElement('tr');
+            tr.style.backgroundColor = index % 2 === 1 ? 'var(--bg-surface-2)' : 'var(--bg-surface)';
+            tr.style.color = 'var(--text-primary)';
+            const time = r.created_at ? new Date(r.created_at).toLocaleString() : 'N/A';
+            const cells = [time, r.remark || '', r.created_by || 'N/A', r.created_ip || 'N/A'];
+            cells.forEach((text, i) => {
+                const td = document.createElement('td');
+                td.textContent = text;
+                td.style.padding = '12px';
+                td.style.borderBottom = '1px solid var(--border)';
+                if (i === 1) {  // Remark column: allow wrapping for long notes.
+                    td.style.maxWidth = '420px';
+                    td.style.whiteSpace = 'normal';
+                    td.style.wordBreak = 'break-word';
+                }
+                tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+        });
+        tableHost.appendChild(tableContainer);
+    };
+
+    // Table on the left; the add-remark panel sits to its right.
+    container.appendChild(tableHost);
+
+    if (canEdit) {
+        // Styled to match the Date Filter panel in the transaction-log popup.
+        const addBox = document.createElement('div');
+        addBox.style.backgroundColor = 'var(--bg-surface)';
+        addBox.style.color = 'var(--text-primary)';
+        addBox.style.padding = '15px';
+        addBox.style.borderRadius = '8px';
+        addBox.style.border = '1px solid var(--border)';
+        addBox.style.flex = '0 0 300px';
+        addBox.style.width = '300px';
+
+        const addHeader = createHeader();
+        const addTitle = createTitle();
+        addTitle.textContent = 'Add Remark';
+        addTitle.style.fontSize = '16px';
+        addHeader.appendChild(addTitle);
+        addBox.appendChild(addHeader);
+
+        const addInner = document.createElement('div');
+        addInner.style.display = 'flex';
+        addInner.style.flexDirection = 'column';
+        addInner.style.gap = '10px';
+        addInner.style.marginTop = '10px';
+
+        const textarea = document.createElement('textarea');
+        textarea.placeholder = 'Add a remark…';
+        textarea.rows = 3;
+        Object.assign(textarea.style, {
+            width: '100%', boxSizing: 'border-box', resize: 'vertical', minHeight: '60px',
+            padding: '8px 10px', border: '1px solid var(--border)', borderRadius: '4px',
+            background: 'var(--bg-surface-2)', color: 'var(--text-primary)',
+            fontSize: '14px', fontFamily: 'inherit'
+        });
+
+        const buttonRow = document.createElement('div');
+        buttonRow.style.display = 'flex';
+        buttonRow.style.alignItems = 'center';
+        buttonRow.style.gap = '10px';
+        buttonRow.style.marginTop = '5px';
+        const addBtn = createActionButton();
+        addBtn.textContent = 'Add';
+        const status = document.createElement('span');
+        status.style.fontSize = '13px';
+        buttonRow.appendChild(addBtn);
+        buttonRow.appendChild(status);
+
+        addInner.appendChild(textarea);
+        addInner.appendChild(buttonRow);
+        addBox.appendChild(addInner);
+        container.appendChild(addBox);
+
+        addBtn.addEventListener('click', async () => {
+            const value = textarea.value.trim();
+            if (!value) {
+                status.textContent = 'Enter a remark first';
+                status.style.color = 'var(--text-secondary)';
+                return;
+            }
+            addBtn.disabled = true;
+            addBtn.style.opacity = '0.6';
+            status.textContent = 'Saving…';
+            status.style.color = 'var(--text-secondary)';
+            try {
+                const resp = await fetch(`${API_BASE_URL}/dispensers/${encodeURIComponent(dispenserTopic)}/remarks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ remark: value })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                textarea.value = '';
+                status.textContent = 'Added';
+                status.style.color = 'var(--badge-online-text)';
+                await loadRemarks();
+            } catch (e) {
+                status.textContent = `Failed: ${e.message}`;
+                status.style.color = 'var(--danger)';
+            } finally {
+                addBtn.disabled = false;
+                addBtn.style.opacity = '1';
+            }
+        });
+    }
+
+    loadRemarks();
     return container;
 }
 
@@ -1052,7 +1193,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         }
         
         const { tabsContainer } = createMainTabs((tab) => {
-            activeTab = tab === 'connectivity' ? 'connectivity' : (tab === 'errorLogs' ? 'errorLogs' : 'resetLogs');
+            activeTab = tab;
             updateMainContent();
         }, defaultTab);
         
@@ -1135,8 +1276,10 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
 
                 loadResets('uncleared');
                 currentContent = resetContainer;
+            } else if (activeTab === 'remarks') {
+                currentContent = createRemarksTab(dispenserTopic);
             }
-            
+
             contentContainer.appendChild(currentContent);
         };
         
