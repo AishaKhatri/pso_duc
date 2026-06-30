@@ -28,6 +28,35 @@ let chartsColEl = null;
 let nozzleCardEl = null;
 let priceCardEl = null;
 let priceMatchDecimals = 1;  // 1 | 2  — precision the price chart compares at (1 = first decimal only)
+let allDispensers = [];      // full fetched set; drives the city filter's option list
+let cityFilter = 'all';      // 'all' or a city name (joined from stationsList by customer_code)
+let stationsList = [];       // station rows (customer_code → city), fetched once on load
+
+// City lives on the station record (Google-sheet/DB stations), not on the
+// dispenser, so we join by customer_code. These helpers turn the selected city
+// into a dispenser filter and into the dropdown's option list.
+function stationCityByCode() {
+    return new Map(stationsList.map(s => [s.customer_code, s]));
+}
+function applyCityFilter(dispensers) {
+    if (cityFilter === 'all') return dispensers;
+    const byCode = stationCityByCode();
+    return dispensers.filter(d => (byCode.get(d.customer_code)?.city || '') === cityFilter);
+}
+// Only cities that actually have a dispenser are offered — picking a city with
+// no devices would just blank every chart.
+function buildCityOptions() {
+    const byCode = stationCityByCode();
+    const cities = new Set();
+    allDispensers.forEach(d => {
+        const c = byCode.get(d.customer_code)?.city;
+        if (c) cities.add(c);
+    });
+    return [
+        { value: 'all', label: 'All Cities' },
+        ...[...cities].sort().map(c => ({ value: c, label: titleCase(c) })),
+    ];
+}
 
 // Viewer-panel element refs + state (set by createViewerPanel).
 let viewerBodyEl = null;
@@ -704,12 +733,34 @@ async function renderAnalysis() {
     topRow.style.display = 'flex';
     topRow.style.justifyContent = 'flex-end';
     topRow.style.marginBottom = '8px';
+
     const lastUpdatedEl = document.createElement('div');
     lastUpdatedEl.id = 'page-last-updated';
     lastUpdatedEl.style.fontSize = '12px';
     lastUpdatedEl.style.color = 'var(--text-secondary)';
     topRow.appendChild(lastUpdatedEl);
     stage.appendChild(topRow);
+
+    const filterRow = document.createElement('div');
+    filterRow.style.display = 'flex';
+    filterRow.style.alignItems = 'left';
+    filterRow.style.gap = '10px';
+    filterRow.style.marginBottom = '12px';
+
+    const cityCtl = createSearchableDropdown({
+        placeholder: 'Filter by City',
+        width: '220px',
+        bgWhite: true,
+        items: buildCityOptions,
+        initialQuery: cityFilter === 'all' ? '' : titleCase(cityFilter),
+        onSelect: (value) => {
+            cityFilter = value;
+            if (value === 'all') cityCtl.setQuery('');
+            repaint();
+        },
+    });
+    filterRow.appendChild(cityCtl.wrap);
+    stage.appendChild(filterRow);
 
     const layout = document.createElement('div');
     layout.className = 'analysis-layout';
@@ -725,31 +776,44 @@ async function renderAnalysis() {
     layout.appendChild(createViewerPanel());
     renderViewer(); // show placeholder until a "View List" is clicked
 
-    const paint = (dispensers) => {
-        latestDispensers = dispensers;
+    // Rebuild the charts from the current city selection. Reads allDispensers
+    // (full set) → latestDispensers (city-filtered set everything else renders).
+    const repaint = () => {
+        latestDispensers = applyCityFilter(allDispensers);
         chartsCol.innerHTML = '';
-        chartsCol.appendChild(buildDeviceCard(dispensers));
-        nozzleCardEl = buildNozzleCard(dispensers);
-        chartsCol.appendChild(nozzleCardEl);
-        priceCardEl = buildPriceCard(dispensers);
-        chartsCol.appendChild(priceCardEl);
+        if (latestDispensers.length === 0) {
+            const message = createNoDataMessage(
+                cityFilter === 'all' ? 'No dispensers configured' : 'No dispensers in this city');
+            message.style.padding = '40px';
+            chartsCol.appendChild(message);
+        } else {
+            chartsCol.appendChild(buildDeviceCard(latestDispensers));
+            nozzleCardEl = buildNozzleCard(latestDispensers);
+            chartsCol.appendChild(nozzleCardEl);
+            priceCardEl = buildPriceCard(latestDispensers);
+            chartsCol.appendChild(priceCardEl);
+        }
         syncActiveStates();
         renderViewer();
+    };
+    const paint = (dispensers) => {
+        allDispensers = dispensers;
+        repaint();
         lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
     };
 
     try {
-        const response = await fetch(`${API_BASE_URL}/dispensers-full`);
+        // Stations (for the city join) load alongside the dispensers; a station
+        // fetch failure just leaves the city filter at "All Cities".
+        const [stations, response] = await Promise.all([
+            loadStationsFromDB(),
+            fetch(`${API_BASE_URL}/dispensers-full`),
+        ]);
+        stationsList = stations || [];
         if (!response.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await response.json();
 
-        if (dispensers.length === 0) {
-            const message = createNoDataMessage('No dispensers configured');
-            message.style.padding = '40px';
-            chartsCol.appendChild(message);
-        } else {
-            paint(dispensers);
-        }
+        paint(dispensers);
 
         loader.remove();
         stage.style.display = '';

@@ -18,6 +18,7 @@ const _pu = {
     cityToCustomers: new Map(),   // 'Karachi' -> ['102563', ...]
     customerToCity: new Map(),    // '102563' -> 'Karachi'
     customerToStationId: new Map(),
+    customerToPrices: new Map(),  // '102563' -> { PMG, HSD, HOBC, updatedAt } (filed prices from stations table)
     selectedCity: '',
     selectedCustomer: '',
     ducsForCustomer: [],          // [{address, products: [PMG, ...]}]
@@ -272,6 +273,7 @@ async function _puLoadDucInventory() {
     _pu.cityToCustomers = new Map();
     _pu.customerToCity = new Map();
     _pu.customerToStationId = new Map();
+    _pu.customerToPrices = new Map();
     for (const r of rows) {
         const code = (r.customer_code || '').toString().trim();
         // Title-case city for grouping (matches Python build_customer_city_map).
@@ -282,6 +284,16 @@ async function _puLoadDucInventory() {
         if (!_pu.customerToCity.has(code) && city) _pu.customerToCity.set(code, city);
         if (!_pu.customerToStationId.has(code) && r.station_id) {
             _pu.customerToStationId.set(code, r.station_id);
+        }
+        // Filed prices are per-station, so the first row for a code carries them
+        // all (later rows are the same station's other DUCs/products).
+        if (!_pu.customerToPrices.has(code)) {
+            _pu.customerToPrices.set(code, {
+                PMG: r.price_pmg,
+                HSD: r.price_hsd,
+                HOBC: r.price_hobc,
+                updatedAt: r.prices_updated_at
+            });
         }
         if (city) {
             if (!_pu.cityToCustomers.has(city)) _pu.cityToCustomers.set(city, new Set());
@@ -313,6 +325,39 @@ function _puDucsForCustomer(customerCode) {
         products: Array.from(products).sort(),
         connStatus
     })).sort((a, b) => a.address.localeCompare(b.address));
+}
+
+// Pre-fill the price inputs with the station's currently-filed prices (from the
+// stations table, surfaced via /api/ducs) so the operator edits the real
+// numbers instead of a blank 0.00. Each product with a filed price is checked
+// and filled; products with no filed price stay unchecked/blank. Values remain
+// fully editable. Also paints the "filed prices last updated" line. Pass a
+// falsy code to clear everything (e.g. when the city changes and deselects the
+// customer).
+function _puApplyDefaultPrices(customerCode) {
+    const prices = (customerCode && _pu.customerToPrices.get(customerCode)) || {};
+    PRODUCT_OPTIONS.forEach(product => {
+        const input = _pu.el.priceInputs && _pu.el.priceInputs[product];
+        const check = _pu.el.priceChecks && _pu.el.priceChecks[product];
+        if (!input || !check) return;
+        const num = Number(prices[product]);
+        const hasPrice = prices[product] != null && prices[product] !== '' && Number.isFinite(num);
+        check.checked = hasPrice;
+        input.disabled = !hasPrice;
+        input.value = hasPrice ? num.toFixed(2) : '';
+        _pu.enabled[product] = hasPrice;
+    });
+
+    const line = _pu.el.pricesUpdatedLine;
+    if (line) {
+        if (!customerCode) {
+            line.textContent = '';
+        } else if (prices.updatedAt) {
+            line.textContent = `Filed prices last updated: ${new Date(prices.updatedAt).toLocaleString()}`;
+        } else {
+            line.textContent = 'No filed prices on record for this station yet.';
+        }
+    }
 }
 
 function _puRenderForm(container) {
@@ -382,6 +427,7 @@ function _puRenderForm(container) {
         }
         _pu.ducsForCustomer = _puDucsForCustomer(code);
         _puRenderDucTable();
+        _puApplyDefaultPrices(code);
     };
 
     const commitCity = (city) => {
@@ -396,6 +442,7 @@ function _puRenderForm(container) {
             custDd.setItems(_puCustomerItems());
         }
         _puRenderDucTable();
+        _puApplyDefaultPrices('');
     };
 
     const cities = Array.from(_pu.cityToCustomers.keys()).sort();
@@ -445,6 +492,16 @@ function _puRenderForm(container) {
     // --- Card 2: New Prices ---
     const priceCard = makeCard();
     priceCard.appendChild(cardTitle('New Prices'));
+
+    // When a station is selected, its filed prices pre-fill the inputs below and
+    // this line shows when those prices were last filed. Populated by
+    // _puApplyDefaultPrices.
+    const pricesUpdatedLine = document.createElement('div');
+    pricesUpdatedLine.style.fontSize = '12px';
+    pricesUpdatedLine.style.color = 'var(--text-secondary)';
+    pricesUpdatedLine.style.marginBottom = '12px';
+    priceCard.appendChild(pricesUpdatedLine);
+    _pu.el.pricesUpdatedLine = pricesUpdatedLine;
 
     // Responsive grid: each product gets an enable-checkbox + full-width price
     // input that fills an equal column, so the row spans the whole card instead
@@ -661,6 +718,10 @@ function _puRenderForm(container) {
     container.appendChild(ducCard);
 
     _puRenderDucTable();
+
+    // If a station is already selected (e.g. restoring an in-flight job after a
+    // refresh), seed the price inputs with its filed prices.
+    if (_pu.selectedCustomer) _puApplyDefaultPrices(_pu.selectedCustomer);
 }
 
 function _puRenderDucTable() {

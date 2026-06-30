@@ -220,9 +220,6 @@ function renderSidebarGroup(group, activePage) {
         return !!el && el.classList.contains('collapsed');
     };
 
-    // When the rail is collapsed the submenu is a fixed-position flyout, so its
-    // coords must be computed live (it can't sit inline — the sidebar's
-    // overflow clips anything past its right edge).
     const positionFlyout = () => {
         const sidebarEl = document.getElementById('sidebar');
         if (!sidebarEl) return;
@@ -232,23 +229,45 @@ function renderSidebarGroup(group, activePage) {
         submenu.style.left = `${railRect.right}px`;
     };
 
-    // Collapsed: reveal the flyout on hover; expanded: no-op (inline submenu).
-    wrapper.addEventListener('mouseenter', function () {
-        if (!isRailCollapsed()) return;
+    const showFlyout = () => {
+        if (submenu.parentNode !== document.body) document.body.appendChild(submenu);
+        submenu.classList.add('flyout', 'flyout-visible');
         positionFlyout();
-        wrapper.classList.add('flyout-hover');
+    };
+    const hideFlyout = () => {
+        submenu.classList.remove('flyout', 'flyout-visible', 'flyout-locked');
+        submenu.style.top = '';
+        submenu.style.left = '';
+        // Return it to the group so the expanded (inline accordion) state works.
+        if (submenu.parentNode !== wrapper) wrapper.appendChild(submenu);
+    };
+    // Hide on mouse-out, unless the cursor is just crossing the rail↔flyout seam
+    // (the flyout is a sibling in <body>, so that crossing fires mouseleave) or
+    // the flyout is click-locked open.
+    const hideUnlessInto = (other) => (e) => {
+        if (submenu.classList.contains('flyout-locked')) return;
+        if (other.contains(e.relatedTarget)) return;
+        hideFlyout();
+    };
+
+    // Collapsed: reveal the flyout on hover; expanded: no-op (inline accordion).
+    wrapper.addEventListener('mouseenter', function () {
+        if (isRailCollapsed()) showFlyout();
     });
-    wrapper.addEventListener('mouseleave', function () {
-        wrapper.classList.remove('flyout-hover');
-    });
+    wrapper.addEventListener('mouseleave', hideUnlessInto(submenu));
+    submenu.addEventListener('mouseleave', hideUnlessInto(wrapper));
 
     header.addEventListener('click', function () {
-        // Collapsed: click locks the flyout open (so it survives mouse-out);
-        // a second click — or a click anywhere outside — closes it.
+        // Collapsed: click locks the flyout open (so it survives mouse-out); a
+        // second click unlocks it (hover still governs), and a click anywhere
+        // outside closes it.
         if (isRailCollapsed()) {
-            const willOpen = !wrapper.classList.contains('flyout-open');
-            if (willOpen) positionFlyout();
-            wrapper.classList.toggle('flyout-open', willOpen);
+            if (submenu.classList.contains('flyout-locked')) {
+                submenu.classList.remove('flyout-locked');
+            } else {
+                showFlyout();
+                submenu.classList.add('flyout-locked');
+            }
             return;
         }
         // Expanded: toggle the inline accordion and remember the choice.
@@ -257,10 +276,10 @@ function renderSidebarGroup(group, activePage) {
         localStorage.setItem('sidebarAdminToolsExpanded', String(nowExpanded));
     });
 
-    // Dismiss a click-locked flyout when the user clicks outside the group.
+    // Dismiss the flyout when clicking outside both the group and the flyout.
     document.addEventListener('click', function (e) {
-        if (!wrapper.contains(e.target)) {
-            wrapper.classList.remove('flyout-open');
+        if (!wrapper.contains(e.target) && !submenu.contains(e.target)) {
+            hideFlyout();
         }
     });
 
