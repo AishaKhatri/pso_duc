@@ -20,23 +20,16 @@ const OFFLINE_TIMEOUT = 10 * 60 * 1000; // 10 minutes
 const lastStatusMessage = new Map();
 
 // Debounce disconnect alerts: only commit a disconnect to the DB if the
-// device stays disconnected for this long. A reconnect that arrives inside
-// the window cancels the pending write, so brief MQTT flaps no longer flip
-// dispensers.conn_status to 0 or wipe nozzles.status.
+// device stays disconnected for this long.
 const DISCONNECT_DEBOUNCE_MS = 30 * 60 * 1000;
 const pendingDisconnects = new Map(); // addrD -> timeout handle
 
 // Addresses queued by the "Refresh Conn Status" admin action. The next
 // conn_status message that arrives for any address in this set bypasses ALL
-// debounce / flap-suppression logic and writes the message's timestamp to
-// dispensers.connected_at immediately, whether the message says Connected or
-// Disconnected. The address is removed from the set on first delivery, so the
-// regular flap-protection rules resume from the very next event.
+// debounce / flap-suppression logic
 const refreshForceCommit = new Set(); // Set<addrD>
 
-// Topic DUCs publish an ACK on after they apply a price-update message. Same
-// topic as the Python price-update tool — both clients can listen at once
-// (separate MQTT client IDs, no conflict).
+// Topic DUCs publish an ACK on after they apply a price-update message.
 const PRICE_ACK_TOPIC = 'duc/acked_msgs';
 
 // In-memory price-update job ledger. /api/admin/price-update/publish creates
@@ -47,17 +40,6 @@ const PRICE_ACK_TOPIC = 'duc/acked_msgs';
 const priceUpdateJobs = new Map(); // jobId -> { createdAt, items: Array<{product, topic, ducs: Set<addrD>, acked: Map<addrD, isoTime>}> }
 const PRICE_JOB_TTL_MS = 60 * 60 * 1000; // 1 hour
 
-// const caPath = path.join(__dirname, 'ca_cert', 'rootCA.crt');
-
-// Initialize MQTT client to connect to local EMQX via WebSocket
-// const mqttClient = mqtt.connect('ws://localhost:8083/mqtt', {
-// Initialize MQTT client to connect to HiveMQ public broker
-// const mqttClient = mqtt.connect('wss://broker.hivemq.com:8884/mqtt', {
-
-// Broker config comes from .env (MQTT_BROKER_URL / MQTT_USERNAME /
-// MQTT_PASSWORD / MQTT_CLIENT_ID). Transport stays plaintext TCP by design.
-// const mqttClient = mqtt.connect('mqtts://72.255.62.111:8883', {
-// const mqttClient = mqtt.connect('tcp://localhost:1883', {
 if (!process.env.MQTT_BROKER_URL || !process.env.MQTT_USERNAME || !process.env.MQTT_PASSWORD) {
     errorWithTimestamp('MQTT_BROKER_URL / MQTT_USERNAME / MQTT_PASSWORD missing from .env');
     throw new Error('Missing MQTT broker configuration');
@@ -135,6 +117,14 @@ async function initializeMQTTSubscriptions() {
             const addrD = ensureDAddress(dispenser.address);
             const topic = `pso/${dispenser.city}/${dispenser.customer_code}/duc/s${addrNaked}`;
             await subscribeToTopic(topic, deviceTopics);
+
+            // Arm a one-shot force-commit BEFORE (re)subscribing so the retained
+            // conn_status the broker redelivers on this connect bypasses the
+            // keepalive-dedup guard in handleConnectionAlert and writes the
+            // broker's truth (conn_status + connected_at) immediately. This is
+            // what restores the "a server reconnect refreshes every device's
+            // status" behavior; steady-state dedup resumes from the next message.
+            refreshForceCommit.add(addrD);
 
             const conn_stat_topic = `duc/conn_status/${addrD}`;
             await subscribeToTopic(conn_stat_topic, statusTopics);
@@ -1594,6 +1584,29 @@ function _mqttSubscribe(topic) {
     });
 }
 
+async function _cycleConnStatusTopic(addrD) {
+    const topic = `duc/conn_status/${addrD}`;
+    await _mqttUnsubscribe(topic);
+    statusTopics.delete(topic);
+    await _mqttSubscribe(topic);
+    statusTopics.add(topic);
+}
+
+// Clear the in-flight disconnect-debounce timer for one address (if any) and
+// mark it "next conn_status message wins" so both connect AND disconnect events
+// bypass debounce on redelivery — see handleConnectionAlert. Returns 1 if a
+// timer was cleared, else 0.
+function _armConnStatusForceCommit(addrD) {
+    refreshForceCommit.add(addrD);
+    const handle = pendingDisconnects.get(addrD);
+    if (handle) {
+        clearTimeout(handle);
+        pendingDisconnects.delete(addrD);
+        return 1;
+    }
+    return 0;
+}
+
 async function refreshConnStatusSubscriptions() {
     // Cancel every pending DISCONNECT_DEBOUNCE_MS timer in flight so the
     // server starts fresh — they'd otherwise race with the immediate-commit
@@ -1617,25 +1630,31 @@ async function refreshConnStatusSubscriptions() {
         if (addrD) refreshForceCommit.add(addrD);
     }
 
-    // Cycle every conn_status topic: UNSUBSCRIBE then SUBSCRIBE. Without the
-    // unsubscribe step the broker treats the second SUBSCRIBE as a no-op for
-    // already-subscribed topics and will NOT redeliver the retained message,
-    // which is why some devices' timestamps weren't updating. Cycling forces
-    // a fresh SUBACK and, with it, redelivery of the retained conn_status.
     for (const d of dispensers) {
         const addrD = ensureDAddress(d.address);
         if (!addrD) continue;
-        const topic = `duc/conn_status/${addrD}`;
-        await _mqttUnsubscribe(topic);
-        statusTopics.delete(topic);
-        await _mqttSubscribe(topic);
-        statusTopics.add(topic);
+        await _cycleConnStatusTopic(addrD);
         resubscribed++;
     }
 
     logWithTimestamp(chalk.cyan,
         `Conn-status refresh: cycled ${resubscribed} topics, cleared ${timersCleared} debounce timers, queued ${refreshForceCommit.size} addresses for immediate commit`);
     return { resubscribed, timersCleared };
+}
+
+// Per-dispenser equivalent of refreshConnStatusSubscriptions: re-cycle just one
+// address's conn_status topic and clear its debounce timer. Used by the
+// per-card "Refresh Status" action.
+async function refreshConnStatusForAddress(address) {
+    const addrD = ensureDAddress(address);
+    if (!addrD) return { resubscribed: 0, timersCleared: 0 };
+
+    const timersCleared = _armConnStatusForceCommit(addrD);
+    await _cycleConnStatusTopic(addrD);
+
+    logWithTimestamp(chalk.cyan,
+        `Conn-status refresh (single): cycled ${addrD}, cleared ${timersCleared} debounce timer(s)`);
+    return { resubscribed: 1, timersCleared };
 }
 
 function publishMessage(topic, message, options = {}) {
@@ -1840,6 +1859,7 @@ module.exports = {
     handleErrorMessage,
     publishMessage,
     refreshConnStatusSubscriptions,
+    refreshConnStatusForAddress,
     registerPriceUpdateJob,
     getPriceUpdateJob,
     acquirePriceAckSubscription,
