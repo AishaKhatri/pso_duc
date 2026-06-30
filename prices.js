@@ -54,12 +54,57 @@ async function loadPricesFromDB() {
     return resp.json();
 }
 
-function showUploadResultPopup({ updated, missingFromFile }) {
-    const overlay = createModalOverlay();
+// Scrollable list of "<station name> · <customer code>" rows. Falls back to a
+// muted "None" line when there's nothing to show.
+function buildStationListBox(entries, emptyText) {
+    const box = document.createElement('div');
+    box.style.maxHeight = '180px';
+    box.style.overflow = 'auto';
+    box.style.padding = '6px 8px';
+    box.style.background = 'var(--bg-surface-2)';
+    box.style.border = '1px solid var(--border)';
+    box.style.borderRadius = '4px';
+    box.style.fontSize = '12px';
+
+    if (!entries.length) {
+        box.style.color = 'var(--text-secondary)';
+        box.textContent = emptyText;
+        return box;
+    }
+
+    entries.forEach(e => {
+        const row = document.createElement('div');
+        row.style.padding = '3px 0';
+        row.style.borderBottom = '1px solid var(--border-soft)';
+        const name = e.station_id ? e.station_id : '(no station id)';
+        row.innerHTML =
+            `<span style="font-weight:600;">${escapeHtml(name)}</span>` +
+            ` <span style="color:var(--text-secondary);">· ${escapeHtml(e.customer_code)}</span>`;
+        box.appendChild(row);
+    });
+    return box;
+}
+
+// Result popup for the price-file upload. Stations with no DUC for a product are
+// already filtered out server-side, so every entry here is actionable. Product
+// tabs keep the three fuels separate; within a tab the two problems —
+// "Missing Price" (listed but no price) and "Not Listed" (absent from file) —
+// are shown apart. This popup is intentionally NOT dismissible by clicking the
+// backdrop: it stays until the user acknowledges it with OK or the close (×).
+function showUploadResultPopup({ updated, sheetsPresent, missingPrice, notListed }) {
+    updated      = updated      || { PMG: 0, HSD: 0, HOBC: 0 };
+    sheetsPresent = sheetsPresent || { PMG: false, HSD: false, HOBC: false };
+    missingPrice = missingPrice || {};
+    notListed    = notListed    || {};
+
+    // Plain overlay without createModalOverlay's backdrop-click-to-close.
+    const overlay = document.createElement('div');
+    overlay.className = 'overlay';
+
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '480px';
-    popup.style.maxWidth = '90vw';
+    popup.style.width = '560px';
+    popup.style.maxWidth = '92vw';
 
     const header = createHeader();
     const title = createTitle();
@@ -68,47 +113,96 @@ function showUploadResultPopup({ updated, missingFromFile }) {
     header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const body = document.createElement('div');
-    body.style.padding = '4px 0 12px';
-
     const summary = document.createElement('p');
     summary.style.margin = '0 0 12px';
     summary.innerHTML =
         `<b>Updated:</b> ${updated.PMG} PMG, ${updated.HSD} HSD, ${updated.HOBC} HOBC.`;
-    body.appendChild(summary);
+    popup.appendChild(summary);
 
-    const missing = missingFromFile || {};
-    for (const product of PRODUCT_OPTIONS) {
-        const codes = missing[product] || [];
-        if (!codes.length) continue;
-        const section = document.createElement('div');
-        section.style.marginBottom = '10px';
-        const heading = document.createElement('div');
-        heading.style.fontWeight = '600';
-        heading.style.marginBottom = '4px';
-        heading.textContent = `${codes.length} ${product} station${codes.length === 1 ? '' : 's'} not in file:`;
-        section.appendChild(heading);
+    const products = PRODUCT_OPTIONS.filter(p => sheetsPresent[p]);
 
-        const codesBox = document.createElement('div');
-        codesBox.style.maxHeight = '120px';
-        codesBox.style.overflow = 'auto';
-        codesBox.style.padding = '6px 8px';
-        codesBox.style.background = 'var(--bg-surface-2)';
-        codesBox.style.border = '1px solid var(--border)';
-        codesBox.style.borderRadius = '4px';
-        codesBox.style.fontSize = '12px';
-        codesBox.style.fontFamily = 'monospace';
-        codesBox.textContent = codes.join(', ');
-        section.appendChild(codesBox);
+    // Tab bar + content host.
+    const tabBar = document.createElement('div');
+    tabBar.style.display = 'flex';
+    tabBar.style.gap = '6px';
+    tabBar.style.borderBottom = '1px solid var(--border)';
+    tabBar.style.marginBottom = '12px';
+    popup.appendChild(tabBar);
 
-        body.appendChild(section);
+    const tabContent = document.createElement('div');
+    popup.appendChild(tabContent);
+
+    const issueCount = (p) => (missingPrice[p] || []).length + (notListed[p] || []).length;
+
+    const renderTab = (product) => {
+        tabContent.innerHTML = '';
+
+        const missEntries = missingPrice[product] || [];
+        const missSection = document.createElement('div');
+        missSection.style.marginBottom = '14px';
+        const missHead = document.createElement('div');
+        missHead.style.fontWeight = '600';
+        missHead.style.marginBottom = '4px';
+        missHead.textContent = `Missing Price — listed but no price (${missEntries.length})`;
+        missSection.appendChild(missHead);
+        missSection.appendChild(buildStationListBox(
+            missEntries, `No ${product} stations are missing a price.`));
+        tabContent.appendChild(missSection);
+
+        const notEntries = notListed[product] || [];
+        const notSection = document.createElement('div');
+        const notHead = document.createElement('div');
+        notHead.style.fontWeight = '600';
+        notHead.style.marginBottom = '4px';
+        notHead.textContent = `Not Listed — absent from file (${notEntries.length})`;
+        notSection.appendChild(notHead);
+        notSection.appendChild(buildStationListBox(
+            notEntries, `Every ${product} station was listed in the file.`));
+        tabContent.appendChild(notSection);
+    };
+
+    const tabButtons = new Map();
+    const selectTab = (product) => {
+        tabButtons.forEach((btn, p) => {
+            const active = p === product;
+            btn.style.borderBottom = active ? '2px solid var(--accent)' : '2px solid transparent';
+            btn.style.color = active ? 'var(--text-heading)' : 'var(--text-secondary)';
+            btn.style.fontWeight = active ? '600' : '500';
+        });
+        renderTab(product);
+    };
+
+    products.forEach(product => {
+        const n = issueCount(product);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.style.background = 'none';
+        btn.style.border = 'none';
+        btn.style.padding = '8px 10px';
+        btn.style.cursor = 'pointer';
+        btn.style.fontSize = '13px';
+        btn.textContent = n ? `${product} (${n})` : product;
+        btn.addEventListener('click', () => selectTab(product));
+        tabBar.appendChild(btn);
+        tabButtons.set(product, btn);
+    });
+
+    if (products.length) {
+        // Open on the first product that actually has something to act on,
+        // else just the first product present in the file.
+        const firstWithIssues = products.find(p => issueCount(p) > 0);
+        selectTab(firstWithIssues || products[0]);
+    } else {
+        const none = document.createElement('div');
+        none.style.color = 'var(--text-secondary)';
+        none.textContent = 'No PMG/HSD/HOBC price sheets were found in this file.';
+        tabContent.appendChild(none);
     }
-
-    popup.appendChild(body);
 
     const buttonContainer = document.createElement('div');
     buttonContainer.style.display = 'flex';
     buttonContainer.style.justifyContent = 'flex-end';
+    buttonContainer.style.marginTop = '16px';
     const okBtn = createActionButton('#004D64', '#00324C');
     okBtn.textContent = 'OK';
     okBtn.onclick = () => document.body.removeChild(overlay);
