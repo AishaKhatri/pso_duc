@@ -21,6 +21,7 @@ const {
     getWifiConnectionStatus,
     publishMessage,
     refreshConnStatusSubscriptions,
+    refreshConnStatusForAddress,
     registerPriceUpdateJob,
     getPriceUpdateJob,
     acquirePriceAckSubscription,
@@ -289,10 +290,24 @@ app.get('/api/orphan-dispensers', async (req, res) => {
     }
 });
 
+// Map a dashboard division to the customer codes that belong to it, using the
+// same station sheet the dashboard counts come from (transactions carry only
+// customer_code, not division). Returns [] when the division has no stations —
+// callers should then report zeroed sales.
+async function customerCodesForDivision(division) {
+    const sheet = await fetchStationSheetRows();
+    const want = String(division || '').trim().toLowerCase();
+    return sheet
+        .filter(s => String(s.division || '').trim().toLowerCase() === want)
+        .map(s => String(s.customer_code || '').trim())
+        .filter(Boolean);
+}
+
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
         const customerCode = (req.query.customer_code || '').trim();
         const dispenserId = (req.query.dispenser_id || '').toString().trim();
+        const division = (req.query.division || '').trim();
         const filters = [];
         const filterParams = [];
         if (customerCode) {
@@ -302,6 +317,22 @@ app.get('/api/dashboard-stats', async (req, res) => {
         if (dispenserId) {
             filters.push('dispenser_id = ?');
             filterParams.push(dispenserId);
+        }
+        // Division scopes the dashboard's sales to one region. Expand it to its
+        // customer codes and filter transactions by them.
+        let divisionPlaceholders = '';
+        if (division) {
+            const codes = await customerCodesForDivision(division);
+            if (codes.length === 0) {
+                return res.json({
+                    today: { tx_count: 0, total_amount: 0, total_volume: 0 },
+                    hourly: Array.from({ length: 24 }, (_, h) => ({ hour: h, tx_count: 0, amount: 0, volume: 0 })),
+                    products: []
+                });
+            }
+            divisionPlaceholders = codes.map(() => '?').join(',');
+            filters.push(`customer_code IN (${divisionPlaceholders})`);
+            filterParams.push(...codes);
         }
         const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
 
@@ -345,6 +376,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
         const productFilters = [];
         if (customerCode) productFilters.push('t.customer_code = ?');
         if (dispenserId) productFilters.push('t.dispenser_id = ?');
+        if (division) productFilters.push(`t.customer_code IN (${divisionPlaceholders})`);
         const productFilterClause = productFilters.length ? 'AND ' + productFilters.join(' AND ') : '';
         const [productRows] = await pool.query(
             `SELECT
@@ -394,10 +426,20 @@ app.get('/api/sales-series', async (req, res) => {
         const range = (req.query.range || 'day').toLowerCase();
         const customerCode = (req.query.customer_code || '').trim();
         const dispenserId  = (req.query.dispenser_id  || '').toString().trim();
+        const division     = (req.query.division || '').trim();
         const filters = [];
         const params  = [];
         if (customerCode) { filters.push('customer_code = ?'); params.push(customerCode); }
         if (dispenserId)  { filters.push('dispenser_id = ?');  params.push(dispenserId); }
+        // Division scopes the chart to one region's customer codes.
+        if (division) {
+            const codes = await customerCodesForDivision(division);
+            if (codes.length === 0) {
+                return res.json({ range, points: [], peak: 0, total: 0 });
+            }
+            filters.push(`customer_code IN (${codes.map(() => '?').join(',')})`);
+            params.push(...codes);
+        }
         const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
 
         let points = [];
@@ -726,12 +768,19 @@ const pricesUpload = multer({
 // Pull the per-customer-code prices out of one of the price-file sheets.
 // Sheet layout (row 0 = date, row 1 = headers, row 2+ = data):
 //   col B Customer Code | col D New Code | col G {Product} Price
-// Returns Map<customerCode, price>. When New Code differs from Customer Code,
-// the New Code wins — that's how the file signals a re-mapped outlet.
+// Returns { prices, listed }:
+//   prices  Map<customerCode, price> — rows with a valid (>0) price.
+//   listed  Set<customerCode>        — every row that names a code, even when
+//                                      its price cell is blank/invalid. Lets the
+//                                      caller tell "listed but no price" apart
+//                                      from "not in the file at all".
+// When New Code differs from Customer Code, the New Code wins — that's how the
+// file signals a re-mapped outlet.
 function _parsePriceSheet(sheet) {
     const XLSX = require('xlsx');
     const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-    const out = new Map();
+    const prices = new Map();
+    const listed = new Set();
     for (let i = 2; i < rows.length; i++) {
         const r = rows[i];
         if (!r) continue;
@@ -740,12 +789,13 @@ function _parsePriceSheet(sheet) {
         const price = r[6];
         const code = (newCode != null && newCode !== '') ? newCode : customerCode;
         if (code == null || code === '') continue;
+        listed.add(String(code));
         if (price == null || price === '') continue;
         const priceNum = Number(price);
         if (!Number.isFinite(priceNum) || priceNum <= 0) continue;
-        out.set(String(code), priceNum);
+        prices.set(String(code), priceNum);
     }
-    return out;
+    return { prices, listed };
 }
 
 app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, res) => {
@@ -776,8 +826,23 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
             HOBC: sheetByProduct.HOBC ? _parsePriceSheet(sheetByProduct.HOBC) : new Map()
         };
 
-        const [stationRows] = await pool.query('SELECT customer_code FROM stations');
+        const [stationRows] = await pool.query('SELECT customer_code, station_id FROM stations');
         const known = new Set(stationRows.map(r => r.customer_code));
+        const stationNameByCode = new Map(stationRows.map(r => [r.customer_code, r.station_id || '']));
+
+        // Which stations actually have a nozzle (DUC) for each product. A station
+        // is only flagged as missing-price / not-listed for a product if it has
+        // a DUC for that product — otherwise the price is irrelevant to it.
+        const [nozzleRows] = await pool.query(
+            `SELECT DISTINCT customer_code, UPPER(product) AS product
+               FROM nozzles
+              WHERE product IS NOT NULL AND product <> ''`
+        );
+        const ducCodesByProduct = { PMG: new Set(), HSD: new Set(), HOBC: new Set() };
+        for (const r of nozzleRows) {
+            const p = (r.product || '').toUpperCase();
+            if (ducCodesByProduct[p]) ducCodesByProduct[p].add(r.customer_code);
+        }
 
         const updatedByProduct = { PMG: 0, HSD: 0, HOBC: 0 };
 
@@ -785,7 +850,7 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
         await conn.beginTransaction();
         try {
             for (const product of ['PMG', 'HSD', 'HOBC']) {
-                const priceMap = pricesByProduct[product];
+                const priceMap = pricesByProduct[product].prices;
                 if (!priceMap.size) continue;
                 const col = `price_${product.toLowerCase()}`;
 
@@ -820,31 +885,53 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
             throw txErr;
         }
 
-        // list of stations missing from the price sheet
-        const missingByProduct = { PMG: [], HSD: [], HOBC: [] };
+        // Per product, split the stations that have a DUC for that product into
+        // two problem lists (skipping any product whose sheet wasn't in the file):
+        //   missingPrice — listed in the sheet but with no usable price.
+        //   notListed    — not present in the sheet at all.
+        const sheetsPresent = {
+            PMG:  !!sheetByProduct.PMG,
+            HSD:  !!sheetByProduct.HSD,
+            HOBC: !!sheetByProduct.HOBC
+        };
+        const missingPriceByProduct = { PMG: [], HSD: [], HOBC: [] };
+        const notListedByProduct    = { PMG: [], HSD: [], HOBC: [] };
+        const byCodeAsc = (a, b) => String(a.customer_code).localeCompare(String(b.customer_code));
         for (const product of ['PMG', 'HSD', 'HOBC']) {
-            const priceMap = pricesByProduct[product];
-            if (!priceMap.size) continue;
-            for (const code of known) {
-                if (!priceMap.has(code)) missingByProduct[product].push(code);
+            if (!sheetsPresent[product]) continue;
+            const { prices: priceMap, listed } = pricesByProduct[product];
+            const ducCodes = ducCodesByProduct[product];
+            for (const code of ducCodes) {
+                if (!known.has(code)) continue;  // nozzle without a station row — ignore
+                const entry = { customer_code: code, station_id: stationNameByCode.get(code) || '' };
+                if (!listed.has(code)) notListedByProduct[product].push(entry);
+                else if (!priceMap.has(code)) missingPriceByProduct[product].push(entry);
             }
-            missingByProduct[product].sort();
+            missingPriceByProduct[product].sort(byCodeAsc);
+            notListedByProduct[product].sort(byCodeAsc);
         }
 
         await logActivity(req, 'upload_prices', { entity_type: 'prices', details: {
             file: req.file.originalname,
             updated: updatedByProduct,
-            missing_counts: {
-                PMG: missingByProduct.PMG.length,
-                HSD: missingByProduct.HSD.length,
-                HOBC: missingByProduct.HOBC.length
+            missing_price_counts: {
+                PMG: missingPriceByProduct.PMG.length,
+                HSD: missingPriceByProduct.HSD.length,
+                HOBC: missingPriceByProduct.HOBC.length
+            },
+            not_listed_counts: {
+                PMG: notListedByProduct.PMG.length,
+                HSD: notListedByProduct.HSD.length,
+                HOBC: notListedByProduct.HOBC.length
             }
         }});
 
         res.json({
             ok: true,
             updated: updatedByProduct,
-            missingFromFile: missingByProduct
+            sheetsPresent,
+            missingPrice: missingPriceByProduct,
+            notListed: notListedByProduct
         });
     } catch (error) {
         console.error('upload-prices failed:', error);
@@ -988,6 +1075,28 @@ app.post('/api/admin/refresh-conn-status', async (req, res) => {
         res.json({ ok: true, ...result });
     } catch (error) {
         console.error('refresh-conn-status failed:', error);
+        res.status(500).json({ error: error.message || 'Refresh failed' });
+    }
+});
+
+// Per-dispenser conn_status refresh — the per-card "Refresh Status" action.
+// Available to any authenticated user (mirrors the publish endpoint, which is
+// likewise open to all roles including viewer).
+app.post('/api/dispensers/refresh-conn-status', async (req, res) => {
+    try {
+        const { address } = req.body || {};
+        if (!address) {
+            return res.status(400).json({ error: 'address is required' });
+        }
+        const result = await refreshConnStatusForAddress(address);
+        await logActivity(req, 'refresh_conn_status_single', {
+            entity_type: 'mqtt',
+            entity_id: ensureDAddress(address),
+            details: result
+        });
+        res.json({ ok: true, ...result });
+    } catch (error) {
+        console.error('refresh-conn-status (single) failed:', error);
         res.status(500).json({ error: error.message || 'Refresh failed' });
     }
 });
@@ -1433,6 +1542,10 @@ app.get('/api/ducs', requireApiKey, async (req, res) => {
                  s.station_id    AS station_id,
                  s.division      AS division,
                  s.city          AS city,
+                 s.price_pmg     AS price_pmg,
+                 s.price_hsd     AS price_hsd,
+                 s.price_hobc    AS price_hobc,
+                 s.prices_updated_at AS prices_updated_at,
                  ${addressOutSql('d')} AS duc_address,
                  d.conn_status   AS conn_status,
                  n.dispenser_id  AS dispenser_id,
@@ -1489,7 +1602,8 @@ app.get('/api/dispensers', async (req, res) => {
         // Explicit columns — drops IMEI1/IMEI2 from the response (only
         // used server-side) so the payload stays small over the network.
         let query = `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                            connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at
+                            connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at,
+                            remark, remark_at
                      FROM dispensers`;
         let params = [];
 
@@ -1522,7 +1636,8 @@ app.get('/api/dispensers-full', async (req, res) => {
         const [dispensers, nozzles, stations] = await Promise.all([
             pool.query(
                 `SELECT id, customer_code, dispenser_id, ${addressOutSql()} AS address, conn_status,
-                        connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at
+                        connected_at, interface_type, interface_lock_status, number_of_nozzles, DispenserBrand, created_at,
+                        remark, remark_at
                  FROM dispensers
                  ${whereCustomer}
                  ORDER BY customer_code, dispenser_id`,
@@ -1576,6 +1691,103 @@ app.get('/api/dispensers-full', async (req, res) => {
     } catch (error) {
         console.error('Database error in /api/dispensers-full:', error);
         res.status(500).json({ error: 'Failed to fetch dispensers' });
+    }
+});
+
+// Add a dispenser remark. Admin / super_admin only — everyone else can read
+// (the latest ships in /api/dispensers[-full]; the full timeline is served by
+// the GET below) but cannot write. Append-only: each call inserts a history row
+// AND refreshes the latest-remark snapshot on the dispenser, in one transaction.
+// Keyed by address (matches errors/resets + the device-status popup). Records
+// who added it (username + id), their IP, and when.
+app.post('/api/dispensers/:address/remarks', async (req, res) => {
+    const role = req.authUser?.role;
+    if (role !== 'admin' && role !== 'super_admin') {
+        return res.status(403).json({ error: 'Only admin or super_admin can add remarks' });
+    }
+    const addrD = ensureDAddress(req.params.address);
+    const addrNaked = stripDAddress(req.params.address);
+    const remark = (req.body?.remark ?? '').toString().trim();
+    if (remark === '') {
+        return res.status(400).json({ error: 'Remark text is required' });
+    }
+    const ip = getClientIp(req);
+    const username = req.authUser?.username || null;
+    const userId = req.authUser?.id || null;
+
+    let conn;
+    try {
+        conn = await pool.getConnection();
+        await conn.beginTransaction();
+        try {
+            // Resolve the dispenser (by either stored address form) — confirms it
+            // exists and gives us its customer_code to stamp on the history row.
+            const [drows] = await conn.query(
+                `SELECT customer_code FROM dispensers WHERE address IN (?, ?) LIMIT 1`,
+                [addrD, addrNaked]
+            );
+            if (drows.length === 0) {
+                await conn.rollback();
+                return res.status(404).json({ error: 'Dispenser not found' });
+            }
+            const customerCode = drows[0].customer_code;
+
+            // Refresh the latest-remark snapshot (text + time only).
+            await conn.query(
+                `UPDATE dispensers SET remark = ?, remark_at = NOW()
+                  WHERE address IN (?, ?)`,
+                [remark, addrD, addrNaked]
+            );
+            // Append to the permanent history (archive) — author + IP recorded
+            // here. Store the canonical D-prefixed address + the customer_code.
+            const [ins] = await conn.query(
+                `INSERT INTO dispenser_remarks
+                    (address, customer_code, remark, created_by_id, created_by, created_ip)
+                 VALUES (?, ?, ?, ?, ?, ?)`,
+                [addrD, customerCode, remark, userId, username, ip]
+            );
+            await conn.commit();
+
+            const [rows] = await conn.query(
+                `SELECT id, remark, created_by, created_ip, created_at
+                   FROM dispenser_remarks WHERE id = ?`,
+                [ins.insertId]
+            );
+            await logActivity(req, 'dispenser_remark', {
+                entity_type: 'dispenser',
+                entity_id: addrD,
+                details: { remark_id: ins.insertId }
+            });
+            res.json({ ok: true, ...(rows[0] || {}) });
+        } catch (txErr) {
+            await conn.rollback();
+            throw txErr;
+        }
+    } catch (error) {
+        console.error('Save dispenser remark error:', error);
+        res.status(500).json({ error: 'Failed to save remark' });
+    } finally {
+        if (conn) conn.release();
+    }
+});
+
+// Full remark timeline for one dispenser (newest first). Readable by any role —
+// the "Remarks" tab in the device-status popup uses it.
+app.get('/api/dispensers/:address/remarks', async (req, res) => {
+    const addrD = ensureDAddress(req.params.address);
+    const addrNaked = stripDAddress(req.params.address);
+    try {
+        const [rows] = await pool.query(
+            `SELECT id, remark, created_by, created_ip, created_at
+               FROM dispenser_remarks
+              WHERE address IN (?, ?)
+              ORDER BY created_at DESC, id DESC`,
+            [addrD, addrNaked]
+        );
+        res.json(rows);
+    } catch (error) {
+        console.error('Fetch dispenser remarks error:', error);
+        res.status(500).json({ error: 'Failed to fetch remarks' });
     }
 });
 
