@@ -100,10 +100,26 @@ CREATE TABLE `dispensers` (
   `imei1` varchar(50) DEFAULT NULL,
   `imei2` varchar(50) DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  `remark` text,
+  `remark_at` timestamp NULL DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `idx_address` (`address`),
   UNIQUE KEY `idx_customer_dispenser` (`customer_code`,`dispenser_id`),
   CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE CASCADE
+) ENGINE=InnoDB;
+
+CREATE TABLE `dispenser_remarks` (
+  `id` int NOT NULL AUTO_INCREMENT,
+  `address` varchar(9) NOT NULL,
+  `customer_code` varchar(8) DEFAULT NULL,
+  `remark` text NOT NULL,
+  `created_by_id` int DEFAULT NULL,
+  `created_by` varchar(255) DEFAULT NULL,
+  `created_ip` varchar(64) DEFAULT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_dispenser_remarks_lookup` (`address`,`created_at`),
+  KEY `idx_dispenser_remarks_customer` (`customer_code`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE IF NOT EXISTS `connections_history` (
