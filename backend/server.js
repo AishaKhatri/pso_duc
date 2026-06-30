@@ -36,6 +36,8 @@ const {
     NotificationWebSocketServer,
     fetchStationSheetRows,
     getClientIp,
+    requireApiKey,
+    denyUnlessRole,
     logActivity,
     logPriceDebug,
     ensureDAddress,
@@ -44,6 +46,9 @@ const {
     describeMqttCommand,
     setLongOutageNotificationService,
     startLongOutageService } = require('./backend-services');
+
+const { txnFilters } = require('./stats-service');
+const { parsePriceSheet, stationPriceForProduct } = require('./price-service');
 
 const { log } = require('console');
 const console = require('console');
@@ -118,31 +123,6 @@ const MAX_DECIMAL_VALUE = 9999999999999.99;
 const recentUpdates = new Map();
 const DEDUPE_WINDOW = 5000; // 5 seconds
 const JWT_SECRET = process.env.JWT_SECRET;
-
-// Service-to-service API key. Used by external integration clients (the
-// Price Update python app, etc.) that call /api/ducs on the integration
-// port. Rotate by changing PRICE_APP_API_KEY in .env and restarting.
-const PRICE_APP_API_KEY = process.env.PRICE_APP_API_KEY;
-
-// Accepts either:
-//   - X-API-Key header matching PRICE_APP_API_KEY (used by the Python price
-//     update app and any other server-to-server caller), OR
-//   - A signed-in admin / super_admin (req.authUser set by the JWT middleware)
-// Lets the web Price Update page reuse the same /api/ducs feed the Python tool
-// already consumes — no duplicate DUC-listing endpoint needed.
-function requireApiKey(req, res, next) {
-    const role = req.authUser && req.authUser.role;
-    if (role === 'admin' || role === 'super_admin') return next();
-
-    if (!PRICE_APP_API_KEY) {
-        return res.status(503).json({ error: 'API key not configured on server' });
-    }
-    const provided = req.headers['x-api-key'];
-    if (!provided || provided !== PRICE_APP_API_KEY) {
-        return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
-    }
-    next();
-}
 
 // Start the midnight reset service when server starts
 async function initializeServer() {
@@ -290,51 +270,18 @@ app.get('/api/orphan-dispensers', async (req, res) => {
     }
 });
 
-// Map a dashboard division to the customer codes that belong to it, using the
-// same station sheet the dashboard counts come from (transactions carry only
-// customer_code, not division). Returns [] when the division has no stations —
-// callers should then report zeroed sales.
-async function customerCodesForDivision(division) {
-    const sheet = await fetchStationSheetRows();
-    const want = String(division || '').trim().toLowerCase();
-    return sheet
-        .filter(s => String(s.division || '').trim().toLowerCase() === want)
-        .map(s => String(s.customer_code || '').trim())
-        .filter(Boolean);
-}
-
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
-        const customerCode = (req.query.customer_code || '').trim();
-        const dispenserId = (req.query.dispenser_id || '').toString().trim();
-        const division = (req.query.division || '').trim();
-        const filters = [];
-        const filterParams = [];
-        if (customerCode) {
-            filters.push('customer_code = ?');
-            filterParams.push(customerCode);
+        const f = await txnFilters(req);
+        if (!f) {
+            return res.json({
+                today: { tx_count: 0, total_amount: 0, total_volume: 0 },
+                hourly: Array.from({ length: 24 }, (_, h) => ({ hour: h, tx_count: 0, amount: 0, volume: 0 })),
+                products: []
+            });
         }
-        if (dispenserId) {
-            filters.push('dispenser_id = ?');
-            filterParams.push(dispenserId);
-        }
-        // Division scopes the dashboard's sales to one region. Expand it to its
-        // customer codes and filter transactions by them.
-        let divisionPlaceholders = '';
-        if (division) {
-            const codes = await customerCodesForDivision(division);
-            if (codes.length === 0) {
-                return res.json({
-                    today: { tx_count: 0, total_amount: 0, total_volume: 0 },
-                    hourly: Array.from({ length: 24 }, (_, h) => ({ hour: h, tx_count: 0, amount: 0, volume: 0 })),
-                    products: []
-                });
-            }
-            divisionPlaceholders = codes.map(() => '?').join(',');
-            filters.push(`customer_code IN (${divisionPlaceholders})`);
-            filterParams.push(...codes);
-        }
-        const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
+        const filterClause = f.clause;
+        const filterParams = f.params;
 
         const [totalsRows] = await pool.query(
             `SELECT
@@ -373,11 +320,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
             }
         }
 
-        const productFilters = [];
-        if (customerCode) productFilters.push('t.customer_code = ?');
-        if (dispenserId) productFilters.push('t.dispenser_id = ?');
-        if (division) productFilters.push(`t.customer_code IN (${divisionPlaceholders})`);
-        const productFilterClause = productFilters.length ? 'AND ' + productFilters.join(' AND ') : '';
+        const productFilterClause = f.tClause;
         const [productRows] = await pool.query(
             `SELECT
                 COALESCE(n.product, 'Unknown') AS product,
@@ -424,23 +367,10 @@ app.get('/api/dashboard-stats', async (req, res) => {
 app.get('/api/sales-series', async (req, res) => {
     try {
         const range = (req.query.range || 'day').toLowerCase();
-        const customerCode = (req.query.customer_code || '').trim();
-        const dispenserId  = (req.query.dispenser_id  || '').toString().trim();
-        const division     = (req.query.division || '').trim();
-        const filters = [];
-        const params  = [];
-        if (customerCode) { filters.push('customer_code = ?'); params.push(customerCode); }
-        if (dispenserId)  { filters.push('dispenser_id = ?');  params.push(dispenserId); }
-        // Division scopes the chart to one region's customer codes.
-        if (division) {
-            const codes = await customerCodesForDivision(division);
-            if (codes.length === 0) {
-                return res.json({ range, points: [], peak: 0, total: 0 });
-            }
-            filters.push(`customer_code IN (${codes.map(() => '?').join(',')})`);
-            params.push(...codes);
-        }
-        const filterClause = filters.length ? 'AND ' + filters.join(' AND ') : '';
+        const f = await txnFilters(req);
+        if (!f) return res.json({ range, points: [], peak: 0, total: 0 });
+        const filterClause = f.clause;
+        const params = f.params;
 
         let points = [];
 
@@ -749,59 +679,8 @@ const pricesUpload = multer({
     limits: { fileSize: 5 * 1024 * 1024 }
 });
 
-// Builds a SQL expression that yields the value to store in
-// nozzles.actual_price. Wayne dispensers can only display/charge to one
-// decimal place, so we truncate (floor) their stored price to one decimal —
-// `stations.price_*` keeps the full PSO price, but the per-nozzle column
-// reflects what the pump actually charges. Other brands store the full price.
-//   stationsAlias        SQL alias of the stations table in the surrounding
-//                        query (e.g. 's')
-//   dispensersAlias      SQL alias of the dispensers table (e.g. 'd')
-//   stationPriceCol      one of 'price_pmg' | 'price_hsd' | 'price_hobc'
-// Whitelisted callers only — do NOT pass user input as stationPriceCol.
-// function _nozzleActualPriceExpr(stationsAlias, dispensersAlias, stationPriceCol) {
-//     // return `CASE WHEN LOWER(${dispensersAlias}.DispenserBrand) = 'wayne' `
-//     //      + `THEN FLOOR(${stationsAlias}.\`${stationPriceCol}\` * 10) / 10 `
-//     //      + `ELSE ${stationsAlias}.\`${stationPriceCol}\` END`;
-// }
-
-// Pull the per-customer-code prices out of one of the price-file sheets.
-// Sheet layout (row 0 = date, row 1 = headers, row 2+ = data):
-//   col B Customer Code | col D New Code | col G {Product} Price
-// Returns { prices, listed }:
-//   prices  Map<customerCode, price> — rows with a valid (>0) price.
-//   listed  Set<customerCode>        — every row that names a code, even when
-//                                      its price cell is blank/invalid. Lets the
-//                                      caller tell "listed but no price" apart
-//                                      from "not in the file at all".
-// When New Code differs from Customer Code, the New Code wins — that's how the
-// file signals a re-mapped outlet.
-function _parsePriceSheet(sheet) {
-    const XLSX = require('xlsx');
-    const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null });
-    const prices = new Map();
-    const listed = new Set();
-    for (let i = 2; i < rows.length; i++) {
-        const r = rows[i];
-        if (!r) continue;
-        const customerCode = r[1];
-        const newCode = r[3];
-        const price = r[6];
-        const code = (newCode != null && newCode !== '') ? newCode : customerCode;
-        if (code == null || code === '') continue;
-        listed.add(String(code));
-        if (price == null || price === '') continue;
-        const priceNum = Number(price);
-        if (!Number.isFinite(priceNum) || priceNum <= 0) continue;
-        prices.set(String(code), priceNum);
-    }
-    return { prices, listed };
-}
-
 app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, res) => {
-    if (req.authUser?.role !== 'super_admin') {
-        return res.status(403).json({ error: 'super_admin only' });
-    }
+    if (denyUnlessRole(req, res, 'super_admin')) return;
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
     }
@@ -821,9 +700,9 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
         }
 
         const pricesByProduct = {
-            PMG:  sheetByProduct.PMG  ? _parsePriceSheet(sheetByProduct.PMG)  : new Map(),
-            HSD:  sheetByProduct.HSD  ? _parsePriceSheet(sheetByProduct.HSD)  : new Map(),
-            HOBC: sheetByProduct.HOBC ? _parsePriceSheet(sheetByProduct.HOBC) : new Map()
+            PMG:  sheetByProduct.PMG  ? parsePriceSheet(sheetByProduct.PMG)  : new Map(),
+            HSD:  sheetByProduct.HSD  ? parsePriceSheet(sheetByProduct.HSD)  : new Map(),
+            HOBC: sheetByProduct.HOBC ? parsePriceSheet(sheetByProduct.HOBC) : new Map()
         };
 
         const [stationRows] = await pool.query('SELECT customer_code, station_id FROM stations');
@@ -946,9 +825,7 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
 // customer_code and any subset of the three products. NULL fields are
 // untouched; at least one must be present so we never write an empty update.
 app.post('/api/admin/prices/manual', async (req, res) => {
-    if (req.authUser?.role !== 'super_admin') {
-        return res.status(403).json({ error: 'super_admin only' });
-    }
+    if (denyUnlessRole(req, res, 'super_admin')) return;
 
     const { customer_code, price_pmg, price_hsd, price_hobc } = req.body || {};
     if (!customer_code) {
@@ -1045,9 +922,7 @@ app.post('/api/admin/prices/manual', async (req, res) => {
 // Listing for the Prices page. Returns one row per station with its current
 // PMG/HSD/HOBC prices and when they were last refreshed.
 app.get('/api/admin/prices', async (req, res) => {
-    if (req.authUser?.role !== 'super_admin') {
-        return res.status(403).json({ error: 'super_admin only' });
-    }
+    if (denyUnlessRole(req, res, 'super_admin')) return;
     try {
         const [rows] = await pool.query(
             `SELECT customer_code, station_id, city, division,
@@ -1063,9 +938,7 @@ app.get('/api/admin/prices', async (req, res) => {
 });
 
 app.post('/api/admin/refresh-conn-status', async (req, res) => {
-    if (req.authUser?.role !== 'super_admin') {
-        return res.status(403).json({ error: 'super_admin only' });
-    }
+    if (denyUnlessRole(req, res, 'super_admin')) return;
     try {
         const result = await refreshConnStatusSubscriptions();
         await logActivity(req, 'refresh_conn_status', {
@@ -1127,10 +1000,6 @@ let _activeJobControl = null;
 function _priceUpdateFinalizeInMs() {
     if (!_activePriceUpdate || !_activePriceUpdate.finalizesAt) return 0;
     return Math.max(0, _activePriceUpdate.finalizesAt - Date.now());
-}
-
-function _isPriceUpdateRole(role) {
-    return role === 'admin' || role === 'super_admin';
 }
 
 // nozzles.status tri-state, same mapping the dispensers page shows:
@@ -1278,9 +1147,7 @@ async function _finalizePriceUpdateLog({ actor, jobId, cityLower, customer_code,
 }
 
 app.post('/api/admin/price-update/publish', async (req, res) => {
-    if (!_isPriceUpdateRole(req.authUser?.role)) {
-        return res.status(403).json({ error: 'admin only' });
-    }
+    if (denyUnlessRole(req, res, 'admin', 'super_admin')) return;
     const { city, customer_code, prices, retain, effectiveInMinutes } = req.body || {};
     if (!city || !customer_code || !prices || typeof prices !== 'object') {
         return res.status(400).json({ error: 'city, customer_code, and prices required' });
@@ -1467,9 +1334,7 @@ app.post('/api/admin/price-update/publish', async (req, res) => {
 // state is what the /acks/:job_id poll provides; this just restores the job
 // identity + published payload.
 app.get('/api/admin/price-update/active', (req, res) => {
-    if (!_isPriceUpdateRole(req.authUser?.role)) {
-        return res.status(403).json({ error: 'admin only' });
-    }
+    if (denyUnlessRole(req, res, 'admin', 'super_admin')) return;
     if (!_activePriceUpdate || !hasActivePriceUpdate()) {
         return res.json({ active: false });
     }
@@ -1480,9 +1345,7 @@ app.get('/api/admin/price-update/active', (req, res) => {
 // 'dismissed' (writes the audit log, clears any retained message, frees the
 // ACK subscription) so a new publish can start immediately.
 app.post('/api/admin/price-update/dismiss', async (req, res) => {
-    if (!_isPriceUpdateRole(req.authUser?.role)) {
-        return res.status(403).json({ error: 'admin only' });
-    }
+    if (denyUnlessRole(req, res, 'admin', 'super_admin')) return;
     const ctrl = _activeJobControl;
     if (!ctrl || !hasActivePriceUpdate()) {
         return res.json({ dismissed: false });
@@ -1495,9 +1358,7 @@ app.post('/api/admin/price-update/dismiss', async (req, res) => {
 });
 
 app.get('/api/admin/price-update/acks/:job_id', (req, res) => {
-    if (!_isPriceUpdateRole(req.authUser?.role)) {
-        return res.status(403).json({ error: 'admin only' });
-    }
+    if (denyUnlessRole(req, res, 'admin', 'super_admin')) return;
     const job = getPriceUpdateJob(req.params.job_id);
     if (!job) return res.status(404).json({ error: 'Job not found or expired' });
     res.json(job);
@@ -1701,10 +1562,7 @@ app.get('/api/dispensers-full', async (req, res) => {
 // Keyed by address (matches errors/resets + the device-status popup). Records
 // who added it (username + id), their IP, and when.
 app.post('/api/dispensers/:address/remarks', async (req, res) => {
-    const role = req.authUser?.role;
-    if (role !== 'admin' && role !== 'super_admin') {
-        return res.status(403).json({ error: 'Only admin or super_admin can add remarks' });
-    }
+    if (denyUnlessRole(req, res, 'admin', 'super_admin')) return;
     const addrD = ensureDAddress(req.params.address);
     const addrNaked = stripDAddress(req.params.address);
     const remark = (req.body?.remark ?? '').toString().trim();
@@ -2324,11 +2182,6 @@ app.post('/api/users', async (req, res) => {
             return res.status(400).json({ error: 'Username already exists' });
         }
         
-        // // For operator role, customer_code is required
-        // if (role === 'operator' && !customer_code) {
-        //     return res.status(400).json({ error: 'Customer code is required for operator role' });
-        // }
-        
         // Verify customer_code exists in stations table for operator
         if (role === 'operator' && customer_code) {
             const [station] = await pool.query('SELECT customer_code FROM stations WHERE customer_code = ?', [customer_code]);
@@ -2627,19 +2480,7 @@ app.post('/api/nozzles', async (req, res) => {
         // Inherit actual_price from the station's price for this product, so
         // a freshly-added nozzle picks up the official filed price without
         // waiting for the next price-file upload.
-        const productKey = String(product).toUpperCase();
-        const priceCol = productKey === 'PMG' ? 'price_pmg'
-                        : productKey === 'HSD' ? 'price_hsd'
-                        : productKey === 'HOBC' ? 'price_hobc'
-                        : null;
-        let actualPrice = null;
-        if (priceCol) {
-            const [stationPriceRows] = await pool.query(
-                `SELECT \`${priceCol}\` AS p FROM stations WHERE customer_code = ?`,
-                [customer_code]
-            );
-            actualPrice = stationPriceRows[0]?.p ?? null;
-        }
+        const actualPrice = await stationPriceForProduct(customer_code, product);
 
         const [result] = await pool.query(
             `INSERT INTO nozzles
@@ -3008,21 +2849,8 @@ app.put('/api/nozzles/:dispenser_id/:nozzle_id', async (req, res) => {
             // Product changed — re-derive actual_price from the station's
             // current price for the new product. NULL if station has no price
             // filed yet for it.
-            const productKey = String(product).toUpperCase();
-            const priceCol = productKey === 'PMG' ? 'price_pmg'
-                            : productKey === 'HSD' ? 'price_hsd'
-                            : productKey === 'HOBC' ? 'price_hobc'
-                            : null;
-            let actualPrice = null;
-            if (priceCol) {
-                const [stationPriceRows] = await pool.query(
-                    `SELECT \`${priceCol}\` AS p FROM stations WHERE customer_code = ?`,
-                    [customer_code]
-                );
-                actualPrice = stationPriceRows[0]?.p ?? null;
-            }
             fields.push('actual_price = ?');
-            values.push(actualPrice);
+            values.push(await stationPriceForProduct(customer_code, product));
         }
         if (status !== undefined) {
             fields.push('status = ?');
@@ -3411,92 +3239,6 @@ app.delete('/api/dispensers/:id', async (req, res) => {
     }
 });
 
-// Instead of keeping data in history table, make a new archives table for deleted dispensers
-// ------ NOT TESTED ------
-// app.delete('/api/dispensers/:id', async (req, res) => {
-//     const connection = await pool.getConnection();
-//     try {
-//         await connection.beginTransaction();
-        
-//         const { id } = req.params;
-//         const deleteHistory = req.query.delete_history === 'true';
-        
-//         // Get dispenser info
-//         const [dispenser] = await connection.query(
-//             'SELECT address, dispenser_id FROM dispensers WHERE id = ?', 
-//             [id]
-//         );
-        
-//         if (dispenser.length === 0) {
-//             await connection.rollback();
-//             return res.status(404).json({ error: 'Dispenser not found' });
-//         }
-        
-//         const { address, dispenser_id } = dispenser[0];
-        
-//         // Unsubscribe from topics
-//         unsubscribeFromTopic(`D${address}`);
-//         unsubscribeFromTopic(`duc/conn_status/D${address}`);
-        
-//         if (!deleteHistory) {
-//             // Archive historical data before deletion
-//             // 1. Archive nozzle_history
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_nozzle_history LIKE nozzle_history
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_nozzle_history 
-//                 SELECT * FROM nozzle_history WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-            
-//             // 2. Archive transactions
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_transactions LIKE transactions
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_transactions 
-//                 SELECT * FROM transactions WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-            
-//             // 3. Archive nozzles (optional)
-//             await connection.query(`
-//                 CREATE TABLE IF NOT EXISTS archived_nozzles LIKE nozzles
-//             `);
-            
-//             await connection.query(`
-//                 INSERT INTO archived_nozzles 
-//                 SELECT * FROM nozzles WHERE dispenser_id = ?
-//             `, [dispenser_id]);
-//         }
-        
-//         // Delete from main tables (cascade will handle nozzle_history and transactions if deleteHistory=true)
-//         // If deleteHistory=false, we've already archived the data
-//         const [result] = await connection.query(
-//             'DELETE FROM dispensers WHERE id = ?',
-//             [id]
-//         );
-        
-//         await connection.commit();
-        
-//         if (result.affectedRows === 0) {
-//             await connection.rollback();
-//             return res.status(404).json({ error: 'Dispenser not found' });
-//         }
-        
-//         res.json({ 
-//             success: true,
-//             message: deleteHistory 
-//                 ? 'Dispenser and all historical records deleted successfully'
-//                 : 'Dispenser deleted (historical records archived)'
-//         });
-        
-//     } catch (error) {
-//         await connection.rollback();
-//         console.error('Database error:', error);
-//         res.status(500).json({ error: 'Failed to delete dispenser' });
-//     } finally {
-//         connection.release();
-//     }
-// });
+// TODO: a future DELETE /api/dispensers/:id should archive the dispenser's
+// nozzles/transactions/history into archive tables before deleting, rather than
+// relying on cascade. Not yet implemented.

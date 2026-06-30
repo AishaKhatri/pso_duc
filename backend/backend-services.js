@@ -421,6 +421,32 @@ function getClientIp(req) {
     return raw || null;
 }
 
+// Express middleware for the service-to-service endpoints (/api/ducs): allow a
+// signed-in admin/super_admin, OR a caller presenting the X-API-Key that
+// matches PRICE_APP_API_KEY (used by the Python price-update app).
+function requireApiKey(req, res, next) {
+    const role = req.authUser && req.authUser.role;
+    if (role === 'admin' || role === 'super_admin') return next();
+
+    const apiKey = process.env.PRICE_APP_API_KEY;
+    if (!apiKey) {
+        return res.status(503).json({ error: 'API key not configured on server' });
+    }
+    const provided = req.headers['x-api-key'];
+    if (!provided || provided !== apiKey) {
+        return res.status(401).json({ error: 'Invalid or missing X-API-Key' });
+    }
+    next();
+}
+
+// In-handler 403 guard. Returns true (and sends the response) when the caller's
+// role isn't one of `roles`. Use as: if (denyUnlessRole(req, res, 'super_admin')) return;
+function denyUnlessRole(req, res, ...roles) {
+    if (roles.includes(req.authUser?.role)) return false;
+    res.status(403).json({ error: `${roles.join(' or ')} only` });
+    return true;
+}
+
 // Dispenser address normalization. The canonical on-disk form is D-prefixed
 // (e.g. "D01"). Writes go through ensureDAddress so legacy code that still
 // passes a naked numeric continues to land as "D…". Lookup helpers and SELECT
@@ -614,6 +640,8 @@ module.exports = {
     loadBwpStationRows,
     loadDikStationRows,
     getClientIp,
+    requireApiKey,
+    denyUnlessRole,
     logActivity,
     ensureDAddress,
     stripDAddress,
