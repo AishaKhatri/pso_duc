@@ -91,6 +91,43 @@ function getRegionScopedStations() {
     );
 }
 
+// The selected division as an API query value, or '' when "All" is selected
+// (so the sales endpoints return un-scoped, system-wide totals).
+function divisionParam() {
+    const div = dashboardState.selectedDivision;
+    return div && div !== 'ALL' ? div : '';
+}
+
+// Re-fetch the division-scoped sales data (KPI sales tiles, sales chart, and
+// product donut) and repaint them. Called when the division filter changes and
+// by the periodic auto-refresh. A sequence guard drops stale responses so fast
+// division switching can't paint an out-of-date region's numbers.
+let _salesReqSeq = 0;
+async function refreshScopedSales() {
+    const division = divisionParam();
+    const seq = ++_salesReqSeq;
+    const [stats, series] = await Promise.all([
+        fetchDashboardStats(division),
+        fetchSalesSeries(dashboardState.salesRange, division)
+    ]);
+    if (seq !== _salesReqSeq) return;  // superseded by a newer selection
+
+    dashboardState.stats = stats;
+    dashboardState.salesSeries = series;
+    refreshTiles();  // KPI strip's sales tiles read dashboardState.stats.today
+    if (dashboardState.donutPanelEl) {
+        renderDonutBody(dashboardState.donutPanelEl, stats.products || []);
+    }
+    if (dashboardState.salesPanelEl) {
+        renderSalesChartBody(
+            dashboardState.salesPanelEl,
+            series.points || [],
+            series.peak || 0,
+            series.range
+        );
+    }
+}
+
 function refreshTiles() {
     const scoped = getRegionScopedStations();
     if (dashboardState.kpiStrip && dashboardState.stats) {
@@ -440,9 +477,11 @@ function renderSalesChartBody(panel, points, peak, range) {
     panel.appendChild(axis);
 }
 
-async function fetchSalesSeries(range) {
+async function fetchSalesSeries(range, division = '') {
     try {
-        const resp = await fetch(`${API_BASE_URL}/sales-series?range=${encodeURIComponent(range)}`);
+        const params = new URLSearchParams({ range });
+        if (division) params.set('division', division);
+        const resp = await fetch(`${API_BASE_URL}/sales-series?${params.toString()}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
     } catch (err) {
@@ -474,7 +513,7 @@ function buildSalesChartPanel() {
             dashboardState.salesRange = r.key;
             tabs.querySelectorAll('.chart-range-tab').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            const data = await fetchSalesSeries(r.key);
+            const data = await fetchSalesSeries(r.key, divisionParam());
             dashboardState.salesSeries = data;
             renderSalesChartBody(panel, data.points || [], data.peak || 0, r.key);
         });
@@ -487,7 +526,7 @@ function buildSalesChartPanel() {
     if (cached && cached.range === dashboardState.salesRange) {
         renderSalesChartBody(panel, cached.points || [], cached.peak || 0, cached.range);
     }
-    fetchSalesSeries(dashboardState.salesRange).then(data => {
+    fetchSalesSeries(dashboardState.salesRange, divisionParam()).then(data => {
         dashboardState.salesSeries = data;
         renderSalesChartBody(panel, data.points || [], data.peak || 0, data.range);
     });
@@ -663,7 +702,9 @@ function buildFilterBar() {
             divisionRow.querySelectorAll('.filter-chip').forEach(c => c.classList.remove('active'));
             chip.classList.add('active');
             refreshMarkers();
-            refreshTiles();
+            refreshTiles();          // site/DUC counts + status chips (client-side, instant)
+            renderAlertsList();      // alerts re-scoped to the division
+            refreshScopedSales();    // sales KPIs + chart + donut (re-fetched scoped)
         });
         divisionRow.appendChild(chip);
     });
@@ -922,11 +963,25 @@ function formatAlertTime(ts) {
     return d.toLocaleTimeString(undefined, { hour12: false });
 }
 
+// Scope alerts to the selected division. An alert maps to a division via its
+// customerCode → station lookup. Orphan alerts (customer_code not in the sheet)
+// have no division, so they only show under "All".
+function getScopedAlerts() {
+    const div = dashboardState.selectedDivision;
+    if (!div || div === 'ALL') return dashboardState.alerts;
+    const want = div.toLowerCase();
+    return dashboardState.alerts.filter(a => {
+        const s = dashboardState.stations.find(x => x.customer_code === a.customerCode);
+        return s && (s.division || '').toLowerCase() === want;
+    });
+}
+
 function renderAlertsList() {
     const list = dashboardState.alertsListEl;
     if (!list) return;
     list.innerHTML = '';
-    if (!dashboardState.alerts.length) {
+    const alerts = getScopedAlerts();
+    if (!alerts.length) {
         const empty = document.createElement('div');
         empty.className = 'alerts-empty';
         empty.textContent = 'No alerts yet.';
@@ -934,7 +989,7 @@ function renderAlertsList() {
         return;
     }
     const frag = document.createDocumentFragment();
-    for (const a of dashboardState.alerts) {
+    for (const a of alerts) {
         const row = document.createElement('div');
         row.className = `alert-row ${a.type || 'info'}`;
         const stationId = stationIdForCustomerCode(a.customerCode);
@@ -1095,9 +1150,10 @@ function attachAlertListener() {
     dashboardState.alertListenerAttached = true;
 }
 
-async function fetchDashboardStats() {
+async function fetchDashboardStats(division = '') {
     try {
-        const resp = await fetch(`${API_BASE_URL}/dashboard-stats`);
+        const qs = division ? `?division=${encodeURIComponent(division)}` : '';
+        const resp = await fetch(`${API_BASE_URL}/dashboard-stats${qs}`);
         if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
         return await resp.json();
     } catch (error) {
@@ -1128,7 +1184,7 @@ async function renderDashboard() {
     let stations = [];
     let stats = null;
     try {
-        [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats()]);
+        [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats(divisionParam())]);
     } catch (error) {
         console.error('Failed to load dashboard data:', error);
         loader.remove();
@@ -1240,8 +1296,9 @@ async function renderDashboard() {
 
 async function refreshDashboardData() {
     let stations, stats;
+    const division = divisionParam();
     try {
-        [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats()]);
+        [stations, stats] = await Promise.all([fetchStationLocations(), fetchDashboardStats(division)]);
     } catch (error) {
         console.warn('Dashboard auto-refresh failed:', error.message);
         return;
@@ -1269,7 +1326,7 @@ async function refreshDashboardData() {
     if (dashboardState.salesPanelEl) {
         // Refresh in place: fetch first, then patch only the chart body so
         // the tabs/header never blink to an empty state between rebuilds.
-        const data = await fetchSalesSeries(dashboardState.salesRange);
+        const data = await fetchSalesSeries(dashboardState.salesRange, division);
         dashboardState.salesSeries = data;
         renderSalesChartBody(
             dashboardState.salesPanelEl,
@@ -1286,6 +1343,7 @@ async function refreshDashboardData() {
 
     refreshTiles();
     refreshMarkers({ fit: false });
+    renderAlertsList();
 
     if (dashboardState.lastUpdatedEl) {
         dashboardState.lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;

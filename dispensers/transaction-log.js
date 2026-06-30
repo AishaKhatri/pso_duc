@@ -375,7 +375,7 @@ function createTransactionTable(transactions) {
     
     transactions.forEach((transaction, index) => {
         const row = document.createElement('tr');
-        row.style.backgroundColor = index % 2 === 0 ? 'var(--bg-surface-2)' : 'var(--bg-surface)';
+        row.style.backgroundColor = index % 2 === 1 ? 'var(--bg-surface-2)' : 'var(--bg-surface)';
         row.style.color = 'var(--text-primary)';
         
         const transactionDate = new Date(transaction.time);

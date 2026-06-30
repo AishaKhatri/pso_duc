@@ -308,32 +308,34 @@ body {
     padding-left: 15px;
 }
 
-/* Collapsed rail: the submenu becomes a flyout popup, shown on hover or when
-   click-locked open. position:fixed (coords set in JS) so it escapes the
-   sidebar's horizontal overflow clipping. */
+/* Collapsed rail: the inline submenu is hidden; it reappears as a flyout popup. */
 .sidebar.collapsed .sidebar-group .sidebar-submenu {
     display: none;
+}
+
+.sidebar-submenu.flyout {
+    display: none;
     position: fixed;
+    flex-direction: column;
     min-width: 190px;
     background-color: var(--bg-sidebar);
     border: 1px solid var(--border);
     border-radius: 6px;
     box-shadow: var(--shadow-card);
     padding: 6px 0;
-    z-index: 1200;
+    z-index: 9000;
 }
 
-.sidebar.collapsed .sidebar-group.flyout-hover .sidebar-submenu,
-.sidebar.collapsed .sidebar-group.flyout-open .sidebar-submenu {
+.sidebar-submenu.flyout.flyout-visible {
     display: flex;
 }
 
 /* Inside the flyout, show full text labels and give items breathing room. */
-.sidebar.collapsed .sidebar-group .sidebar-submenu .sidebar-subitem {
+.sidebar-submenu.flyout .sidebar-subitem {
     padding: 10px 18px;
 }
 
-.sidebar.collapsed .sidebar-group .sidebar-submenu .sidebar-label {
+.sidebar-submenu.flyout .sidebar-label {
     opacity: 1;
     width: auto;
 }

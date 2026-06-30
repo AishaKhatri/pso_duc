@@ -131,6 +131,9 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // when off-screen cards eventually materialize as the user scrolls.
     nozzleGrid.style.minHeight = `${Math.ceil(nozzles.length / 2) * 90}px`;
     card.appendChild(nozzleGrid);
+
+    card.appendChild(buildDispenserRemarkSection(dispenser));
+
     gridContainer.appendChild(card);
 
     // Apply the initial conn_status badge now — without this, the card shows
@@ -207,6 +210,8 @@ async function updateDispenserCard(dispenser) {
     if (Array.isArray(dispenser.nozzles)) {
         card._dispenserNozzles = dispenser.nozzles;
     }
+
+    refreshDispenserRemarkSection(card, dispenser);
 
     if (typeof window.updateConnStatus === 'function') {
         window.updateConnStatus(ensureDAddress(dispenser.address), dispenser.conn_status ? 1 : 0, dispenser.connected_at);
