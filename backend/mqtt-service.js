@@ -79,6 +79,38 @@ function setNotificationService(service) {
     notificationService = service;
 }
 
+// Outstanding GET_VALUE (req_type=1) requests published on behalf of the
+// frontend. Devices publish req_type=0 value reports periodically on their own,
+// so an incoming value report is only treated as a *reply* (and surfaced to the
+// UI's "GET Data" log) when it matches one of these expectations. Keyed by
+// `${D-addr}|${side}${noz}|${msg_type}`; each entry self-expires.
+const pendingGetRequests = new Map();
+const GET_REQUEST_TTL = 60000; // drop an unanswered expectation after 60s
+
+function _getReqKey(disAddrD, side, noz_number, msg_type) {
+    return `${disAddrD}|${side}${noz_number}|${msg_type}`;
+}
+
+function _normalizeSide(side) {
+    if (side === '0' || side === 'A') return 'A';
+    if (side === '1' || side === 'B') return 'B';
+    return String(side);
+}
+
+// Called by the /api/dispensers/publish route whenever it publishes a GET_VALUE
+// command, so the reply that comes back can be recognised and pushed to the UI.
+function registerGetRequest(message) {
+    if (!message || Number(message.req_type) !== 1) return;
+    const key = _getReqKey(
+        ensureDAddress(message.dis_addr),
+        _normalizeSide(message.side),
+        message.noz_number,
+        message.msg_type
+    );
+    pendingGetRequests.set(key, Date.now());
+    setTimeout(() => pendingGetRequests.delete(key), GET_REQUEST_TTL);
+}
+
 // Periodically check for nozzles that haven't sent msg_type: 0
 function startOfflineCheck() {
     setInterval(async () => {
@@ -1392,6 +1424,24 @@ mqttClient.on('message', async (receivedTopic, message) => {
         const { dispenser_id, interface_type: dispenserInterface } = dispensers[0];
 
         if (parsedData.req_type == 0 && parsedData.message !== '') {
+            // If this value report answers an outstanding GET request, tell the
+            // frontend a real reply arrived (routine periodic publishes have no
+            // pending request registered, so they're ignored here).
+            if (notificationService && data.msg_type >= 0 && data.msg_type <= 6) {
+                const getKey = _getReqKey(dbAddrD, side, nozzleNum, data.msg_type);
+                if (pendingGetRequests.has(getKey)) {
+                    pendingGetRequests.delete(getKey);
+                    notificationService.broadcastDispenserReply({
+                        address: dbAddrD,
+                        nozzleId,
+                        side,
+                        noz_number: nozzleNum,
+                        msg_type: data.msg_type,
+                        message: data.message
+                    });
+                }
+            }
+
             // Update database based on message type
             switch(data.msg_type) {
                 case 0: // Ping (msg_type=0). Both "0" and "1" prove the device is reachable;
@@ -1841,6 +1891,7 @@ function handlePriceAck(payload) {
 
 module.exports = {
     setNotificationService,
+    registerGetRequest,
     subscribeToTopic,
     unsubscribeFromTopic,
     getGsmConnectionStatus,

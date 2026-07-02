@@ -220,21 +220,36 @@ function createAlarmsPanel() {
     section.style.display = collapsed ? 'none' : 'block';
     panel.appendChild(section);
 
-    // Toggle handler — update DOM, persist preference, broadcast new reserved
-    // width so the host page can re-flow cards into the freed space.
-    toggleBtn.addEventListener('click', () => {
-        collapsed = !collapsed;
+    // --- GET Data activity log ---
+    const getDataSection = document.createElement('div');
+    getDataSection.style.display = collapsed ? 'none' : 'block';
+    panel.appendChild(getDataSection);
+
+    // Update DOM, persist preference, broadcast new reserved width so the host
+    // page can re-flow cards into the freed space. Shared by the toggle button
+    // and by external callers that force-expand the panel (beginGetDataLog).
+    const setCollapsed = (next) => {
+        collapsed = next;
         localStorage.setItem(ALARMS_COLLAPSED_KEY, collapsed ? '1' : '0');
         panel.style.width = `${collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED}px`;
         panel.style.padding = collapsed ? '10px 6px' : '12px';
         header.style.display = collapsed ? 'none' : 'block';
         section.style.display = collapsed ? 'none' : 'block';
+        getDataSection.style.display = collapsed ? 'none' : 'block';
         headerRow.style.justifyContent = collapsed ? 'center' : 'space-between';
         headerRow.style.marginBottom = collapsed ? '0' : '10px';
         toggleBtn.textContent = collapsed ? '◀' : '▶';
         toggleBtn.title = collapsed ? 'Expand alarms' : 'Collapse alarms';
         _emitAlarmsPanelResize(collapsed);
-    });
+    };
+
+    // Toggle handler — flip collapsed state.
+    toggleBtn.addEventListener('click', () => setCollapsed(!collapsed));
+
+    // Hooks the GET Data log driver uses to force the panel open and to find
+    // where to mount its cards.
+    panel._expand = () => { if (collapsed) setCollapsed(false); };
+    panel._getDataSection = getDataSection;
 
     // Broadcast initial state on next tick so listeners attached after this
     // function returns (the host page wires its listener around the same time
@@ -426,4 +441,108 @@ function scrollToNozzle({ nozzle_id }) {
     }, 350);
 }
 
+// Driven by sendGetCommandsForDispenser
+function beginGetDataLog(dispenser) {
+    const panel = document.getElementById('alarms-panel');
+    if (!panel || !panel._getDataSection) return null;
+    if (typeof panel._expand === 'function') panel._expand();
+
+    const container = panel._getDataSection;
+    container.innerHTML = '';  // keep only the latest run
+
+    const card = document.createElement('div');
+    Object.assign(card.style, {
+        border: '1px solid var(--border)',
+        borderRadius: '6px',
+        padding: '8px',
+        marginTop: '10px',
+        background: 'var(--bg-surface-2, var(--bg-surface))',
+        fontSize: '12px'
+    });
+
+    const titleRow = document.createElement('div');
+    titleRow.style.display = 'flex';
+    titleRow.style.justifyContent = 'space-between';
+    titleRow.style.alignItems = 'baseline';
+    titleRow.style.gap = '8px';
+    titleRow.style.marginBottom = '6px';
+
+    const title = document.createElement('div');
+    title.textContent = `GET Data · ${dispenser.address || dispenser.dispenser_id || ''}`;
+    title.style.fontWeight = '700';
+    title.style.color = 'var(--text-heading)';
+    title.style.overflow = 'hidden';
+    title.style.textOverflow = 'ellipsis';
+    title.style.whiteSpace = 'nowrap';
+
+    const status = document.createElement('div');
+    status.textContent = 'Fetching data…';
+    status.style.color = 'var(--text-secondary)';
+    status.style.fontSize = '11px';
+    status.style.flexShrink = '0';
+
+    titleRow.appendChild(title);
+    titleRow.appendChild(status);
+    card.appendChild(titleRow);
+
+    const rows = document.createElement('div');
+    card.appendChild(rows);
+
+    container.appendChild(card);
+
+    // Add one "<what was published>" row; returns setters to move it through its
+    // states as the reply (or timeout) resolves.
+    const addRow = (label) => {
+        const row = document.createElement('div');
+        Object.assign(row.style, {
+            display: 'flex',
+            justifyContent: 'space-between',
+            gap: '8px',
+            padding: '3px 0',
+            borderTop: '1px solid var(--border)'
+        });
+
+        const left = document.createElement('span');
+        left.textContent = label;
+        left.style.color = 'var(--text-secondary)';
+        left.style.whiteSpace = 'nowrap';
+
+        const right = document.createElement('span');
+        right.textContent = '…';
+        right.style.textAlign = 'right';
+        right.style.overflow = 'hidden';
+        right.style.textOverflow = 'ellipsis';
+
+        row.appendChild(left);
+        row.appendChild(right);
+        rows.appendChild(row);
+
+        const set = (text, color, weight) => {
+            right.textContent = text;
+            right.style.color = color;
+            right.style.fontWeight = weight;
+        };
+
+        return {
+            setWaiting() { set('waiting…', 'var(--text-secondary)', '400'); },
+            setError(msg) { set(msg || 'publish failed', 'var(--badge-reset-text)', '600'); },
+            setReply(value) {
+                const v = (value === null || value === undefined || value === '') ? '' : String(value);
+                set(v ? `✓ ${v}` : '✓', 'var(--badge-online-text)', '600');
+            },
+            setNoReply() { set('no reply', 'var(--badge-reset-text)', '600'); }
+        };
+    };
+
+    return {
+        addRow,
+        setStatus(text) { status.textContent = text; },
+        finish(text, ok) {
+            status.textContent = text;
+            status.style.color = ok ? 'var(--badge-online-text)' : 'var(--badge-reset-text)';
+        }
+    };
+}
+
 window.createAlarmsPanel = createAlarmsPanel;
+window.beginGetDataLog = beginGetDataLog;

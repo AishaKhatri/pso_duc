@@ -315,6 +315,17 @@ class NotificationService {
             { dispenser_id }
         );
     }
+
+    // Live signal that a dispenser answered a GET request so the dispenser
+    // card's "GET Data" log can confirm the reply actually arrived and show the
+    // value the device reported.
+    broadcastDispenserReply(payload) {
+        this.wsServer.broadcast({
+            type: 'dispenser_reply',
+            timestamp: new Date().toISOString(),
+            ...payload
+        });
+    }
 }
 
 function parseCsvRow(line) {

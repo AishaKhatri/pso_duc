@@ -12,6 +12,7 @@ const crypto = require('crypto');
 const pool = require('./db'); // Use shared pool from db.js
 const {
     setNotificationService,
+    registerGetRequest,
     subscribeToTopic,
     unsubscribeFromTopic,
     getGsmStatus,
@@ -2346,6 +2347,12 @@ app.post('/api/dispensers/publish', async (req, res) => {
         }
         const payload = typeof message === 'string' ? message : JSON.stringify(message);
         await publishMessage(topic, payload, retain ? { retain: true } : {});
+
+        // Track GET_VALUE (req_type=1) commands so their reply can be matched and
+        // surfaced live to the UI's GET Data log. No-op for anything else.
+        try {
+            registerGetRequest(typeof message === 'string' ? JSON.parse(message) : message);
+        } catch { /* payload isn't JSON / isn't a GET command — nothing to track */ }
 
         const meta = describeMqttCommand(topic, message);
         logActivity(req, meta.action, {

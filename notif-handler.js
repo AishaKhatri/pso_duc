@@ -72,6 +72,11 @@ class NotificationHandler {
             case 'user_notification':
                 window.dispatchEvent(new CustomEvent('app-notification', { detail: data }));
                 break;
+            case 'dispenser_reply':
+                // Live reply to a GET Data request — consumed by the alarms-panel
+                // GET Data log (see sendGetCommandsForDispenser).
+                window.dispatchEvent(new CustomEvent('dispenser-reply', { detail: data }));
+                break;
             case 'connection_established':
                 console.log('Notification service connection established');
                 break;
