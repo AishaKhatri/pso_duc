@@ -500,3 +500,4 @@ window.createNozzleSummary = function(containerId, data) {
 
 // Export constants for external use
 window.NOZZLE_LAYOUTS = NOZZLE_LAYOUTS;
+window.LAYOUT_CONFIG = LAYOUT_CONFIG;

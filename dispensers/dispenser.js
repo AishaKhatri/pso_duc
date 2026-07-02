@@ -569,15 +569,25 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // offers "GET Data" and "Refresh Status". Available to every role.
     statusContainer.appendChild(createDispenserRefreshButton(dispenser));
 
+    const NOZZLE_GRID_GAP = 16;   // gap between the two nozzle columns
+
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
     nozzleGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    nozzleGrid.style.gap = '16px';
+    nozzleGrid.style.gap = `${NOZZLE_GRID_GAP}px`;
     nozzleGrid.style.marginTop = '8px';
     // Reserve approximate vertical space so the page doesn't reflow violently
     // when off-screen cards eventually materialize as the user scrolls.
     nozzleGrid.style.minHeight = `${Math.ceil(nozzles.length / 2) * 110}px`;
     card.appendChild(nozzleGrid);
+
+    // Pin the card to exactly two nozzles wide (2 nozzle cards + the grid gap;
+    // the card's padding is added around this content box).
+    const nozzleWidth = parseInt(window.LAYOUT_CONFIG?.[layoutType]?.width, 10) || 195;
+    const cardContentWidth = (nozzleWidth * 2) + NOZZLE_GRID_GAP;
+    card.style.width = `${cardContentWidth}px`;
+    card.style.minWidth = `${cardContentWidth}px`;
+    card.style.maxWidth = `${cardContentWidth}px`;
 
     // Operator remark below the nozzle cards (editable for admin/super_admin).
     card.appendChild(buildDispenserRemarkSection(dispenser));
