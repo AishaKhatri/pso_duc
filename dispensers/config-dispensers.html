@@ -29,9 +29,9 @@
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
 
-            // Configuring dispensers is restricted to admin and operator
+            // Configuring dispensers is restricted to admin and super admin
             const userInfo = StationAuth.getUserInfo();
-            if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin' && userInfo?.role !== 'operator') {
+            if (userInfo?.role !== 'admin' && userInfo?.role !== 'super_admin') {
                 window.location.href = '../dispensers.html';
                 return;
             }

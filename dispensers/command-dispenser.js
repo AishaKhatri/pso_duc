@@ -503,7 +503,129 @@ function normalizeFuelType(product) {
     return PRODUCT_OPTIONS.includes(p) ? p : 'HOBC';
 }
 
+// Second-factor gate: before publishing a lock/unlock command, require the
+// signed-in user to re-enter their account password. Resolves true only when
+// the server confirms the password; false on cancel, mismatch, or error.
+function confirmCommandPassword(commandName = 'this command') {
+    return new Promise((resolve) => {
+        const overlay = createModalOverlay();
+
+        const popup = document.createElement('div');
+        popup.className = 'popup-modal';
+        popup.style.width = '360px';
+
+        const header = createHeader();
+        const title = createTitle();
+        title.textContent = 'Confirm Password';
+        const closeButton = createCloseButton(overlay);
+        header.appendChild(title);
+        header.appendChild(closeButton);
+        popup.appendChild(header);
+
+        const prompt = document.createElement('div');
+        prompt.textContent = `Re-enter your password to publish "${commandName}".`;
+        prompt.style.marginBottom = '14px';
+        prompt.style.fontSize = '14px';
+        prompt.style.color = 'var(--text-secondary)';
+        popup.appendChild(prompt);
+
+        const input = document.createElement('input');
+        input.type = 'password';
+        input.placeholder = 'Password';
+        input.autocomplete = 'off';
+        input.style.width = '100%';
+        input.style.boxSizing = 'border-box';
+        input.style.padding = '10px';
+        input.style.marginBottom = '10px';
+        input.style.border = '1px solid var(--border)';
+        input.style.borderRadius = '4px';
+        input.style.background = 'var(--bg-surface)';
+        input.style.color = 'var(--text-primary)';
+        popup.appendChild(input);
+
+        const errorMsg = document.createElement('div');
+        errorMsg.style.color = 'var(--danger)';
+        errorMsg.style.fontSize = '13px';
+        errorMsg.style.minHeight = '18px';
+        errorMsg.style.marginBottom = '10px';
+        popup.appendChild(errorMsg);
+
+        const buttonRow = document.createElement('div');
+        buttonRow.style.display = 'flex';
+        buttonRow.style.justifyContent = 'flex-end';
+        buttonRow.style.gap = '10px';
+
+        const cancelBtn = createActionButton('#6c757d', '#5a6268');
+        cancelBtn.textContent = 'Cancel';
+        const confirmBtn = createActionButton();
+        confirmBtn.textContent = 'Confirm';
+        buttonRow.appendChild(cancelBtn);
+        buttonRow.appendChild(confirmBtn);
+        popup.appendChild(buttonRow);
+
+        // dragPopup appends the popup to the overlay and the overlay to the body.
+        dragPopup(overlay, popup);
+        setTimeout(() => input.focus(), 0);
+
+        let done = false;
+        const finish = (result) => {
+            if (done) return;
+            done = true;
+            overlay.remove();
+            resolve(result);
+        };
+
+        // Cancel / close / click-outside all resolve as "not confirmed".
+        cancelBtn.addEventListener('click', () => finish(false));
+        closeButton.addEventListener('click', () => finish(false));
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) finish(false); });
+
+        const submit = async () => {
+            const password = input.value;
+            if (!password) {
+                errorMsg.textContent = 'Please enter your password.';
+                return;
+            }
+            confirmBtn.disabled = true;
+            confirmBtn.textContent = 'Verifying…';
+            errorMsg.textContent = '';
+            try {
+                const token = (typeof StationAuth !== 'undefined' && StationAuth.getToken && StationAuth.getToken()) || null;
+                const resp = await fetch(`${API_BASE_URL}/auth/confirm-password`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+                    },
+                    body: JSON.stringify({ password })
+                });
+                const result = await resp.json().catch(() => ({}));
+                if (resp.ok && result.success) {
+                    finish(true);
+                } else {
+                    errorMsg.textContent = result.message || 'Incorrect password.';
+                    confirmBtn.disabled = false;
+                    confirmBtn.textContent = 'Confirm';
+                    input.select();
+                }
+            } catch (err) {
+                errorMsg.textContent = 'Verification failed. Please try again.';
+                confirmBtn.disabled = false;
+                confirmBtn.textContent = 'Confirm';
+            }
+        };
+
+        confirmBtn.addEventListener('click', submit);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+    });
+}
+
 async function sendDispenserCommand(topic, customerCode, city, message, button, commandName = 'Command') {
+    // Double-protection: no lock/unlock is published until the user re-confirms
+    // their password. Abort silently (leaving the controls as-is) if they don't.
+    const confirmed = await confirmCommandPassword(commandName);
+    if (!confirmed) return;
+
     const originalText = button.textContent;
 
     button.disabled = true;

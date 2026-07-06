@@ -391,22 +391,13 @@ async function renderDispenser() {
             optionsContainer.style.gap = '8px';
         }
 
-        // Viewers cannot command or configure dispensers
+        // Lock/Unlock is available to admin, super_admin and operator.
+        // Configure (add/edit/delete dispensers) is admin/super_admin only
         const role = window.StationAuth?.getUserInfo?.()?.role;
         const canCommand = role === 'admin' || role === 'super_admin' || role === 'operator';
+        const canConfigure = role === 'admin' || role === 'super_admin';
 
         if (canCommand) {
-            const configButton = createMainButton();
-            configButton.textContent = 'Configure';
-            configButton.addEventListener('click', () => {
-                let url = 'dispensers/config-dispensers.html';
-                if (customerCodeFilter) {
-                    const stationUrl = `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(backTo)}`;
-                    url = `dispensers/config-dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(stationUrl)}`;
-                }
-                window.location.href = url;
-            });
-
             const commandDispenserButton = createMainButton();
             commandDispenserButton.textContent = 'Lock/Unlock';
             commandDispenserButton.addEventListener('click', () => {
@@ -424,8 +415,20 @@ async function renderDispenser() {
                     document.head.appendChild(script);
                 }
             });
-
             optionsContainer.appendChild(commandDispenserButton);
+        }
+
+        if (canConfigure) {
+            const configButton = createMainButton();
+            configButton.textContent = 'Configure';
+            configButton.addEventListener('click', () => {
+                let url = 'dispensers/config-dispensers.html';
+                if (customerCodeFilter) {
+                    const stationUrl = `dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(backTo)}`;
+                    url = `dispensers/config-dispensers.html?customer_code=${encodeURIComponent(customerCodeFilter)}&back=${encodeURIComponent(stationUrl)}`;
+                }
+                window.location.href = url;
+            });
             optionsContainer.appendChild(configButton);
         }
 

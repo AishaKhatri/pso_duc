@@ -583,6 +583,61 @@ app.get('/api/auth/verify', async (req, res) => {
   }
 });
 
+// Re-confirm the signed-in user's password without any of the side effects of
+// a full sign-in (no rate-limit counter, no last_login bump, no new session
+// token, no activity log). Used as a second-factor gate before high-impact
+// actions such as publishing a dispenser lock/unlock command. The identity is
+// taken from the bearer token — the caller can only confirm their OWN password.
+app.post('/api/auth/confirm-password', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    const token = req.headers.authorization?.split(' ')[1];
+    const { password } = req.body || {};
+
+    if (!token) {
+      return res.status(401).json({ success: false, message: 'No token provided' });
+    }
+    if (!password) {
+      return res.status(400).json({ success: false, message: 'Password is required' });
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (jwtError) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired token' });
+    }
+
+    const userId = decoded.userId || decoded.id || decoded.user_id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'Invalid token format' });
+    }
+
+    const [users] = await pool.query(
+      'SELECT password, is_active FROM users WHERE id = ?',
+      [userId]
+    );
+    if (users.length === 0) {
+      return res.status(401).json({ success: false, message: 'User not found' });
+    }
+    if (users[0].is_active === 0) {
+      return res.status(401).json({ success: false, message: 'Account disabled' });
+    }
+
+    // Passwords are stored/compared in plaintext elsewhere (see /api/auth/signin);
+    // mirror that here. A mismatch is a 200 with success:false — it's an expected
+    // outcome of the gate, not a server/auth error.
+    if (password !== users[0].password) {
+      return res.status(200).json({ success: false, message: 'Incorrect password' });
+    }
+
+    return res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Confirm password error:', error);
+    res.status(500).json({ success: false, message: 'Server error' });
+  }
+});
+
 app.get('/api/auth/station/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -1412,6 +1467,8 @@ app.get('/api/ducs', requireApiKey, async (req, res) => {
                  d.conn_status   AS conn_status,
                  n.dispenser_id  AS dispenser_id,
                  n.nozzle_id     AS nozzle_id,
+                 n.status        AS nozzle_status,
+                 n.last_ping_at  AS last_ping_at,
                  n.product       AS product
              FROM nozzles n
              JOIN dispensers d
