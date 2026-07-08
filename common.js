@@ -1373,7 +1373,7 @@ async function refreshDispenserConnStatus(dispenser) {
 //   - "Refresh Status" → re-cycle this dispenser's conn_status subscription
 // Available to every role. Returns the icon element to drop next to the status.
 function createDispenserRefreshButton(dispenser) {
-    const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', 'Refresh', '20px');
+    const refreshButton = createIconFromImage('assets/graphics/refresh-icon.png', null, '20px');
     refreshButton.style.cursor = 'pointer';
     refreshButton.style.transition = 'transform 0.2s ease';
     refreshButton.addEventListener('mouseover', () => { refreshButton.style.transform = 'scale(1.05)'; });
@@ -1629,9 +1629,25 @@ function createEditButton(titleText) {
     return createIconButton('edit-btn', 'assets/graphics/edit-icon.png', titleText);
 }
 
+function createChangePasswordButton(titleText) {
+    return createIconButton('change-pw-btn', 'assets/graphics/reset-password.svg', titleText);
+}
+
 // Append a standard Edit + Delete action cell to a table row. With
 // `enabled: false` the buttons render disabled (not-allowed cursor, no handlers).
-function appendRowActions(tr, { onEdit, onDelete, editTitle = 'Edit', deleteTitle = 'Delete', enabled = true } = {}) {
+function appendRowActions(tr, { onEdit, onDelete, onChangePassword, editTitle = 'Edit', deleteTitle = 'Delete', changePasswordTitle = 'Change password', enabled = true } = {}) {
+    const wrap = document.createElement('div');
+    wrap.style.display = 'flex';
+
+    // Optional change-password action — only rendered when a handler is passed,
+    // so rows/pages that don't offer it stay unchanged.
+    if (onChangePassword) {
+        const pwBtn = createChangePasswordButton(changePasswordTitle);
+        if (enabled) pwBtn.addEventListener('click', onChangePassword);
+        else pwBtn.style.cursor = 'not-allowed';
+        wrap.appendChild(pwBtn);
+    }
+
     const editBtn = createEditButton(editTitle);
     const deleteBtn = createDeleteButton(deleteTitle);
     if (enabled) {
@@ -1641,7 +1657,6 @@ function appendRowActions(tr, { onEdit, onDelete, editTitle = 'Edit', deleteTitl
         editBtn.style.cursor = 'not-allowed';
         deleteBtn.style.cursor = 'not-allowed';
     }
-    const wrap = document.createElement('div');
     wrap.appendChild(editBtn);
     wrap.appendChild(deleteBtn);
     appendCell(tr, wrap);

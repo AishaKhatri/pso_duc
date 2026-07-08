@@ -224,7 +224,7 @@ body {
 [data-theme="dark"] img[src*="notification-icon"],
 [data-theme="dark"] img[src*="notif-icon"],
 [data-theme="dark"] img[src*="search-icon"],
-[data-theme="dark"] img[src*="eye"] {
+[data-theme="dark"] img[src*="reset-password"] {
     filter: invert(0.85) hue-rotate(180deg);
 }
 

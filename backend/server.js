@@ -9,6 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const dgram = require('dgram');
 const crypto = require('crypto');
+const { hashPassword, verifyPassword } = require('./password-utils');
 const pool = require('./db'); // Use shared pool from db.js
 const {
     setNotificationService,
@@ -547,7 +548,7 @@ app.get('/api/auth/verify', async (req, res) => {
     
     // Get user from database
     const [users] = await pool.query(
-      'SELECT id, username, role, customer_code, is_active FROM users WHERE id = ?',
+      'SELECT id, username, role, customer_code, is_active, allow_price_update FROM users WHERE id = ?',
       [userId]
     );
 
@@ -574,7 +575,8 @@ app.get('/api/auth/verify', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
-        customer_code: user.customer_code
+        customer_code: user.customer_code,
+        allow_price_update: user.allow_price_update
       }
     });
   } catch (error) {
@@ -624,10 +626,10 @@ app.post('/api/auth/confirm-password', async (req, res) => {
       return res.status(401).json({ success: false, message: 'Account disabled' });
     }
 
-    // Passwords are stored/compared in plaintext elsewhere (see /api/auth/signin);
-    // mirror that here. A mismatch is a 200 with success:false — it's an expected
-    // outcome of the gate, not a server/auth error.
-    if (password !== users[0].password) {
+    // Verify against the stored hash (see /api/auth/signin). A mismatch is a 200
+    // with success:false — it's an expected outcome of the gate, not a
+    // server/auth error.
+    if (!verifyPassword(password, users[0].password)) {
       return res.status(200).json({ success: false, message: 'Incorrect password' });
     }
 
@@ -676,7 +678,7 @@ app.get('/api/auth/station/:id', async (req, res) => {
 app.get('/api/users', async (req, res) => {
     try {
         const [users] = await pool.query(
-            'SELECT id, username, role, customer_code, last_login, created_at FROM users'
+            'SELECT id, username, role, customer_code, allow_price_update, last_login, created_at FROM users'
         );
         res.json(users);
     } catch (error) {
@@ -689,7 +691,7 @@ app.get('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const [users] = await pool.query(
-            'SELECT id, username, role, customer_code, is_active, last_login, created_at FROM users WHERE id = ?',
+            'SELECT id, username, role, customer_code, is_active, allow_price_update, last_login, created_at FROM users WHERE id = ?',
             [id]
         );
         
@@ -735,8 +737,32 @@ const pricesUpload = multer({
     limits: { fileSize: 5 * 1024 * 1024 }
 });
 
+// In-handler gate for the Upload Price File page endpoints. Read fresh each call 
+// so a revoked grant takes effect at once rather than lingering until the 4h JWT 
+// expires. Returns true (and sends 401/403/500) when access is denied.
+async function denyUnlessPriceAccess(req, res) {
+    const userId = req.authUser?.id;
+    if (!userId) {
+        res.status(401).json({ error: 'Authentication required' });
+        return true;
+    }
+    try {
+        const [rows] = await pool.query(
+            'SELECT allow_price_update FROM users WHERE id = ?',
+            [userId]
+        );
+        if (rows.length && rows[0].allow_price_update) return false;
+    } catch (error) {
+        console.error('Price access check failed:', error);
+        res.status(500).json({ error: 'Server error' });
+        return true;
+    }
+    res.status(403).json({ error: 'Price-file access not granted' });
+    return true;
+}
+
 app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, res) => {
-    if (denyUnlessRole(req, res, 'super_admin')) return;
+    if (await denyUnlessPriceAccess(req, res)) return;
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
     }
@@ -881,7 +907,7 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
 // customer_code and any subset of the three products. NULL fields are
 // untouched; at least one must be present so we never write an empty update.
 app.post('/api/admin/prices/manual', async (req, res) => {
-    if (denyUnlessRole(req, res, 'super_admin')) return;
+    if (await denyUnlessPriceAccess(req, res)) return;
 
     const { customer_code, price_pmg, price_hsd, price_hobc } = req.body || {};
     if (!customer_code) {
@@ -978,7 +1004,7 @@ app.post('/api/admin/prices/manual', async (req, res) => {
 // Listing for the Prices page. Returns one row per station with its current
 // PMG/HSD/HOBC prices and when they were last refreshed.
 app.get('/api/admin/prices', async (req, res) => {
-    if (denyUnlessRole(req, res, 'super_admin')) return;
+    if (await denyUnlessPriceAccess(req, res)) return;
     try {
         const [rows] = await pool.query(
             `SELECT customer_code, station_id, city, division,
@@ -2124,7 +2150,7 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
 
     const [users] = await pool.query(
       `SELECT id, username, password, role, customer_code, is_active,
-              last_login, created_at
+              allow_price_update, last_login, created_at
        FROM users
        WHERE username = ?`,
       [username]
@@ -2140,7 +2166,7 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
 
     const user = users[0];
 
-    if (password !== user.password) {
+    if (!verifyPassword(password, user.password)) {
       logActivity(req, 'signin_failed', {
         user_id: user.id, username: user.username,
         ip_address: ip, details: { reason: 'bad_password' }
@@ -2248,9 +2274,14 @@ app.post('/api/users', async (req, res) => {
             }
         }
         
+        // Store a salted hash, never the plaintext password.
+        // Price-file access is granted by default only to super_admins; every
+        // other role starts disallowed and must be granted by a super_admin.
+        const finalRole = role || 'viewer';
+        const allowPriceUpdate = finalRole === 'super_admin' ? 1 : 0;
         const [result] = await pool.query(
-            'INSERT INTO users (username, password, role, customer_code, is_active) VALUES (?, ?, ?, ?, ?)',
-            [username, password, role || 'viewer', customer_code || null, 1]
+            'INSERT INTO users (username, password, role, customer_code, is_active, allow_price_update) VALUES (?, ?, ?, ?, ?, ?)',
+            [username, hashPassword(password), finalRole, customer_code || null, 1, allowPriceUpdate]
         );
 
         logActivity(req, 'user_create', {
@@ -2610,7 +2641,7 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { username, role, customer_code, is_active, password } = req.body;
+        const { username, role, customer_code, is_active, password, allow_price_update } = req.body;
         
         // Check if user exists
         const [existing] = await pool.query('SELECT id FROM users WHERE id = ?', [id]);
@@ -2639,9 +2670,13 @@ app.put('/api/users/:id', async (req, res) => {
         }
         if (password) {
             updates.push('password = ?');
-            values.push(password);
+            values.push(hashPassword(password));
         }
-        
+        if (allow_price_update !== undefined) {
+            updates.push('allow_price_update = ?');
+            values.push(allow_price_update ? 1 : 0);
+        }
+
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });
         }
@@ -2656,6 +2691,7 @@ app.put('/api/users/:id', async (req, res) => {
         if (customer_code !== undefined) changedKeys.push('customer_code');
         if (is_active !== undefined) changedKeys.push('is_active');
         if (password) changedKeys.push('password');
+        if (allow_price_update !== undefined) changedKeys.push('allow_price_update');
         logActivity(req, 'user_update', {
             entity_type: 'user', entity_id: id,
             details: { changed: changedKeys }
