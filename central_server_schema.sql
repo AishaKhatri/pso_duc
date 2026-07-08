@@ -28,6 +28,7 @@ CREATE TABLE `users` (
   `role` enum('super_admin','admin','operator','viewer') NOT NULL DEFAULT 'viewer',
   `customer_code` varchar(8) DEFAULT NULL,
   `is_active` tinyint NOT NULL DEFAULT '1',
+  `allow_price_update` tinyint NOT NULL DEFAULT '0',
   `last_login` timestamp NULL DEFAULT NULL,
   `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),

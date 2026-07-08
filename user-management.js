@@ -2,7 +2,7 @@
 let stationsList = [];
 let usersList = [];
 
-const columns = ['ID', 'Username', 'Role', 'Last Login', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Role', 'Allow Price Update', 'Last Login', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 async function renderUserManagement() {
@@ -52,10 +52,16 @@ async function renderUsersTable(users) {
         const canEdit = userInfo?.role === 'super_admin';
 
         users.forEach(user => {
+            // No user may change their own password (not even a super_admin);
+            // password resets are always performed by a super_admin on another
+            // account.
+            const isSelf = userInfo?.id === user.id;
+
             const tr = createTableRow([
                 user.id,
                 user.username,
                 user.role,
+                createAllowPriceToggle(user, canEdit),
                 user.last_login ? new Date(user.last_login).toLocaleString() : '-',
                 new Date(user.created_at).toLocaleString()
             ]);
@@ -63,7 +69,9 @@ async function renderUsersTable(users) {
             appendRowActions(tr, {
                 onEdit: () => alert('Edit functionality coming soon'),
                 onDelete: () => showDeleteUserConfirmation(user),
+                onChangePassword: (canEdit && !isSelf) ? () => showChangePasswordPopup(user) : undefined,
                 editTitle: 'Edit user', deleteTitle: 'Delete user',
+                changePasswordTitle: 'Change password',
                 enabled: canEdit
             });
             tbody.appendChild(tr);
@@ -214,6 +222,113 @@ function showDeleteUserConfirmation(user) {
             alert(`Error: ${error.message}`);
         }
     });
+}
+
+// Checkbox cell for the "Allow Price Update" column. Interactive only for a
+// super_admin (canEdit); toggling it PUTs the new grant and reverts on failure.
+function createAllowPriceToggle(user, canEdit) {
+    const label = document.createElement('label');
+    label.style.display = 'inline-flex';
+    label.style.alignItems = 'center';
+    label.style.justifyContent = 'center';
+    label.style.width = '100%';
+    label.style.cursor = canEdit ? 'pointer' : 'not-allowed';
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.checked = !!user.allow_price_update;
+    checkbox.disabled = !canEdit;
+    checkbox.title = 'Allow this user to access the Upload Price File page';
+
+    checkbox.addEventListener('change', async () => {
+        const desired = checkbox.checked;
+        checkbox.disabled = true;
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ allow_price_update: desired ? 1 : 0 })
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || errorData.error || 'Failed to update');
+            }
+            user.allow_price_update = desired ? 1 : 0;
+        } catch (error) {
+            console.error('Error updating allow_price_update:', error);
+            alert(`Error: ${error.message}`);
+            checkbox.checked = !desired; // revert the visual toggle
+        } finally {
+            checkbox.disabled = !canEdit;
+        }
+    });
+
+    label.appendChild(checkbox);
+    return label;
+}
+
+// Super-admin-only popup to set a new password for another user. The password
+// is hashed server-side (PUT /api/users/:id).
+function showChangePasswordPopup(user) {
+    const overlay = createModalOverlay();
+    const popup = document.createElement('div');
+    popup.className = 'popup-modal';
+    popup.style.width = '400px';
+    popup.style.maxWidth = '90vw';
+
+    const header = createHeader();
+    const title = createTitle();
+    title.textContent = `Change Password — ${user.username}`;
+    header.appendChild(title);
+    header.appendChild(createCloseButton(overlay));
+    popup.appendChild(header);
+
+    const form = createFlexColumn('15px');
+    const passwordInput = createTextInput({ type: 'password', required: true });
+    form.appendChild(createLabeledField({ label: 'New Password', control: passwordInput, required: true }));
+    popup.appendChild(form);
+
+    const buttonContainer = createFlexRow({ justify: 'flex-end' });
+    buttonContainer.style.marginTop = '20px';
+
+    const cancelButton = createActionButton('#626262', '#424242');
+    cancelButton.textContent = 'Cancel';
+    cancelButton.type = 'button';
+    cancelButton.addEventListener('click', () => document.body.removeChild(overlay));
+
+    const submitButton = createActionButton('#004D64', '#00324C');
+    submitButton.textContent = 'Update Password';
+    submitButton.type = 'button';
+
+    buttonContainer.appendChild(cancelButton);
+    buttonContainer.appendChild(submitButton);
+    popup.appendChild(buttonContainer);
+
+    submitButton.addEventListener('click', async () => {
+        const newPassword = passwordInput.value;
+        if (!newPassword) {
+            alert('Missing or invalid entry in required fields');
+            return;
+        }
+        try {
+            const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: newPassword })
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || errorData.error || 'Failed to change password');
+            }
+            alert('Password changed successfully!');
+            document.body.removeChild(overlay);
+        } catch (error) {
+            console.error('Error changing password:', error);
+            alert(`Error: ${error.message}`);
+        }
+    });
+
+    dragPopup(overlay, popup);
 }
 
 window.renderUserManagement = renderUserManagement;

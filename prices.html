@@ -27,8 +27,10 @@
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
 
-            const role = StationAuth.getUserInfo()?.role;
-            if (role !== 'super_admin') {
+            // Access is gated on the per-user allow_price_update grant (set by a
+            // super_admin), not on role. Super_admins are granted by default.
+            const info = StationAuth.getUserInfo();
+            if (!info || !info.allow_price_update) {
                 window.location.href = 'index.html';
                 return;
             }
