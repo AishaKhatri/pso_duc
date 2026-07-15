@@ -877,6 +877,9 @@ async function renderConfigDispensers() {
                     ...newDispenser,
                     id: savedDispenser.id,
                     dispenser_id: savedDispenser.dispenser_id || newDispenser.dispenser_id,
+                    conn_status: dispenser.conn_status,
+                    connected_at: dispenser.connected_at,
+                    created_at: dispenser.created_at,
                     nozzles: selectedNozzles.map(nozzle => ({
                         nozzleId: `D${dispenser_id}-${nozzle}`,
                         product: form[`product-${nozzle}`].value,

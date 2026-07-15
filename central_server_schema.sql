@@ -146,7 +146,7 @@ CREATE TABLE `dispenser_remarks` (
 
 CREATE TABLE IF NOT EXISTS `connections_history` (
   `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `dispenser_id` varchar(50) NOT NULL,
+  `customer_code` varchar(8) NOT NULL,
   `address` varchar(9) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
@@ -155,7 +155,7 @@ CREATE TABLE IF NOT EXISTS `connections_history` (
 
 CREATE TABLE IF NOT EXISTS `ping_log` (
   `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `dispenser_id` varchar(50) NOT NULL,
+  `address` varchar(9) NOT NULL,
   `nozzle_id` varchar(50) NOT NULL,
   `status` tinyint NOT NULL DEFAULT '0',
   `created_at` timestamp DEFAULT CURRENT_TIMESTAMP

@@ -2734,7 +2734,6 @@ app.put('/api/users/:id', async (req, res) => {
 });
 
 app.put('/api/dispensers/:dispenser_id', async (req, res) => {
-    const connection = await pool.getConnection();
     try {
         const { dispenser_id } = req.params;
         const {
@@ -2744,143 +2743,105 @@ app.put('/api/dispensers/:dispenser_id', async (req, res) => {
         } = req.body;
 
         if (!customer_code) {
-            connection.release();
             return res.status(400).json({ error: 'customer_code is required' });
         }
-
         if (Object.keys(req.body).length === 0) {
-            connection.release();
             return res.status(400).json({ error: 'At least one field must be provided for update' });
         }
 
-        await connection.beginTransaction();
-
-        // Rename dispenser_id (if requested). The FK cascade handles nozzles,
-        // nozzle_history and transactions automatically; the three loose tables
-        // (no FK) we update by hand inside the same transaction.
         const newDispenserId = newDispenserIdRaw !== undefined && String(newDispenserIdRaw) !== String(dispenser_id)
             ? String(newDispenserIdRaw)
             : null;
 
+        // Collect the non-identity field updates.
+        const fields = [];
+        const values = [];
+        if (address !== undefined) { fields.push('address = ?'); values.push(ensureDAddress(address)); }
+        if (DispenserBrand !== undefined) { fields.push('DispenserBrand = ?'); values.push(DispenserBrand); }
+        if (number_of_nozzles !== undefined) { fields.push('number_of_nozzles = ?'); values.push(number_of_nozzles); }
+        if (interface_type !== undefined) {
+            const v = String(interface_type).toLowerCase();
+            if (v !== 'ir' && v !== 'keypad') {
+                return res.status(400).json({ error: "interface_type must be 'ir' or 'keypad'" });
+            }
+            fields.push('interface_type = ?'); values.push(v);
+        }
+        if (interface_lock_status !== undefined) { fields.push('interface_lock_status = ?'); values.push(interface_lock_status); }
+        if (conn_status !== undefined) { fields.push('conn_status = ?'); values.push(conn_status); }
+
+        // Validate a rename up front, before opening a transaction.
         if (newDispenserId !== null) {
             if (!newDispenserId.trim()) {
-                await connection.rollback();
-                connection.release();
                 return res.status(400).json({ error: 'dispenser_id cannot be empty' });
             }
-
-            const [collision] = await connection.query(
+            const [collision] = await pool.query(
                 'SELECT id FROM dispensers WHERE customer_code = ? AND dispenser_id = ?',
                 [customer_code, newDispenserId]
             );
             if (collision.length > 0) {
-                await connection.rollback();
-                connection.release();
                 return res.status(409).json({ error: `dispenser_id "${newDispenserId}" already exists for customer ${customer_code}` });
             }
+        }
 
-            const [renameResult] = await connection.query(
-                'UPDATE dispensers SET dispenser_id = ? WHERE customer_code = ? AND dispenser_id = ?',
-                [newDispenserId, customer_code, dispenser_id]
-            );
-            if (renameResult.affectedRows === 0) {
-                await connection.rollback();
-                connection.release();
-                return res.status(404).json({ error: 'Dispenser not found' });
+        const connection = await pool.getConnection();
+        try {
+            await connection.beginTransaction();
+
+            // Rename (if requested). FK ON UPDATE CASCADE propagates to nozzles,
+            // nozzle_history and transactions. 
+            if (newDispenserId !== null) {
+                const [renameResult] = await connection.query(
+                    'UPDATE dispensers SET dispenser_id = ? WHERE customer_code = ? AND dispenser_id = ?',
+                    [newDispenserId, customer_code, dispenser_id]
+                );
+                if (renameResult.affectedRows === 0) {
+                    await connection.rollback();
+                    return res.status(404).json({ error: 'Dispenser not found' });
+                }
             }
 
-            // FK chain (nozzles → nozzle_history, transactions) updated via
-            // ON UPDATE CASCADE. Loose tables have no FK — update them here.
-            await connection.query(
-                'UPDATE ping_log SET dispenser_id = ? WHERE dispenser_id = ?',
-                [newDispenserId, dispenser_id]
-            );
-            await connection.query(
-                'UPDATE connections_history SET dispenser_id = ? WHERE dispenser_id = ?',
-                [newDispenserId, dispenser_id]
-            );
-            await connection.query(
-                'UPDATE nozzle_history_archive SET dispenser_id = ? WHERE customer_code = ? AND dispenser_id = ?',
-                [newDispenserId, customer_code, dispenser_id]
-            );
-        }
+            const effectiveDispenserId = newDispenserId ?? dispenser_id;
 
-        // Lookup key for any remaining field updates is the (possibly new) id.
-        const effectiveDispenserId = newDispenserId ?? dispenser_id;
-
-        const fields = [];
-        const values = [];
-
-        if (address !== undefined) {
-            fields.push('address = ?');
-            values.push(ensureDAddress(address));
-        }
-        if (DispenserBrand !== undefined) {
-            fields.push('DispenserBrand = ?');
-            values.push(DispenserBrand);
-        }
-        if (number_of_nozzles !== undefined) {
-            fields.push('number_of_nozzles = ?');
-            values.push(number_of_nozzles);
-        }
-        if (interface_type !== undefined) {
-            const v = String(interface_type).toLowerCase();
-            if (v !== 'ir' && v !== 'keypad') {
-                await connection.rollback();
-                connection.release();
-                return res.status(400).json({ error: "interface_type must be 'ir' or 'keypad'" });
+            if (fields.length > 0) {
+                const [result] = await connection.query(
+                    `UPDATE dispensers SET ${fields.join(', ')}
+                     WHERE customer_code = ? AND dispenser_id = ?`,
+                    [...values, customer_code, effectiveDispenserId]
+                );
+                if (result.affectedRows === 0 && newDispenserId === null) {
+                    await connection.rollback();
+                    return res.status(404).json({ error: 'Dispenser not found' });
+                }
             }
-            fields.push('interface_type = ?');
-            values.push(v);
-        }
-        if (interface_lock_status !== undefined) {
-            fields.push('interface_lock_status = ?');
-            values.push(interface_lock_status);
-        }
-        if (conn_status !== undefined) {
-            fields.push('conn_status = ?');
-            values.push(conn_status);
-        }
 
-        if (fields.length > 0) {
-            values.push(customer_code, effectiveDispenserId);
-            const [result] = await connection.query(
-                `UPDATE dispensers SET ${fields.join(', ')}
-                 WHERE customer_code = ? AND dispenser_id = ?`,
-                values
-            );
-            if (result.affectedRows === 0 && newDispenserId === null) {
-                await connection.rollback();
-                connection.release();
-                return res.status(404).json({ error: 'Dispenser not found' });
-            }
+            await connection.commit();
+
+            logActivity(req, 'dispenser_update', {
+                entity_type: 'dispenser',
+                entity_id: `${customer_code}/${effectiveDispenserId}`,
+                details: {
+                    fields: fields.map(f => f.replace(' = ?', '')),
+                    renamed_from: newDispenserId !== null ? dispenser_id : undefined,
+                    renamed_to: newDispenserId !== null ? newDispenserId : undefined
+                }
+            });
+
+            res.json({
+                success: true,
+                message: 'Dispenser updated successfully',
+                customer_code,
+                dispenser_id: effectiveDispenserId,
+                renamed: newDispenserId !== null
+            });
+        } catch (err) {
+            try { await connection.rollback(); } catch {}
+            throw err;
+        } finally {
+            connection.release();
         }
-
-        await connection.commit();
-
-        logActivity(req, 'dispenser_update', {
-            entity_type: 'dispenser',
-            entity_id: `${customer_code}/${effectiveDispenserId}`,
-            details: {
-                fields: fields.map(f => f.replace(' = ?', '')),
-                renamed_from: newDispenserId !== null ? dispenser_id : undefined,
-                renamed_to: newDispenserId !== null ? newDispenserId : undefined
-            }
-        });
-
-        res.json({
-            success: true,
-            message: 'Dispenser updated successfully',
-            customer_code,
-            dispenser_id: effectiveDispenserId,
-            renamed: newDispenserId !== null
-        });
     } catch (error) {
-        try { await connection.rollback(); } catch {}
         console.error('Database error:', error);
         res.status(500).json({ error: 'Failed to update dispenser: ' + error.message });
-    } finally {
-        connection.release();
     }
 });
 

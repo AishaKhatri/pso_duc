@@ -768,8 +768,8 @@ async function handleConnectionAlert(topic, alertData) {
     logWithTimestamp(color, log);
     logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(eventAt)} `);
     await pool.query(
-        'INSERT INTO connections_history (dispenser_id, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
-        [dispenser_id, addrD, conn_status, eventAt]
+        'INSERT INTO connections_history (customer_code, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
+        [customer_code, addrD, conn_status, eventAt]
     );
 
     // Concern 2: dispensers/nozzles state, gated by debounce.
@@ -1450,8 +1450,8 @@ mqttClient.on('message', async (receivedTopic, message) => {
                         // NOT decay into status=2 (that's reserved for "no ping at all").
                     lastStatusMessage.set(nozzleId, { lastMessageTime: Date.now(), dispenser_id });
                     await pool.query(
-                        'INSERT INTO ping_log (dispenser_id, nozzle_id, status) VALUES (?, ?, ?)',
-                        [dispenser_id, nozzleId, data.message]
+                        'INSERT INTO ping_log (address, nozzle_id, status) VALUES (?, ?, ?)',
+                        [dbAddrD, nozzleId, data.message]
                     );
                     await updateNozzleInDatabase(dispenser_id, nozzleId, {
                         status: parseInt(data.message),
