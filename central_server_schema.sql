@@ -87,6 +87,27 @@ CREATE TABLE IF NOT EXISTS `long_outage_alerts` (
   KEY `idx_cleared_at` (`cleared_at`)
 ) ENGINE=InnoDB;
 
+-- Append-only audit of every price change made from the Prices page, whether by
+-- PSO price-file upload or by manual entry. One row per (station, product) whose
+-- price was written, so the change history survives the next overwrite of the
+-- live stations row. Written inside the same transaction as the stations update.
+CREATE TABLE IF NOT EXISTS `prices_archive` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `customer_code` varchar(8) NOT NULL,
+  `station_id` varchar(255) DEFAULT NULL,
+  `city` varchar(255) DEFAULT NULL,
+  `district` varchar(255) DEFAULT NULL,
+  `updated_by_id` int DEFAULT NULL,
+  `updated_by` varchar(255) DEFAULT NULL,
+  `source` enum('upload','manual') NOT NULL,
+  `product` enum('PMG','HSD','HOBC') NOT NULL,
+  `price` decimal(10,2) NOT NULL,
+  `created_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  KEY `idx_prices_archive_customer` (`customer_code`),
+  KEY `idx_prices_archive_created_at` (`created_at`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+
 CREATE TABLE `dispensers` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,

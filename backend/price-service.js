@@ -36,6 +36,25 @@ function parsePriceSheet(sheet) {
     return { prices, listed };
 }
 
+// Append-only audit of price changes made from the Upload Price File page.
+async function archivePriceChanges(conn, entries, source, actor) {
+    if (!entries || entries.length === 0) return;
+    const values = [];
+    const rows = entries.map(e => {
+        values.push(
+            e.customer_code, e.station_id ?? null, e.city ?? null, e.district ?? null,
+            actor?.id ?? null, actor?.username ?? null, source, e.product, e.price
+        );
+        return '(?, ?, ?, ?, ?, ?, ?, ?, ?)';
+    });
+    await conn.query(
+        `INSERT INTO prices_archive
+         (customer_code, station_id, city, district, updated_by_id, updated_by, source, product, price)
+         VALUES ${rows.join(', ')}`,
+        values
+    );
+}
+
 // A station's filed price for a product (PMG/HSD/HOBC) → number|null. Used to
 // (re)derive a nozzle's actual_price when it's created or its product changes.
 async function stationPriceForProduct(customerCode, product) {
@@ -45,4 +64,4 @@ async function stationPriceForProduct(customerCode, product) {
     return rows[0]?.p ?? null;
 }
 
-module.exports = { parsePriceSheet, stationPriceForProduct };
+module.exports = { parsePriceSheet, stationPriceForProduct, archivePriceChanges };

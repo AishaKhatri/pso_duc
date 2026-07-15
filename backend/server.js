@@ -50,7 +50,7 @@ const {
     startLongOutageService } = require('./backend-services');
 
 const { txnFilters } = require('./stats-service');
-const { parsePriceSheet, stationPriceForProduct } = require('./price-service');
+const { parsePriceSheet, stationPriceForProduct, archivePriceChanges } = require('./price-service');
 
 const { log } = require('console');
 const console = require('console');
@@ -787,8 +787,9 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
             HOBC: sheetByProduct.HOBC ? parsePriceSheet(sheetByProduct.HOBC) : new Map()
         };
 
-        const [stationRows] = await pool.query('SELECT customer_code, station_id FROM stations');
+        const [stationRows] = await pool.query('SELECT customer_code, station_id, city, district FROM stations');
         const known = new Set(stationRows.map(r => r.customer_code));
+        const stationByCode = new Map(stationRows.map(r => [r.customer_code, r]));
         const stationNameByCode = new Map(stationRows.map(r => [r.customer_code, r.station_id || '']));
 
         // Which stations actually have a nozzle (DUC) for each product. A station
@@ -806,6 +807,7 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
         }
 
         const updatedByProduct = { PMG: 0, HSD: 0, HOBC: 0 };
+        const archiveEntries = [];  // one per (station, product) actually written
 
         conn = await pool.getConnection();
         await conn.beginTransaction();
@@ -824,6 +826,15 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
                         [price, code]
                     );
                     updatedByProduct[product]++;
+                    const st = stationByCode.get(code);
+                    archiveEntries.push({
+                        customer_code: code,
+                        station_id: st?.station_id || null,
+                        city: st?.city || null,
+                        district: st?.district || null,
+                        product,
+                        price
+                    });
                 }
             }
 
@@ -839,6 +850,10 @@ app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, re
                     [product]
                 );
             }
+
+            // Log every written (station, product) price into the archive so the
+            // change history survives the next overwrite. Same transaction.
+            await archivePriceChanges(conn, archiveEntries, 'upload', req.authUser);
 
             await conn.commit();
         } catch (txErr) {
@@ -932,12 +947,13 @@ app.post('/api/admin/prices/manual', async (req, res) => {
 
     // Station must exist — bail loudly rather than silently no-op'ing.
     const [stationRows] = await pool.query(
-        'SELECT customer_code FROM stations WHERE customer_code = ?',
+        'SELECT customer_code, station_id, city, district FROM stations WHERE customer_code = ?',
         [customer_code]
     );
     if (stationRows.length === 0) {
         return res.status(404).json({ error: `Customer code ${customer_code} not found in stations` });
     }
+    const station = stationRows[0];
 
     let conn;
     try {
@@ -974,6 +990,19 @@ app.post('/api/admin/prices/manual', async (req, res) => {
                     [customer_code, product]
                 );
             }
+
+            // Archive one row per product the user set, in the same transaction.
+            const archiveEntries = Object.entries(parsed)
+                .filter(([, n]) => n != null)
+                .map(([k, n]) => ({
+                    customer_code,
+                    station_id: station.station_id || null,
+                    city: station.city || null,
+                    district: station.district || null,
+                    product: k.toUpperCase(),
+                    price: n
+                }));
+            await archivePriceChanges(conn, archiveEntries, 'manual', req.authUser);
 
             await conn.commit();
         } catch (txErr) {
