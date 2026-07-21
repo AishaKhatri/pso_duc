@@ -49,6 +49,8 @@
     --badge-online-text: #014421;
     --badge-offline-bg: #f9d6d5;
     --badge-offline-text: #a00000;
+    --badge-unknown-bg: #fff4d6;
+    --badge-unknown-text: #8a6d00;
     --badge-error-bg: #ffebee;
     --badge-error-text: #d32f2f;
     --badge-reset-bg: #fff3e0;
@@ -119,6 +121,8 @@
     --badge-online-text: #81c784;
     --badge-offline-bg: rgba(239, 83, 80, 0.18);
     --badge-offline-text: #ef9a9a;
+    --badge-unknown-bg: rgba(255, 193, 7, 0.18);
+    --badge-unknown-text: #ffd54f;
     --badge-error-bg: rgba(239, 83, 80, 0.16);
     --badge-error-text: #ef9a9a;
     --badge-reset-bg: rgba(255, 167, 38, 0.18);

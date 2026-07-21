@@ -328,7 +328,7 @@ function createLastUpdatedSection(lastUpdated, lastPingAt) {
 
     const pingLine = document.createElement('div');
     pingLine.textContent = lastPingAt
-        ? `Last Ping: ${formatRelativeTime(lastPingAt)}`
+        ? `Last Ping: ${formatRelativeTime(lastPingAt)} ${new Date(lastPingAt).toLocaleString()}`
         : 'Last Ping: never';
     if (lastPingAt) {
         pingLine.title = new Date(lastPingAt).toLocaleString();

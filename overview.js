@@ -118,7 +118,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // ID is the D-prefixed address — globally unique across stations.
     card.id = `dispenser-${dispenserTopic}`;
     card.dataset.address = dispenserTopic;
-    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+    card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
     titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
 
@@ -151,7 +151,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     if (typeof window.updateConnStatus === 'function') {
         window.updateConnStatus(
             dispenserTopic,
-            dispenser.conn_status ? 1 : 0,
+            Number(dispenser.conn_status),
             dispenser.connected_at
         );
     }
@@ -212,7 +212,7 @@ async function updateDispenserCard(dispenser) {
     const card = document.getElementById(`dispenser-${ensureDAddress(dispenser.address)}`);
     if (!card) return;
 
-    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+    card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
     // Refresh the cached payload so a card that hasn't materialized yet (still
     // off-screen) will pop in with fresh nozzle data once it scrolls into view.
@@ -224,7 +224,7 @@ async function updateDispenserCard(dispenser) {
     refreshDispenserRemarkSection(card, dispenser);
 
     if (typeof window.updateConnStatus === 'function') {
-        window.updateConnStatus(ensureDAddress(dispenser.address), dispenser.conn_status ? 1 : 0, dispenser.connected_at);
+        window.updateConnStatus(ensureDAddress(dispenser.address), Number(dispenser.conn_status), dispenser.connected_at);
     }
 
     // Update error count

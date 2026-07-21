@@ -190,7 +190,8 @@ async function createFilterContainer(stations, onFilterChange, actionsContainer 
     const connectionOptions = [
         { value: 'all', label: 'All Connections' },
         { value: '1',   label: 'Connected' },
-        { value: '0',   label: 'Disconnected' }
+        { value: '0',   label: 'Disconnected' },
+        { value: '2',   label: 'N/A' }
     ];
 
     // --- Build controls ---

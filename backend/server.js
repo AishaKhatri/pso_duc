@@ -214,7 +214,7 @@ app.get('/api/station-locations', async (req, res) => {
         for (const d of dispenserRows) {
             const stats = dispenserStats.get(d.customer_code) || { total: 0, online: 0 };
             stats.total += 1;
-            if (d.conn_status) stats.online += 1;
+            if (Number(d.conn_status) === 1) stats.online += 1;
             dispenserStats.set(d.customer_code, stats);
         }
 
@@ -1153,7 +1153,8 @@ async function _collectDucNozzleStatus(customer_code, products, ackByProduct) {
             if (!byAddr.has(address)) {
                 byAddr.set(address, {
                     addr: address,
-                    conn: Number(r.conn_status) === 1 ? 'Connected' : 'Disconnected',
+                    conn: Number(r.conn_status) === 1 ? 'Connected'
+                        : Number(r.conn_status) === 2 ? 'N/A' : 'Disconnected',
                     products: {}
                 });
             }

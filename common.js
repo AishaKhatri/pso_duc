@@ -849,22 +849,27 @@ async function updateConnStatus(deviceId, connStatus, connected_at, deviceType =
         const connStatusText = deviceCard.querySelector('.conn-status');
         const uptime = deviceCard.querySelector('.uptime');
 
-        connStatusText.style.background = connStatus === 1 ? 'var(--badge-online-bg)' : 'var(--badge-offline-bg)';
-        connStatusText.style.color = connStatus === 1 ? 'var(--badge-online-text)' : 'var(--badge-offline-text)';
+        // conn_status: 1 = connected, 2 = unknown, else disconnected.
+        const isConnected = Number(connStatus) === 1;
+        const isUnknown = Number(connStatus) === 2;
+
+        connStatusText.style.background = isConnected ? 'var(--badge-online-bg)'
+            : isUnknown ? 'var(--badge-unknown-bg)' : 'var(--badge-offline-bg)';
+        connStatusText.style.color = isConnected ? 'var(--badge-online-text)'
+            : isUnknown ? 'var(--badge-unknown-text)' : 'var(--badge-offline-text)';
         connStatusText.style.fontWeight = '500';
         connStatusText.style.padding = '4px 10px';
         connStatusText.style.borderRadius = '20px';
         connStatusText.style.fontSize = '14px';
         connStatusText.style.width = 'fit-content';
-        connStatusText.textContent = connStatus === 1 ? 'CONNECTED' : 'DISCONNECTED';  
-        
-        const connectedTime = new Date(connected_at).toLocaleString();
-        
-        if (connStatus === 1 && connected_at) {            
-            uptime.textContent = `At: ${connectedTime}`;
-        } 
-        else {
-            uptime.textContent = `At: ${connectedTime}`;
+        connStatusText.textContent = isConnected ? 'CONNECTED'
+            : isUnknown ? 'N/A' : 'DISCONNECTED';
+
+        // No trustworthy timestamp while the state is unknown.
+        if (isUnknown) {
+            uptime.textContent = '';
+        } else {
+            uptime.textContent = `At: ${new Date(connected_at).toLocaleString()}`;
         }
     } else {
         console.error(`❌ Device card not found for ${deviceType} with ID: ${deviceId}`);

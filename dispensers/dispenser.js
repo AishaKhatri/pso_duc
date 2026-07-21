@@ -261,7 +261,7 @@ async function attachDispenserHourlyChart(dispenser, parent) {
 
 function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const totalDucs = dispensers.length;
-    const onlineDucs = dispensers.filter(d => d.conn_status).length;
+    const onlineDucs = dispensers.filter(d => Number(d.conn_status) === 1).length;
     const offlineDucs = totalDucs - onlineDucs;
     const cityName = station?.city ? titleCase(station.city) : '';
     const districtName = station?.district
@@ -564,7 +564,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // single getElementById is enough (no need to also key by customer_code).
     card.id = `dispenser-${dispenserTopic}`;
     card.dataset.address = dispenserTopic;
-    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+    card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
     titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
 
@@ -602,7 +602,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     if (typeof window.updateConnStatus === 'function') {
         window.updateConnStatus(
             dispenserTopic,
-            dispenser.conn_status ? 1 : 0,
+            Number(dispenser.conn_status),
             dispenser.connected_at
         );
     }
@@ -668,7 +668,7 @@ async function updateDispenserCard(dispenser) {
     const card = document.getElementById(`dispenser-${ensureDAddress(dispenser.address)}`);
     if (!card) return;
 
-    card.dataset.connStatus = dispenser.conn_status ? '1' : '0';
+    card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
     // Refresh the cached payload so a card that hasn't materialized yet (still
     // off-screen) will pop in with fresh nozzle data once it scrolls into view.
@@ -686,7 +686,7 @@ async function updateDispenserCard(dispenser) {
     }
 
     if (typeof window.updateConnStatus === 'function') {
-        window.updateConnStatus(dispenserTopic, dispenser.conn_status ? 1 : 0, dispenser.connected_at);
+        window.updateConnStatus(dispenserTopic, Number(dispenser.conn_status), dispenser.connected_at);
     }
 
     // Fetch error count ONCE per dispenser per tick; shared between badge and

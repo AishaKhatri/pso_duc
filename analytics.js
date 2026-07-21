@@ -78,9 +78,11 @@ let lastViewerKey = null;
 
 // ---- status → display metadata (label + pill color "kind") ----
 function deviceStatusMeta(connStatus) {
-    return connStatus
-        ? { label: 'Connected', kind: 'online' }
-        : { label: 'Disconnected', kind: 'offline' };
+    switch (Number(connStatus)) {
+        case 1:  return { label: 'Connected', kind: 'online' };
+        case 2:  return { label: 'N/A', kind: 'unknown' };
+        default: return { label: 'Disconnected', kind: 'offline' };
+    }
 }
 function nozzleStatusMeta(code) {
     switch (Number(code)) {
@@ -101,14 +103,17 @@ function dispenserStatusMeta(nozzles) {
 
 // ---- chart aggregation ----
 function computeDeviceStats(dispensers) {
-    let connected = 0, disconnected = 0;
+    let connected = 0, disconnected = 0, unknown = 0;
     for (const d of dispensers) {
-        if (d.conn_status) connected++;
+        const code = Number(d.conn_status);
+        if (code === 1) connected++;
+        else if (code === 2) unknown++;
         else disconnected++;
     }
     return [
         { label: 'Connected',    value: connected,    color: 'var(--status-online)' },
         { label: 'Disconnected', value: disconnected, color: 'var(--status-offline)' },
+        { label: 'N/A',          value: unknown,      color: 'var(--badge-unknown-text)' },
     ];
 }
 function computeNozzleStatsNozzleWise(dispensers) {
@@ -191,6 +196,7 @@ function computePriceStats(dispensers) {
 const PILL_STYLES = {
     online:  { bg: 'var(--badge-online-bg)',  color: 'var(--badge-online-text)',  border: 'transparent' },
     offline: { bg: 'var(--badge-offline-bg)', color: 'var(--badge-offline-text)', border: 'transparent' },
+    unknown: { bg: 'var(--badge-unknown-bg)', color: 'var(--badge-unknown-text)', border: 'transparent' },
     reset:   { bg: 'var(--badge-reset-bg)',   color: 'var(--badge-reset-text)',   border: 'transparent' },
     accent:  { bg: 'transparent',             color: 'var(--accent)',             border: 'var(--accent)' },
 };

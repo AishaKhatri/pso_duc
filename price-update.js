@@ -801,9 +801,12 @@ function _puRenderDucTable() {
             tr.appendChild(cell(r.address));
             tr.appendChild(cell(r.product));
 
-            const connected = Number(r.connStatus) === 1;
-            tr.appendChild(cell(connected ? 'Connected' : 'Disconnected', {
-                color: connected ? 'var(--badge-online-text)' : 'var(--badge-offline-text)',
+            const connCode = Number(r.connStatus);
+            const connLabel = connCode === 1 ? 'Connected' : connCode === 2 ? 'N/A' : 'Disconnected';
+            const connColor = connCode === 1 ? 'var(--badge-online-text)'
+                : connCode === 2 ? 'var(--badge-unknown-text)' : 'var(--badge-offline-text)';
+            tr.appendChild(cell(connLabel, {
+                color: connColor,
                 fontWeight: '600'
             }));
 

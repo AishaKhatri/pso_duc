@@ -401,7 +401,7 @@ function exportConfigDispensersToCsv() {
         { header: 'Nozzles',           get: d => (d.nozzles || []).map(n => n.nozzleId.split('-')[1]).join('; ') },
         { header: 'Products',          get: d => (d.nozzles || []).map(n => (n.product || '').toUpperCase()).join('; ') },
         { header: 'Dispenser Brand',   get: d => d.DispenserBrand || '' },
-        { header: 'Status',            get: d => Number(d.conn_status) === 1 ? 'Connected' : 'Disconnected' },
+        { header: 'Status',            get: d => Number(d.conn_status) === 1 ? 'Connected' : Number(d.conn_status) === 2 ? 'N/A' : 'Disconnected' },
         { header: 'Time',              get: d => d.connected_at ? new Date(d.connected_at).toLocaleString() : '' },
         { header: 'Created At',        get: d => d.created_at ? new Date(d.created_at).toLocaleString() : '' }
     ];
@@ -692,7 +692,8 @@ async function renderConfigDispensers() {
                 ? new Date(dispenser.created_at).toLocaleString()
                 : null;
 
-            const connStatus = Number(dispenser.conn_status) === 1 ? 'Connected' : 'Disconnected';
+            const connStatus = Number(dispenser.conn_status) === 1 ? 'Connected'
+                : Number(dispenser.conn_status) === 2 ? 'N/A' : 'Disconnected';
 
             const tr = createTableRow([
                 dispenser.customer_code,

@@ -29,6 +29,55 @@ const pendingDisconnects = new Map(); // addrD -> timeout handle
 // debounce / flap-suppression logic
 const refreshForceCommit = new Set(); // Set<addrD>
 
+// conn_status values stored in the dispensers table:
+//   0 = disconnected, 1 = connected, 2 = unknown.
+// "unknown" means a refresh (server reconnect / bulk refresh / per-card
+// refresh) re-subscribed to the device's duc/conn_status topic and the broker
+// redelivered NO retained message at all — we genuinely don't know its state.
+const CONN_STATUS_UNKNOWN = 2;
+
+// After a refresh re-subscribes to conn_status topics, the broker redelivers
+// each device's retained message almost immediately. This is how long we wait
+// for those retained messages before sweeping any still-silent address to
+// "unknown" (2). An address is still-silent if it remains in refreshForceCommit
+// after the window — a message would have consumed its entry in
+// handleConnectionAlert.
+const UNKNOWN_SWEEP_MS = 10 * 1000;
+
+// Schedule a one-shot sweep: after UNKNOWN_SWEEP_MS, any of `addresses` still
+// armed in refreshForceCommit never received a conn_status message since the
+// refresh, so mark it unknown (2). Addresses that DID get a message were
+// already committed (and de-armed) by handleConnectionAlert.
+function scheduleUnknownSweep(addresses) {
+    const armed = addresses.filter(Boolean);
+    if (armed.length === 0) return;
+    setTimeout(async () => {
+        const silent = armed.filter(a => refreshForceCommit.has(a));
+        if (silent.length === 0) return;
+        for (const addrD of silent) refreshForceCommit.delete(addrD);
+        try {
+            // Match both stored forms (D-prefixed and naked) like the rest of
+            // the conn_status writes do.
+            const forms = [];
+            const params = [CONN_STATUS_UNKNOWN];
+            for (const addrD of silent) {
+                forms.push('?', '?');
+                params.push(addrD, stripDAddress(addrD));
+            }
+            // Stamp connected_at = now so the row records when the state went
+            // unknown. It stays hidden in the UI for the unknown state.
+            await pool.query(
+                `UPDATE dispensers SET conn_status = ?, connected_at = NOW() WHERE address IN (${forms.join(', ')})`,
+                params
+            );
+            logWithTimestamp(chalk.yellow,
+                `Conn-status refresh: ${silent.length} dispenser(s) received no conn_status message — set to unknown`);
+        } catch (err) {
+            errorWithTimestamp(`Unknown-sweep write failed: ${err.message}`);
+        }
+    }, UNKNOWN_SWEEP_MS);
+}
+
 // Topic DUCs publish an ACK on after they apply a price-update message.
 const PRICE_ACK_TOPIC = 'duc/acked_msgs';
 
@@ -143,6 +192,7 @@ async function initializeMQTTSubscriptions() {
 
         // Subscribe to each dispenser's topic and initialize nozzles
         const serverStartTime = Date.now();
+        const armedForSweep = [];
         for (const dispenser of dispensers) {
             // MQTT slave topic uses the numeric portion: s<naked>
             const addrNaked = stripDAddress(dispenser.address);
@@ -157,6 +207,7 @@ async function initializeMQTTSubscriptions() {
             // what restores the "a server reconnect refreshes every device's
             // status" behavior; steady-state dedup resumes from the next message.
             refreshForceCommit.add(addrD);
+            armedForSweep.push(addrD);
 
             const conn_stat_topic = `duc/conn_status/${addrD}`;
             await subscribeToTopic(conn_stat_topic, statusTopics);
@@ -177,6 +228,10 @@ async function initializeMQTTSubscriptions() {
                 }
             }
         }
+
+        // Any device whose retained conn_status the broker doesn't redeliver
+        // within the window is left "unknown".
+        scheduleUnknownSweep(armedForSweep);
     } catch (error) {
         errorWithTimestamp('Error fetching dispensers for MQTT subscriptions:', error.message);
     }
@@ -778,6 +833,14 @@ async function handleConnectionAlert(topic, alertData) {
     // address right now, skipping debounce. Consumed on first delivery.
     if (refreshForceCommit.has(addrD)) {
         refreshForceCommit.delete(addrD);
+        await applyDispenserStateChange(addrD, addrNaked, isConnection, eventAt, dispenser_id, customer_code);
+        return;
+    }
+
+    // Stored state is "unknown" (2) — we had no baseline for this device, so
+    // commit whatever the broker just told us (connect OR disconnect) right
+    // away. No 30-minute disconnect debounce while the state is unknown.
+    if (currentDbStatus === CONN_STATUS_UNKNOWN) {
         await applyDispenserStateChange(addrD, addrNaked, isConnection, eventAt, dispenser_id, customer_code);
         return;
     }
@@ -1680,12 +1743,17 @@ async function refreshConnStatusSubscriptions() {
         if (addrD) refreshForceCommit.add(addrD);
     }
 
+    const armedForSweep = [];
     for (const d of dispensers) {
         const addrD = ensureDAddress(d.address);
         if (!addrD) continue;
         await _cycleConnStatusTopic(addrD);
+        armedForSweep.push(addrD);
         resubscribed++;
     }
+
+    // Addresses that get no redelivered conn_status within the window → unknown.
+    scheduleUnknownSweep(armedForSweep);
 
     logWithTimestamp(chalk.cyan,
         `Conn-status refresh: cycled ${resubscribed} topics, cleared ${timersCleared} debounce timers, queued ${refreshForceCommit.size} addresses for immediate commit`);
@@ -1701,6 +1769,9 @@ async function refreshConnStatusForAddress(address) {
 
     const timersCleared = _armConnStatusForceCommit(addrD);
     await _cycleConnStatusTopic(addrD);
+
+    // No redelivered conn_status within the window → mark this device unknown.
+    scheduleUnknownSweep([addrD]);
 
     logWithTimestamp(chalk.cyan,
         `Conn-status refresh (single): cycled ${addrD}, cleared ${timersCleared} debounce timer(s)`);
