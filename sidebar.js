@@ -69,6 +69,7 @@ function renderSidebar() {
             children: [
                 { type: 'link', page: 'prices', label: 'Upload Price File', icon: 'prices-icon.png', url: 'prices.html' },
                 { type: 'link', page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' },
+                { type: 'link', page: 'duc-config', label: 'DUC Server Config', icon: 'config-icon.png', url: 'duc-config.html' },
                 { type: 'action', action: 'scan-dispensers', label: 'Scan Dispensers', icon: 'search-icon.svg' },
             ]
         };
@@ -87,6 +88,7 @@ function renderSidebar() {
         'prices': 'prices',
         'price-update': 'price-update',
         'activity-logs': 'activity-logs',
+        'duc-config': 'duc-config',
     };
     const activePage = pageMap[currentPage] || 'dispensers';
 

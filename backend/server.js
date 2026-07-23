@@ -2543,8 +2543,8 @@ app.post('/api/dispensers/scan', async (req, res) => {
         const payload = JSON.stringify({
             clientid: SERVER_CLIENT_ID,
             ip: await getServerIp(),
-            msg_type: 16,
-            request_type: 1
+            req_type: 1,
+            msg_type: 16
         });
         await publishMessage(SCAN_BROADCAST_TOPIC, payload);
 
@@ -2559,6 +2559,130 @@ app.post('/api/dispensers/scan', async (req, res) => {
     } catch (error) {
         console.error('Dispenser scan publish error:', error);
         res.status(500).json({ success: false, error: error.message || 'Failed to start scan' });
+    }
+});
+
+// Restart a single device: publish a broadcast control message
+// (req_type 0, msg_type 12, msg 1) on duc/broadcast/<D-addr>. The clientid/ip
+// are filled in server-side, same as the scan broadcast. Super-admin only;
+// surfaced by the "Restart Device" button in the device status popup.
+app.post('/api/dispensers/:address/restart', async (req, res) => {
+    if (denyUnlessRole(req, res, 'super_admin')) return;
+    try {
+        const addrD = ensureDAddress(req.params.address);
+        if (!addrD) {
+            return res.status(400).json({ success: false, error: 'Invalid dispenser address' });
+        }
+        const topic = `${SCAN_BROADCAST_TOPIC}/${addrD}`;
+        const payload = JSON.stringify({
+            clientid: SERVER_CLIENT_ID,
+            ip: await getServerIp(),
+            req_type: 0,
+            msg_type: 12,
+            message: "1"
+        });
+        await publishMessage(topic, payload);
+
+        logActivity(req, 'dispenser_restart', {
+            entity_type: 'mqtt_topic',
+            entity_id: topic,
+            details: { payload }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('Device restart publish error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to restart device' });
+    }
+});
+
+// Update one of a DUC's server-location slots (msg_type 18). The operator picks
+// the slot (0-5), connection type (1/2/3), protocol, broker IP, port, NTP server
+// and credentials on the DUC Server Config page; clientid/ip and the ServerName/
+// ServerIp CSV fields are filled in server-side (same source as scan/restart).
+// Sends either targeted (duc/broadcast/<D-addr>) or fleet-wide (duc/broadcast).
+// Super-admin only.
+const IPV4_RE = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+function isValidIPv4(s) {
+    const m = IPV4_RE.exec(String(s || '').trim());
+    return !!m && m.slice(1).every(o => Number(o) >= 0 && Number(o) <= 255);
+}
+app.post('/api/dispensers/server-location', async (req, res) => {
+    if (denyUnlessRole(req, res, 'super_admin')) return;
+    try {
+        const {
+            address, sendMode, index, connectionType, protocol,
+            brokerIp, port, ntpSameAsBroker, ntpServer, username, password
+        } = req.body || {};
+
+        // Validate the discrete choices.
+        const slot = Number(index);
+        if (!Number.isInteger(slot) || slot < 0 || slot > 5) {
+            return res.status(400).json({ success: false, error: 'Server location index must be 0-5' });
+        }
+        const connType = Number(connectionType);
+        if (![1, 2, 3].includes(connType)) {
+            return res.status(400).json({ success: false, error: 'Connection type must be 1, 2 or 3' });
+        }
+        // TLS/SSL is intentionally not available yet — only TCP is accepted.
+        if (protocol !== 'tcp') {
+            return res.status(400).json({ success: false, error: 'Only the TCP protocol is currently supported' });
+        }
+        if (!isValidIPv4(brokerIp)) {
+            return res.status(400).json({ success: false, error: 'Broker IP must be a valid numeric IPv4 address' });
+        }
+        const portNum = Number(port);
+        if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
+            return res.status(400).json({ success: false, error: 'Port must be 1-65535' });
+        }
+        // NTP server: either mirror the broker IP or take the operator's string.
+        const ntp = ntpSameAsBroker ? String(brokerIp).trim() : String(ntpServer || '').trim();
+        if (!ntp) {
+            return res.status(400).json({ success: false, error: 'NTP server is required' });
+        }
+        // Commas would corrupt the CSV message layout.
+        const user = String(username ?? '');
+        const pass = String(password ?? '');
+        if ([user, pass, ntp].some(v => v.includes(','))) {
+            return res.status(400).json({ success: false, error: 'Values may not contain commas' });
+        }
+
+        // Targeted send needs a valid D-address; broadcast hits every DUC.
+        const broadcast = sendMode === 'broadcast';
+        let addrD = null;
+        if (!broadcast) {
+            addrD = ensureDAddress(address);
+            if (!addrD) {
+                return res.status(400).json({ success: false, error: 'A valid dispenser address is required for a targeted send' });
+            }
+        }
+
+        // Protocol prefix on the broker IP (only TCP for now).
+        const brokerUrl = `tcp://${String(brokerIp).trim()}`;
+        const serverName = SERVER_CLIENT_ID;
+        const serverIp = await getServerIp();
+
+        // CSV: Index,ConnType,BrokerUrl,NtpServerIp,Port,UserName,Password,ServerName,ServerIp
+        const message = [slot, connType, brokerUrl, ntp, portNum, user, pass, serverName, serverIp].join(',');
+        const payload = JSON.stringify({
+            clientid: SERVER_CLIENT_ID,
+            ip: serverIp,
+            req_type: 0,
+            msg_type: 18,
+            message
+        });
+
+        const topic = broadcast ? SCAN_BROADCAST_TOPIC : `${SCAN_BROADCAST_TOPIC}/${addrD}`;
+        await publishMessage(topic, payload);
+
+        logActivity(req, 'duc_server_location_update', {
+            entity_type: 'mqtt_topic',
+            entity_id: topic,
+            details: { address: addrD, broadcast, slot, connType, brokerUrl, port: portNum, payload }
+        });
+        res.json({ success: true });
+    } catch (error) {
+        console.error('DUC server-location publish error:', error);
+        res.status(500).json({ success: false, error: error.message || 'Failed to update server location' });
     }
 });
 

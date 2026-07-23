@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Central Server - DUC Server Config</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
+    <script src="theme.js"></script>
+</head>
+<body>
+    <div id="app"></div>
+    <div class="container">
+        <div id="sidebar"></div>
+        <div class="main">
+            <div id="topbar"></div>
+            <div id="content"></div>
+        </div>
+    </div>
+    <script src="common.js"></script>
+    <script src="topbar.js"></script>
+    <script src="sidebar.js"></script>
+    <script src="auth-functions.js"></script>
+    <script src="duc-config.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', async () => {
+            const isAuthenticated = await checkAuthentication();
+            if (!isAuthenticated) return;
+
+            const role = StationAuth.getUserInfo()?.role;
+            if (role !== 'super_admin') {
+                window.location.href = 'index.html';
+                return;
+            }
+
+            renderApp('DUC Server Config');
+            if (typeof window.renderDucConfig === 'function') {
+                window.renderDucConfig();
+            } else {
+                console.error('renderDucConfig function is not defined');
+            }
+        });
+    </script>
+</body>
+</html>

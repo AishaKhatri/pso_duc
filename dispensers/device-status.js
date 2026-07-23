@@ -309,7 +309,7 @@ function createWifiStatusContent(wifiStatus) {
 }
 
 // Function to create MQTT status section
-function createMqttStatusSection(mqttStatus, powerStatus) {
+function createMqttStatusSection(mqttStatus, powerStatus, dispenserAddress) {
     const section = document.createElement('div');
     section.style.flex = '1';
     section.style.padding = '0 15px';
@@ -387,8 +387,76 @@ function createMqttStatusSection(mqttStatus, powerStatus) {
         section.appendChild(messageDiv);
         section.appendChild(createLastUpdatedText(latestStatus.lastUpdated));
     }
-   
+
+    // Super-admin-only "Restart Device" action for this dispenser.
+    const restartBtn = createRestartDeviceButton(dispenserAddress);
+    if (restartBtn) section.appendChild(restartBtn);
+
     return section;
+}
+
+// Build the "Restart Device" button shown in the Power Status section. Returns
+// null for any non-super-admin role so the section stays unchanged for them.
+// On click it confirms, then asks the backend to publish the broadcast restart
+// command (req_type 0, msg_type 12, msg 1) on duc/broadcast/<D-addr>.
+function createRestartDeviceButton(dispenserAddress) {
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    if (role !== 'super_admin') return null;
+
+    const addrD = ensureDAddress(dispenserAddress);
+    if (!addrD) return null;
+
+    // Same styling as the GSM/WiFi buttons in the Wireless Connectivity section.
+    const btn = document.createElement('button');
+    btn.textContent = 'Restart Device';
+    btn.style.marginTop = '15px';
+    btn.style.padding = '6px 16px';
+    btn.style.border = '1px solid var(--accent)';
+    btn.style.background = 'var(--accent)';
+    btn.style.color = 'var(--text-on-accent)';
+    btn.style.borderRadius = '4px';
+    btn.style.fontSize = '14px';
+    btn.style.cursor = 'pointer';
+
+    btn.addEventListener('click', () => {
+        const { overlay, confirmButton } = createDeletePopup(
+            `Send a restart command to device ${addrD}?`,
+            {
+                title: 'Restart Device',
+                confirmText: 'Restart',
+                confirmColor: '#D32F2F',
+                confirmHoverColor: '#B71C1C'
+            }
+        );
+
+        confirmButton.onclick = async () => {
+            document.body.removeChild(overlay);
+            const original = btn.textContent;
+            btn.disabled = true;
+            btn.style.opacity = '0.6';
+            btn.textContent = 'Restarting…';
+            try {
+                const resp = await fetch(`${API_BASE_URL}/dispensers/${encodeURIComponent(addrD)}/restart`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                window.showNotification?.(`Restart command sent to ${addrD}`, 'success')
+                    ?? alert(`Restart command sent to ${addrD}`);
+            } catch (e) {
+                console.error('restart device failed:', e);
+                window.showNotification?.(`Restart failed: ${e.message}`, 'error')
+                    ?? alert(`Restart failed: ${e.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.style.opacity = '';
+                btn.textContent = original;
+            }
+        };
+    });
+
+    return btn;
 }
 
 // Enable/disable the "Mark as Cleared" button based on the current selection.
@@ -1209,7 +1277,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
                 columnsContainer.style.marginTop = '10px';
                 
                 columnsContainer.appendChild(createWirelessConnectivitySection(gsmStatus, wifiStatus, gsmEnabled, wifiEnabled));
-                columnsContainer.appendChild(createMqttStatusSection(mqttStatus, powerStatus));
+                columnsContainer.appendChild(createMqttStatusSection(mqttStatus, powerStatus, dispenserTopic));
                 
                 currentContent = columnsContainer;
             } else if (activeTab === 'errorLogs') {
