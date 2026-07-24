@@ -6,6 +6,8 @@ const fs = require('fs').promises;
 const { getFormattedTimestamp, logPing, writeToLogFile, logPriceDebug, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const ATG_SEND_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const SENT_TO_ATG_TOPIC = 'duc/atg-console';
 
 // Maximum allowed values for DECIMAL(15,2)
 const MAX_DECIMAL_VALUE = 9999999999999.99;
@@ -1077,6 +1079,33 @@ async function storeTransaction(customer_code, dispenser_id, nozzle_id, time, am
     }
 }
 
+async function sendToATG() {
+    try {
+        logWithTimestamp(null, 'Starting ATG data send...');
+
+        const [infoForATG] = await pool.query('SELECT * FROM nozzles');
+        if (infoForATG.length === 0) {
+            logWithTimestamp(null, 'No data available for ATG send');
+            return;
+        }
+
+        for (const nozzle of infoForATG) {
+            const payload = JSON.stringify({
+                dispenser_id: nozzle.dispenser_id,
+                nozzle_id: nozzle.nozzle_id,
+                volume: parseFloat(nozzle.total_quantity),
+                timestamp: Math.floor(Date.now() / 1000)
+            });
+
+            await publishMessage('duc/atg-console', payload);
+            logWithTimestamp(null, `Sent ATG data for nozzle ${nozzle.nozzle_id}: ${payload}`);
+        }
+
+    } catch (error) {
+        errorWithTimestamp('Error sending data to ATG:', error.message);
+    }
+}
+
 async function recordNozzleHistory() {
     try {
         logWithTimestamp(null, 'Starting nozzle history snapshot...');
@@ -1394,6 +1423,8 @@ mqttClient.on('connect', () => {
         startOfflineCheck();
         setInterval(recordNozzleHistory, HISTORY_RECORD_INTERVAL);
         setTimeout(recordNozzleHistory, 5000);
+        setInterval(sendToATG, ATG_SEND_INTERVAL);
+        setTimeout(sendToATG, 5000);
     }
 });
 
