@@ -203,75 +203,6 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: 'Something went wrong!' });
 });
 
-app.get('/api/station-locations', async (req, res) => {
-    try {
-        const stations = await fetchStationSheetRows();
-
-        const [dispenserRows] = await pool.query(
-            'SELECT customer_code, conn_status FROM dispensers'
-        );
-        const dispenserStats = new Map();
-        for (const d of dispenserRows) {
-            const stats = dispenserStats.get(d.customer_code) || { total: 0, online: 0 };
-            stats.total += 1;
-            if (Number(d.conn_status) === 1) stats.online += 1;
-            dispenserStats.set(d.customer_code, stats);
-        }
-
-        const result = stations.map(s => {
-            const stats = dispenserStats.get(s.customer_code) || { total: 0, online: 0 };
-            const offline = stats.total - stats.online;
-            let status;
-            if (stats.total === 0) status = 'no_duc';
-            else if (stats.online === 0) status = 'all_offline';
-            else if (offline === 0) status = 'all_online';
-            else status = 'partial';
-            return {
-                ...s,
-                duc_count: stats.total,
-                online_count: stats.online,
-                offline_count: offline,
-                status
-            };
-        });
-
-        res.json(result);
-    } catch (error) {
-        console.error('Error building station locations:', error);
-        res.status(500).json({ error: error.message || 'Failed to fetch station locations' });
-    }
-});
-
-// Dispensers in the DB whose customer_code is NOT present in the station sheet.
-// These are invisible to dashboard counts (which sum over sheet stations only),
-// so we surface them as alerts to flag the data drift.
-app.get('/api/orphan-dispensers', async (req, res) => {
-    try {
-        const sheet = await fetchStationSheetRows();
-        const sheetCodes = new Set(sheet.map(s => String(s.customer_code || '').trim()).filter(Boolean));
-
-        const [rows] = await pool.query(
-            `SELECT customer_code,
-                    COUNT(*)                                    AS dispenser_count,
-                    GROUP_CONCAT(${addressOutSql()} ORDER BY dispenser_id) AS addresses
-             FROM dispensers
-             WHERE customer_code IS NOT NULL AND customer_code <> ''
-             GROUP BY customer_code`
-        );
-        const orphans = rows
-            .filter(r => !sheetCodes.has(String(r.customer_code).trim()))
-            .map(r => ({
-                customer_code: r.customer_code,
-                dispenser_count: Number(r.dispenser_count) || 0,
-                addresses: (r.addresses || '').split(',').filter(Boolean)
-            }));
-        res.json(orphans);
-    } catch (error) {
-        console.error('Error building orphan dispensers list:', error);
-        res.status(500).json({ error: error.message || 'Failed to fetch orphan dispensers' });
-    }
-});
-
 app.get('/api/dashboard-stats', async (req, res) => {
     try {
         const f = await txnFilters(req);
@@ -358,118 +289,6 @@ app.get('/api/dashboard-stats', async (req, res) => {
     } catch (error) {
         console.error('Error building dashboard stats:', error);
         res.status(500).json({ error: error.message || 'Failed to build dashboard stats' });
-    }
-});
-
-// Time-series for the dashboard Sales chart. `range` controls bucket size:
-//   6h     -> last 6 hours, hourly buckets
-//   day    -> today's 24 hourly buckets (default)
-//   week   -> last 7 days, daily buckets
-//   month  -> last 30 days, daily buckets
-app.get('/api/sales-series', async (req, res) => {
-    try {
-        const range = (req.query.range || 'day').toLowerCase();
-        const f = await txnFilters(req);
-        if (!f) return res.json({ range, points: [], peak: 0, total: 0 });
-        const filterClause = f.clause;
-        const params = f.params;
-
-        let points = [];
-
-        if (range === '6h') {
-            const [rows] = await pool.query(
-                `SELECT DATE_FORMAT(time, '%Y-%m-%d %H:00:00') AS bucket,
-                        COUNT(*) AS tx_count,
-                        COALESCE(SUM(amount), 0) AS amount,
-                        COALESCE(SUM(volume), 0) AS volume
-                   FROM transactions
-                  WHERE time >= DATE_SUB(NOW(), INTERVAL 6 HOUR) ${filterClause}
-               GROUP BY bucket
-               ORDER BY bucket ASC`,
-                params
-            );
-            const map = new Map(rows.map(r => [r.bucket.toString().slice(0, 13), r]));
-            const now = new Date();
-            for (let i = 6; i >= 0; i--) {
-                const d = new Date(now.getTime() - i * 3600000);
-                d.setMinutes(0, 0, 0);
-                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}`;
-                const r = map.get(key);
-                points.push({
-                    label: String(d.getHours()).padStart(2, '0') + ':00',
-                    iso: d.toISOString(),
-                    tx_count: r ? Number(r.tx_count) || 0 : 0,
-                    amount:   r ? Number(r.amount)   || 0 : 0,
-                    volume:   r ? Number(r.volume)   || 0 : 0
-                });
-            }
-        } else if (range === 'week' || range === 'month') {
-            const days = range === 'week' ? 7 : 30;
-            const [rows] = await pool.query(
-                `SELECT DATE(time) AS bucket,
-                        COUNT(*) AS tx_count,
-                        COALESCE(SUM(amount), 0) AS amount,
-                        COALESCE(SUM(volume), 0) AS volume
-                   FROM transactions
-                  WHERE DATE(time) >= DATE_SUB(CURDATE(), INTERVAL ? DAY) ${filterClause}
-               GROUP BY DATE(time)
-               ORDER BY bucket ASC`,
-                [days - 1, ...params]
-            );
-            const map = new Map(rows.map(r => {
-                const d = new Date(r.bucket);
-                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                return [key, r];
-            }));
-            const now = new Date();
-            for (let i = days - 1; i >= 0; i--) {
-                const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
-                const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-                const r = map.get(key);
-                const weekdays = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-                points.push({
-                    label: range === 'week'
-                        ? weekdays[d.getDay()]
-                        : `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`,
-                    iso: d.toISOString(),
-                    tx_count: r ? Number(r.tx_count) || 0 : 0,
-                    amount:   r ? Number(r.amount)   || 0 : 0,
-                    volume:   r ? Number(r.volume)   || 0 : 0
-                });
-            }
-        } else {
-            // day (default): 24 hourly buckets for today, truncated at current hour
-            const [rows] = await pool.query(
-                `SELECT HOUR(time) AS hour,
-                        COUNT(*) AS tx_count,
-                        COALESCE(SUM(amount), 0) AS amount,
-                        COALESCE(SUM(volume), 0) AS volume
-                   FROM transactions
-                  WHERE DATE(time) = CURDATE() ${filterClause}
-               GROUP BY HOUR(time)`,
-                params
-            );
-            const byHour = new Map(rows.map(r => [Number(r.hour), r]));
-            const currentHour = new Date().getHours();
-            for (let h = 0; h <= currentHour; h++) {
-                const r = byHour.get(h);
-                points.push({
-                    label: String(h).padStart(2, '0') + ':00',
-                    iso: null,
-                    tx_count: r ? Number(r.tx_count) || 0 : 0,
-                    amount:   r ? Number(r.amount)   || 0 : 0,
-                    volume:   r ? Number(r.volume)   || 0 : 0
-                });
-            }
-        }
-
-        const peak  = points.reduce((m, p) => Math.max(m, p.amount), 0);
-        const total = points.reduce((s, p) => s + p.amount, 0);
-
-        res.json({ range, points, peak, total });
-    } catch (error) {
-        console.error('Error building sales series:', error);
-        res.status(500).json({ error: error.message || 'Failed to build sales series' });
     }
 });
 
@@ -3275,15 +3094,6 @@ app.delete('/api/stations/:id', async (req, res) => {
                 r.total_sales_today, r.lock_unlock,
                 r.created_at, 'station_delete'
             ]);
-            await connection.query(
-                `INSERT INTO nozzle_history_archive
-                 (original_id, customer_code, dispenser_id, nozzle_id, product,
-                  status, last_ping_at, price_per_liter, total_quantity, total_amount,
-                  total_sales_today, lock_unlock,
-                  original_created_at, archived_reason)
-                 VALUES ?`,
-                [archiveValues]
-            );
         }
 
         const [result] = await connection.query('DELETE FROM stations WHERE id = ?', [id]);
@@ -3298,8 +3108,7 @@ app.delete('/api/stations/:id', async (req, res) => {
                 cascaded: {
                     dispensers: dispenserRows,
                     nozzles: nozzleRows,
-                    nozzle_history_count: historyRows.length,
-                    nozzle_history_archived: historyRows.length
+                    nozzle_history_count: historyRows.length
                 }
             }
         });
@@ -3365,15 +3174,6 @@ app.delete('/api/dispensers/:id', async (req, res) => {
                 r.total_sales_today, r.lock_unlock,
                 r.created_at, 'dispenser_delete'
             ]);
-            await connection.query(
-                `INSERT INTO nozzle_history_archive
-                 (original_id, customer_code, dispenser_id, nozzle_id, product,
-                  status, last_ping_at, price_per_liter, total_quantity, total_amount,
-                  total_sales_today, lock_unlock,
-                  original_created_at, archived_reason)
-                 VALUES ?`,
-                [archiveValues]
-            );
         }
 
         // Temporarily disable foreign key checks
@@ -3424,8 +3224,7 @@ app.delete('/api/dispensers/:id', async (req, res) => {
                 dispenser: dispenserRow,
                 cascaded: {
                     nozzles: nozzleRows,
-                    nozzle_history_count: historyRows.length,
-                    nozzle_history_archived: historyRows.length
+                    nozzle_history_count: historyRows.length
                 }
             }
         });

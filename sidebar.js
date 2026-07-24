@@ -40,7 +40,6 @@ function renderSidebar() {
     // Sidebar items based on user role
     const items = [];
 
-    items.push({ page: 'dashboard', label: 'Dashboard', icon: 'dashboard-icon.png', url: 'index.html' });
     items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' });
 
     if (isAdmin || isSuperAdmin) {
@@ -78,7 +77,6 @@ function renderSidebar() {
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
     const pageMap = {
-        'index': 'dashboard',
         'overview': 'overview',
         'analytics': 'analytics',
         'dispensers': 'dispensers',

@@ -3,13 +3,25 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Central Server - Dashboard</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <title>Central Server - Dispensers</title>
+    <link rel="stylesheet" href="../styles.css">
+    <!-- Set base href to the parent directory to resolve image paths correctly -->
+    <base href="../" />
     <link rel="icon" type="image/png" href="assets/graphics/stingray-logo-new.jpeg">
     <script src="theme.js"></script>
 </head>
 <body>
+    <!-- Check if user is signed in. Runs before auth-functions.js loads, so
+         redirectToSignin() isn't available yet — inline the same returnTo
+         save so signin can bounce us back here after re-authenticating. -->
+    <script>
+        if (!localStorage.getItem('signedIn') || localStorage.getItem('signedIn') === 'false') {
+            try {
+                sessionStorage.setItem('signinReturnTo', window.location.pathname + window.location.search);
+            } catch (e) {}
+            window.location.href = 'signin.html';
+        }
+    </script>
     <div id="app"></div>
     <div class="container">
         <div id="sidebar"></div>
@@ -22,19 +34,25 @@
     <script src="topbar.js"></script>
     <script src="sidebar.js"></script>
     <script src="auth-functions.js"></script>
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="notif-handler.js"></script>
-    <script src="dashboard.js"></script>
+    <script src="dispensers/station-grouping.js"></script>
+    <script src="dispensers/transaction-log.js"></script>
+    <script src="dispensers/device-status.js"></script>
+    <script src="dispensers/nozzle-layout.js"></script>
+    <script src="dispensers/nozzle-update-functions.js"></script>
+    <script src="dispensers/alarms-panel.js"></script>
+    <script src="dispensers/dispenser.js"></script>
+    <script src="dispensers/command-dispenser.js"></script>
     <script>
         document.addEventListener('DOMContentLoaded', async () => {
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
-
-            renderApp();
-            if (typeof window.renderDashboard === 'function') {
-                window.renderDashboard();
+            
+            renderApp('Dispensers')
+            if (typeof window.renderDispenser === 'function') {
+                window.renderDispenser();
             } else {
-                console.error('renderDashboard function is not defined');
+                console.error('renderDispenser function is not defined');
             }
         });
     </script>

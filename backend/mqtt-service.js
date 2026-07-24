@@ -816,19 +816,12 @@ async function handleConnectionAlert(topic, alertData) {
     const { dispenser_id, customer_code } = dispRows[0];
     const currentDbStatus = Number(dispRows[0].conn_status);
 
-    // Concern 1: always log to connections_history.
     const action = isConnection ? 'connected' : 'disconnected';
     const color = isConnection ? chalk.green : chalk.red;
     const log = `Dispenser ${clientId} ${action}.`;
     logWithTimestamp(color, log);
     logPing(`${getFormattedTimestamp()} ${log} At ${getFormattedTimestamp(eventAt)} `);
-    await pool.query(
-        'INSERT INTO connections_history (customer_code, address, conn_status, connected_at) VALUES (?, ?, ?, ?)',
-        [customer_code, addrD, conn_status, eventAt]
-    );
-
-    // Concern 2: dispensers/nozzles state, gated by debounce.
-
+    
     // Admin just hit "Refresh Conn Status" — commit broker truth for this
     // address right now, skipping debounce. Consumed on first delivery.
     if (refreshForceCommit.has(addrD)) {
@@ -1512,10 +1505,6 @@ mqttClient.on('message', async (receivedTopic, message) => {
                         // Any ping resets the offline timer — a stream of msg=0 pings should
                         // NOT decay into status=2 (that's reserved for "no ping at all").
                     lastStatusMessage.set(nozzleId, { lastMessageTime: Date.now(), dispenser_id });
-                    await pool.query(
-                        'INSERT INTO ping_log (address, nozzle_id, status) VALUES (?, ?, ?)',
-                        [dbAddrD, nozzleId, data.message]
-                    );
                     await updateNozzleInDatabase(dispenser_id, nozzleId, {
                         status: parseInt(data.message),
                         touchPing: true
