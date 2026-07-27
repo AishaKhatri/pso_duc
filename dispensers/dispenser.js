@@ -436,6 +436,21 @@ async function renderDispenser() {
         const refreshConnBtn = createRefreshConnStatusButton();
         if (refreshConnBtn) optionsContainer.appendChild(refreshConnBtn);
 
+        const topRow = document.createElement('div');
+        topRow.style.display = 'flex';
+        topRow.style.alignItems = 'center';
+        topRow.style.justifyContent = 'space-between';
+        topRow.style.marginBottom = '14px';
+        topRow.style.padding = '0';
+
+        const backToATGBtn = createMainButton();
+        backToATGBtn.textContent = 'Back to ATG';
+        backToATGBtn.addEventListener('click', () => {
+            window.location.href = 'http://localhost:3000';
+        });
+        backToATGBtn.style.marginLeft = '0';
+        topRow.appendChild(backToATGBtn);
+
         // Single global "Last Updated" timestamp at top of page (replaces per-nozzle timestamps)
         const lastUpdatedEl = document.createElement('div');
         lastUpdatedEl.id = 'page-last-updated';
@@ -446,10 +461,6 @@ async function renderDispenser() {
         };
         refreshTimestamp();
 
-        const topRow = document.createElement('div');
-        topRow.style.display = 'flex';
-        topRow.style.justifyContent = 'flex-end';
-        topRow.style.marginBottom = '8px';
         topRow.appendChild(lastUpdatedEl);
         stage.appendChild(topRow);
 
