@@ -144,23 +144,6 @@ CREATE TABLE `dispenser_remarks` (
   KEY `idx_dispenser_remarks_customer` (`customer_code`)
 ) ENGINE=InnoDB;
 
-CREATE TABLE IF NOT EXISTS `connections_history` (
-  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `customer_code` varchar(8) NOT NULL,
-  `address` varchar(9) NOT NULL,
-  `conn_status` tinyint NOT NULL DEFAULT '0',
-  `connected_at` timestamp NULL DEFAULT NULL,
-  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS `ping_log` (
-  `id` int NOT NULL AUTO_INCREMENT PRIMARY KEY,
-  `address` varchar(9) NOT NULL,
-  `nozzle_id` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '0',
-  `created_at` timestamp DEFAULT CURRENT_TIMESTAMP
-);
-
 CREATE TABLE `nozzles` (
   `id` int NOT NULL AUTO_INCREMENT,
   `customer_code` varchar(8) NOT NULL,
@@ -201,31 +184,6 @@ CREATE TABLE `nozzle_history` (
   PRIMARY KEY (`id`),
   KEY `idx_nozzle_history` (`customer_code`,`dispenser_id`,`nozzle_id`),
   CONSTRAINT `nozzle_history_ibfk_1` FOREIGN KEY (`customer_code`,`dispenser_id`,`nozzle_id`) REFERENCES `nozzles` (`customer_code`,`dispenser_id`,`nozzle_id`) ON DELETE CASCADE ON UPDATE CASCADE
-) ENGINE=InnoDB;
-
--- Survives station/dispenser/nozzle deletes. Server snapshots affected
--- nozzle_history rows into this table before issuing the parent DELETE, so the
--- historical record outlives the FK CASCADE that wipes the live table.
-CREATE TABLE IF NOT EXISTS `nozzle_history_archive` (
-  `id` int NOT NULL AUTO_INCREMENT,
-  `original_id` int DEFAULT NULL,
-  `customer_code` varchar(8) NOT NULL,
-  `dispenser_id` varchar(50) NOT NULL,
-  `nozzle_id` varchar(50) NOT NULL,
-  `product` varchar(50) NOT NULL,
-  `status` tinyint NOT NULL DEFAULT '2',
-  `last_ping_at` timestamp NULL DEFAULT NULL,
-  `price_per_liter` decimal(10,2) NOT NULL DEFAULT '0.00',
-  `total_quantity` decimal(15,2) NOT NULL DEFAULT '0.00',
-  `total_amount` decimal(15,2) NOT NULL DEFAULT '0.00',
-  `total_sales_today` decimal(15,2) NOT NULL DEFAULT '0.00',
-  `lock_unlock` tinyint NOT NULL DEFAULT '0',
-  `original_created_at` timestamp NULL DEFAULT NULL,
-  `archived_reason` varchar(64) DEFAULT NULL,
-  `archived_at` timestamp NULL DEFAULT CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  KEY `idx_archive_nozzle` (`customer_code`,`dispenser_id`,`nozzle_id`),
-  KEY `idx_archived_at` (`archived_at`)
 ) ENGINE=InnoDB;
 
 CREATE TABLE `transactions` (
