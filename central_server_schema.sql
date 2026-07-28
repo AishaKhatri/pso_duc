@@ -115,7 +115,7 @@ CREATE TABLE `dispensers` (
   `address` varchar(9) NOT NULL,
   `conn_status` tinyint NOT NULL DEFAULT '0',
   `connected_at` timestamp NULL DEFAULT NULL,
-  `interface_type` enum('ir','keypad') NOT NULL DEFAULT 'ir',
+  `interface_type` enum('ir','keypad','non') NOT NULL DEFAULT 'non',
   `interface_lock_status` tinyint NOT NULL DEFAULT '1',
   `number_of_nozzles` int NOT NULL,
   `DispenserBrand` varchar(255) NOT NULL,
@@ -129,6 +129,8 @@ CREATE TABLE `dispensers` (
   UNIQUE KEY `idx_customer_dispenser` (`customer_code`,`dispenser_id`),
   CONSTRAINT `dispensers_ibfk_1` FOREIGN KEY (`customer_code`) REFERENCES `stations` (`customer_code`) ON DELETE CASCADE
 ) ENGINE=InnoDB;
+
+-- alter table dispensers modify column interface_type enum('ir','keypad','non') NOT NULL DEFAULT 'non';
 
 CREATE TABLE `dispenser_remarks` (
   `id` int NOT NULL AUTO_INCREMENT,

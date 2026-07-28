@@ -1157,8 +1157,8 @@ async function registerNewDevice(message) {
         }
 
         // Interface is optional (old firmware doesn't send it). When present it must be valid.
-        if (payloadInterface !== null && payloadInterface !== 'ir' && payloadInterface !== 'keypad') {
-            errorWithTimestamp(`Invalid Interface in registration message: "${rawInterface}". Must be "ir" or "keypad"`);
+        if (payloadInterface !== null && payloadInterface !== 'ir' && payloadInterface !== 'keypad' && payloadInterface !== 'non') {
+            errorWithTimestamp(`Invalid Interface in registration message: "${rawInterface}". Must be "ir", "keypad", or "non"`);
             return;
         }
 
@@ -1245,8 +1245,8 @@ async function registerNewDevice(message) {
             }
             isNewDispenser = true;
 
-            // Legacy firmware: no Interface field — default to 'ir'.
-            const dispenserInterface = payloadInterface || 'ir';
+            // Legacy firmware: no Interface field — default to 'non'.
+            const dispenserInterface = payloadInterface || 'non';
 
             // Create new dispenser — store address D-prefixed.
             await pool.query(
