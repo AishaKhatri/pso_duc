@@ -40,13 +40,7 @@ function renderSidebar() {
     // Sidebar items based on user role
     const items = [];
 
-    items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'dispensers.html' });
-
-    if (isAdmin || isSuperAdmin) {
-        items.push({ page: 'overview', label: 'Overview', icon: 'overview-icon.png', url: 'overview.html' });
-    }
-
-    items.push({ page: 'analytics', label: 'Analytics', icon: 'analytics-icon.png', url: 'analytics.html' });
+    items.push({ page: 'dispensers', label: 'Dispensers', icon: 'nozzle-icon.png', url: 'index.html' });
 
     if (!isOperator) {
         items.push({ page: 'users', label: 'User Management', icon: 'users-icon.png', url: 'user-management.html' });
@@ -77,8 +71,6 @@ function renderSidebar() {
     // Determine current page based on window location
     const currentPage = window.location.pathname.split('/').pop().replace('.html', '') || 'index';
     const pageMap = {
-        'overview': 'overview',
-        'analytics': 'analytics',
         'dispensers': 'dispensers',
         'config-dispensers': 'dispensers',
         'user-management': 'users',

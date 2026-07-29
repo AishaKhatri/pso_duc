@@ -438,18 +438,19 @@ async function renderDispenser() {
 
         const topRow = document.createElement('div');
         topRow.style.display = 'flex';
-        topRow.style.alignItems = 'center';
-        topRow.style.justifyContent = 'space-between';
-        topRow.style.marginBottom = '14px';
+        // topRow.style.alignItems = 'center';
+        // topRow.style.justifyContent = 'space-between';
+        // topRow.style.marginBottom = '14px';
+        topRow.style.marginBottom = '8px';
         topRow.style.padding = '0';
 
-        const backToATGBtn = createMainButton();
-        backToATGBtn.textContent = 'Back to ATG';
-        backToATGBtn.addEventListener('click', () => {
-            window.location.href = 'http://localhost:3000';
-        });
-        backToATGBtn.style.marginLeft = '0';
-        topRow.appendChild(backToATGBtn);
+        // const backToATGBtn = createMainButton();
+        // backToATGBtn.textContent = 'Back to ATG';
+        // backToATGBtn.addEventListener('click', () => {
+        //     window.location.href = 'http://localhost:3000';
+        // });
+        // backToATGBtn.style.marginLeft = '0';
+        // topRow.appendChild(backToATGBtn);
 
         // Single global "Last Updated" timestamp at top of page (replaces per-nozzle timestamps)
         const lastUpdatedEl = document.createElement('div');
@@ -472,8 +473,9 @@ async function renderDispenser() {
             backRow.style.marginBottom = '14px';
 
             const backBtn = createActionButton();
-            backBtn.textContent = '← Back';
-            backBtn.addEventListener('click', () => { window.location.href = backTo; });
+            backBtn.textContent = '← Back to ATG';
+            backBtn.style.fontSize = '16px';
+            backBtn.addEventListener('click', () => { window.location.href = 'http://localhost:3000'; });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);
             stage.appendChild(backRow);

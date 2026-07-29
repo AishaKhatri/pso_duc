@@ -47,12 +47,34 @@
         document.addEventListener('DOMContentLoaded', async () => {
             const isAuthenticated = await checkAuthentication();
             if (!isAuthenticated) return;
-            
-            renderApp('Dispensers')
-            if (typeof window.renderDispenser === 'function') {
-                window.renderDispenser();
-            } else {
-                console.error('renderDispenser function is not defined');
+
+            // Onsite build: this server runs at a single station. The landing
+            // page jumps straight to that station's dispenser view (scoped by
+            // ?customer_code=) instead of the all-stations list. We pick the
+            // first row in the DB `stations` table.
+            const renderAllDispensers = () => {
+                renderApp('Dispensers');
+                if (typeof window.renderDispenser === 'function') {
+                    window.renderDispenser();
+                } else {
+                    console.error('renderDispenser function is not defined');
+                }
+            };
+
+            try {
+                const resp = await fetch(`${API_BASE_URL}/stations`);
+                const stations = resp.ok ? await resp.json() : [];
+                if (Array.isArray(stations) && stations.length > 0 && stations[0].customer_code) {
+                    window.location.replace(
+                        `dispensers.html?customer_code=${encodeURIComponent(stations[0].customer_code)}`
+                    );
+                    return;
+                }
+                // No stations configured — fall back to the normal page.
+                renderAllDispensers();
+            } catch (e) {
+                console.error('Landing redirect failed, showing all dispensers:', e);
+                renderAllDispensers();
             }
         });
     </script>
