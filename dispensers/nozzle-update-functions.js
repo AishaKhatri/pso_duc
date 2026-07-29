@@ -78,6 +78,8 @@ function NozzleData(nozzle) {
         nozzleId: shortNozzleId,
         fullNozzleId: nozzle.nozzle_id,
         dispenserId: nozzle.dispenser_id,
+        customerCode: nozzle.customer_code,
+        stationId: nozzle.station_id || "*Station Name Not Found*",
         dispenserTopic: dispenserTopic,
         address: stripDAddress(dispenserTopic),
         fuelType: normalizeFuelType(nozzle.product),

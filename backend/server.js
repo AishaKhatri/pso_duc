@@ -51,6 +51,7 @@ const {
 
 const { txnFilters } = require('./stats-service');
 const { parsePriceSheet, stationPriceForProduct, archivePriceChanges } = require('./price-service');
+const { printFuelReceipt } = require('./printer-service');
 
 const { log } = require('console');
 const console = require('console');
@@ -904,6 +905,23 @@ app.post('/api/dispensers/refresh-conn-status', async (req, res) => {
     }
 });
 
+// ----- Thermal receipt printer (WiFi / ESC-POS over raw TCP) -----
+//
+// Prints one nozzle's last sale on the WiFi thermal printer. All ESC/POS
+// formatting, the logo raster, and the socket write live in printer-service.js;
+// this route just validates and hands off the sale figures the frontend already
+// has on screen.
+app.post('/api/print-receipt', async (req, res) => {
+    try {
+        const { product, volume, pricePerLitre, amount, stationId, customerCode } = req.body || {};
+        const result = await printFuelReceipt({ product, volume, pricePerLitre, amount, stationId, customerCode });
+        res.json({ ok: true, ...result });
+    } catch (error) {
+        console.error('print-receipt failed:', error);
+        res.status(500).json({ error: error.message || 'Print failed' });
+    }
+});
+
 // ----- Price Update over MQTT (admin + super_admin) -----
 //
 // Web equivalent of price_update_app/python/manual_entry.py. Publishes a price
@@ -1474,12 +1492,15 @@ app.get('/api/dispensers-full', async (req, res) => {
         const stationByCode = new Map();
         for (const s of stations[0]) stationByCode.set(s.customer_code, s);
 
-        // Stitch nozzles + station onto each dispenser.
-        const result = dispensers[0].map(d => ({
-            ...d,
-            nozzles: nozzlesByDispenser.get(`${d.customer_code}|${d.dispenser_id}`) || [],
-            station: stationByCode.get(d.customer_code) || null
-        }));
+        // Stitch nozzles + station onto each dispenser. station_id is also copied
+        // onto each nozzle so the frontend's NozzleData (and the receipt printer)
+        // can read it without a separate lookup.
+        const result = dispensers[0].map(d => {
+            const station = stationByCode.get(d.customer_code) || null;
+            const dispenserNozzles = (nozzlesByDispenser.get(`${d.customer_code}|${d.dispenser_id}`) || [])
+                .map(n => ({ ...n, station_id: station ? station.station_id : null }));
+            return { ...d, nozzles: dispenserNozzles, station };
+        });
 
         res.json(result);
     } catch (error) {
@@ -1616,11 +1637,12 @@ app.get('/api/nozzles', async (req, res) => {
         }
 
         const [rows] = await pool.query(
-            `SELECT customer_code, dispenser_id, nozzle_id, product, status, last_ping_at,
-                    price_per_liter, total_quantity, total_amount, total_sales_today,
-                    lock_unlock, price, quantity
-             FROM nozzles
-             WHERE customer_code = ? AND dispenser_id = ?`,
+            `SELECT n.customer_code, n.dispenser_id, n.nozzle_id, n.product, n.status, n.last_ping_at,
+                    n.price_per_liter, n.total_quantity, n.total_amount, n.total_sales_today,
+                    n.lock_unlock, n.price, n.quantity, s.station_id
+             FROM nozzles n
+             LEFT JOIN stations s ON s.customer_code = n.customer_code
+             WHERE n.customer_code = ? AND n.dispenser_id = ?`,
             [customer_code, dispenser_id]
         );
         

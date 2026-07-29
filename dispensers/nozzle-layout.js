@@ -258,6 +258,35 @@ function createMetricsSection(data) {
     // lastSale.style.borderTop = '2px solid var(--border)';
     lastSale.style.borderBottom = '2px solid var(--border)';
 
+    const printSaleIcon = createIconFromImage('assets/graphics/printer-icon.svg', 'Print Receipt', '20px', '20px');
+    printSaleIcon.style.position = 'absolute';
+    printSaleIcon.style.left = '12px';
+    printSaleIcon.style.cursor = 'pointer';
+    printSaleIcon.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        try {
+            // Send the same last-sale figures shown on this card; the backend
+            // formats and prints the PSO receipt.
+            const resp = await fetch(`${API_BASE_URL}/print-receipt`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    product: data.fuelType,
+                    volume: safeNumber(data.quantity),
+                    pricePerLitre: safeNumber(data.pricePerLitre),
+                    amount: safeNumber(data.price),
+                    customerCode: data.customerCode,
+                    stationId: data.stationId,
+                })
+            });
+            if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || `HTTP ${resp.status}`);
+            window.showNotification?.('Receipt sent to printer', 'success');
+        } catch (err) {
+            window.showNotification?.(`Print failed: ${err.message}`, 'error');
+        }
+    });
+    lastSale.appendChild(printSaleIcon);
+    
     const lastSaleHeading = document.createElement('div');
     lastSaleHeading.style.fontSize = '11px';
     lastSaleHeading.style.fontWeight = '700';
@@ -266,7 +295,7 @@ function createMetricsSection(data) {
     lastSaleHeading.style.textTransform = 'uppercase';
     lastSaleHeading.style.letterSpacing = '0.5px';
     lastSaleHeading.style.padding = '0 12px';
-    lastSaleHeading.style.marginBottom = '5px';
+    lastSaleHeading.style.marginBottom = '14px';
     lastSaleHeading.style.marginTop = '5px';
     lastSaleHeading.textContent = 'Last Sale';
     lastSale.appendChild(lastSaleHeading);
