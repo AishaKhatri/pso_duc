@@ -228,7 +228,8 @@ body {
 [data-theme="dark"] img[src*="notification-icon"],
 [data-theme="dark"] img[src*="notif-icon"],
 [data-theme="dark"] img[src*="search-icon"],
-[data-theme="dark"] img[src*="reset-password"] {
+[data-theme="dark"] img[src*="reset-password"],
+[data-theme="dark"] img[src*="printer-icon"] {
     filter: invert(0.85) hue-rotate(180deg);
 }
 
