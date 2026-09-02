@@ -382,10 +382,10 @@ function createActionButton(mainColor, hoverColor) {
 function createMainButton() {
     const button = createActionButton('#004D64', '#00324C');
     button.style.borderRadius = '8px';
-    button.style.padding = '12px 16px';
+    button.style.padding = '8px 12px';
     button.style.marginLeft = '10px';
     button.style.width = '120px';
-    button.style.fontSize = '15px';
+    button.style.fontSize = '14px';
     button.style.boxShadow = '0 4px 4px rgba(0,0,0,0.4)';
 
     return button;
@@ -1053,12 +1053,12 @@ async function createCard(address, customer_code, opts = {}) {
         transform: 'translate(-50%, -50%)',
         zIndex: '2',
         display: 'flex',
-        alignItems: 'baseline',
+        alignItems: 'center',
         gap: '6px',
         background: 'var(--bg-surface-2)',
         border: '2px solid var(--border)',
         borderRadius: '20px',
-        padding: '4px 16px',
+        padding: '2px 16px',
         whiteSpace: 'nowrap',
         boxShadow: 'var(--shadow-tag)'
     });
@@ -1069,7 +1069,7 @@ async function createCard(address, customer_code, opts = {}) {
     // (#4fc3f7) in dark theme. Bold, 17px — same prominence as the old title.
     addrSpan.style.color = 'var(--dispenser-addr-color)';
     addrSpan.style.fontWeight = '700';
-    addrSpan.style.fontSize = '20px';
+    addrSpan.style.fontSize = '18px';
     tab.appendChild(addrSpan);
 
     const brandText = (opts.brand || '').toString().trim();
@@ -1213,7 +1213,6 @@ function createRefreshConnStatusButton() {
     btn.textContent = 'Refresh Conn Status';
     btn.title = 'Re-subscribe to all conn_status topics and reset debounce timers';
     btn.style.width = 'auto';
-    btn.style.padding = '12px 14px';
 
     btn.addEventListener('click', () => {
         const { overlay, confirmButton } = createDeletePopup(

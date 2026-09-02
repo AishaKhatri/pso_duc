@@ -30,7 +30,7 @@ function renderTopbar(pageTitle) {
 
     const title = document.createElement('h1');
     title.textContent = 'DUC Dashboard';
-    title.style.fontSize = '24px';
+    title.style.fontSize = '18px';
     title.style.color = 'white';
     title.style.margin = '0';
 
@@ -46,7 +46,7 @@ function renderTopbar(pageTitle) {
         const pageLabel = document.createElement('span');
         pageLabel.textContent = pageTitle;
         pageLabel.style.color = 'rgba(255,255,255,0.85)';
-        pageLabel.style.fontSize = '20px';
+        pageLabel.style.fontSize = '16px';
         pageLabel.style.fontWeight = '500';
         titleDiv.appendChild(pageLabel);
     }
@@ -77,8 +77,8 @@ function renderTopbar(pageTitle) {
     userCircle.textContent = userInitial;
     userCircle.title = 'Sign out';
     userCircle.style.cssText = `
-        width: 32px;
-        height: 32px;
+        width: 28px;
+        height: 28px;
         border: 2px solid #00324C;
         border-radius: 50%;
         background-color: #fff;
@@ -87,7 +87,7 @@ function renderTopbar(pageTitle) {
         justify-content: center;
         cursor: pointer;
         color: #00324C;
-        font-size: 20px;
+        font-size: 18px;
     `;
     
     // Username and role

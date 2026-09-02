@@ -276,17 +276,17 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const top = document.createElement('div');
     top.className = 'station-header-top';
 
-    const left = document.createElement('div');
-    left.className = 'station-header-left';
-    left.innerHTML = `
-        <h1 class="station-header-title">${stationId ? stationId : 'Station ' + customerCode}</h1>
-        <div class="station-header-meta">
-            <span class="station-header-meta-item"><b>Customer Code:</b>${customerCode}</span>
-            ${cityName ? `<span class="station-header-meta-item"><img src="assets/graphics/location-icon-1.png" alt="City" />${cityName},</span>` : ''}
-            ${districtName ? `<span class="station-header-meta-item">${districtName}</span>` : 'N/A'}
-        </div>
-    `;
-    top.appendChild(left);
+    // Single global "Last Updated" timestamp at top of page (replaces per-nozzle timestamps)
+    const lastUpdatedEl = document.createElement('div');
+    lastUpdatedEl.id = 'page-last-updated';
+    lastUpdatedEl.style.fontSize = '14px';
+    lastUpdatedEl.style.color = 'var(--text-secondary)';
+    const refreshTimestamp = () => {
+        lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
+    };
+    refreshTimestamp();
+
+    top.appendChild(lastUpdatedEl);
 
     const right = document.createElement('div');
     right.className = 'station-header-right';
@@ -436,35 +436,6 @@ async function renderDispenser() {
         const refreshConnBtn = createRefreshConnStatusButton();
         if (refreshConnBtn) optionsContainer.appendChild(refreshConnBtn);
 
-        const topRow = document.createElement('div');
-        topRow.style.display = 'flex';
-        // topRow.style.alignItems = 'center';
-        // topRow.style.justifyContent = 'space-between';
-        // topRow.style.marginBottom = '14px';
-        topRow.style.marginBottom = '8px';
-        topRow.style.padding = '0';
-
-        // const backToATGBtn = createMainButton();
-        // backToATGBtn.textContent = 'Back to ATG';
-        // backToATGBtn.addEventListener('click', () => {
-        //     window.location.href = 'http://localhost:3000';
-        // });
-        // backToATGBtn.style.marginLeft = '0';
-        // topRow.appendChild(backToATGBtn);
-
-        // Single global "Last Updated" timestamp at top of page (replaces per-nozzle timestamps)
-        const lastUpdatedEl = document.createElement('div');
-        lastUpdatedEl.id = 'page-last-updated';
-        lastUpdatedEl.style.fontSize = '12px';
-        lastUpdatedEl.style.color = 'var(--text-secondary)';
-        const refreshTimestamp = () => {
-            lastUpdatedEl.textContent = `Last Updated: ${new Date().toLocaleString()}`;
-        };
-        refreshTimestamp();
-
-        topRow.appendChild(lastUpdatedEl);
-        stage.appendChild(topRow);
-
         if (customerCodeFilter) {
             const backRow = document.createElement('div');
             backRow.style.display = 'flex';
@@ -474,7 +445,6 @@ async function renderDispenser() {
 
             const backBtn = createActionButton();
             backBtn.textContent = '← Back to ATG';
-            backBtn.style.fontSize = '16px';
             backBtn.addEventListener('click', () => { window.location.href = 'http://localhost:3000'; });
             backRow.appendChild(backBtn);
             backRow.appendChild(optionsContainer);

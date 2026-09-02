@@ -1,21 +1,21 @@
 // Common configuration for both layouts
 const LAYOUT_CONFIG = {
     [NOZZLE_LAYOUTS.FULL]: {
-        width: '195px',
-        minWidth: '195px',
+        width: '175px',
+        minWidth: '175px',
         maxWidth: '195px',
-        iconSize: '36px',
-        fontSize: '30px',
+        iconSize: '28px',
+        fontSize: '26px',
         showKeypad: true,
         showLockStatus: true,
         showMetrics: true,
         showTotals: true,
         showLastUpdated: false,
         headerPadding: '3px 18px 3px 8px',
-        sectionPadding: '12px 12px',
+        sectionPadding: '10px 12px',
         statusFontSize: '12px',
-        ViewTransactionsFontSize: '14px',
-        cardTopPadding: '10px'
+        ViewTransactionsFontSize: '12px',
+        cardTopPadding: '4px'
     },
     [NOZZLE_LAYOUTS.SUMMARY]: {
         width: '160px',
@@ -118,7 +118,7 @@ function createStatusBadge(data, config) {
     pingNote.style.fontSize = '10px';
     pingNote.style.color = 'var(--text-secondary)';
     pingNote.style.textAlign = 'right';
-    pingNote.style.marginTop = '22px';
+    pingNote.style.marginTop = '16px';
     // Show the last-ping timestamp by default; the badge click below toggles it.
     pingNote.textContent = data.lastPingAt
         ? `${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`
@@ -227,7 +227,7 @@ function createMetricsSection(data) {
         div.style.padding = '0 12px';
 
         const labelDiv = document.createElement('div');
-        labelDiv.style.fontSize = '12px';
+        labelDiv.style.fontSize = '11px';
         labelDiv.style.color = 'var(--text-primary)';
         labelDiv.style.fontWeight = '500';
         labelDiv.textContent = label;
@@ -240,7 +240,7 @@ function createMetricsSection(data) {
         valueDiv.style.border = opts.highlight ? '1px solid var(--metric-highlight-border)' : '1px solid var(--border)';
         valueDiv.style.borderRadius = '2px';
         valueDiv.style.padding = '2px 5px';
-        valueDiv.style.minWidth = '60px';
+        valueDiv.style.minWidth = '55px';
         valueDiv.style.textAlign = 'right';
         valueDiv.style.boxShadow = 'inset 1px 1px 2px rgba(0,0,0,0.2)';
         valueDiv.style.fontFamily = "'Segoe UI', 'Arial', sans-serif";
