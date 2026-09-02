@@ -932,7 +932,7 @@ async function createCard(address, customer_code, opts = {}) {
         // Extra top padding leaves room for the floating address/brand tab that
         // straddles the card's top edge (built at the end of this function).
         padding: '8px 16px 16px',
-        marginTop: '10px'
+        marginTop: '2px'
     });
 
     const titleContainer = document.createElement('div');

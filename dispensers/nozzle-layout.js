@@ -10,8 +10,8 @@ const LAYOUT_CONFIG = {
         showMetrics: true,
         showTotals: true,
         showLastUpdated: false,
-        headerPadding: '3px 18px 3px 8px',
-        sectionPadding: '10px 12px',
+        headerPadding: '0 20px 0 8px',
+        sectionPadding: '6px 12px',
         statusFontSize: '12px',
         ViewTransactionsFontSize: '12px',
         cardTopPadding: '4px'
@@ -116,7 +116,7 @@ function createStatusBadge(data, config) {
     pingNote.style.fontSize = '10px';
     pingNote.style.color = 'var(--text-secondary)';
     pingNote.style.textAlign = 'right';
-    pingNote.style.marginTop = '16px';
+    pingNote.style.marginTop = '10px';
     // Show the last-ping timestamp by default; the badge click below toggles it.
     pingNote.textContent = data.lastPingAt
         ? `${formatRelativeTime(data.lastPingAt)} (${new Date(data.lastPingAt).toLocaleString()})`

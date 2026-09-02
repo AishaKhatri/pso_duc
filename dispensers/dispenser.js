@@ -263,10 +263,6 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const totalDucs = dispensers.length;
     const onlineDucs = dispensers.filter(d => Number(d.conn_status) === 1).length;
     const offlineDucs = totalDucs - onlineDucs;
-    const cityName = station?.city ? titleCase(station.city) : '';
-    const districtName = station?.district
-        ? station.district : '';
-    const stationId = station?.station_id || '';
     const sales = stats?.today?.total_amount || 0;
     const tx = stats?.today?.tx_count || 0;
 
@@ -388,7 +384,7 @@ async function renderDispenser() {
             optionsContainer = document.createElement('div');
             optionsContainer.style.display = 'flex';
             optionsContainer.style.alignItems = 'center';
-            optionsContainer.style.gap = '8px';
+            optionsContainer.style.gap = '4px';
         }
 
         // Lock/Unlock is available to admin, super_admin and operator.

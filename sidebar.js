@@ -118,7 +118,7 @@ function renderSidebar() {
     // Adjust content wrapper based on initial state
     const contentWrapper = document.querySelector('.content-wrapper');
     if (contentWrapper) {
-        contentWrapper.style.marginLeft = isCollapsed ? '55px' : '220px';
+        contentWrapper.style.marginLeft = isCollapsed ? '50px' : '180px';
     }
 
     // Toggle functionality

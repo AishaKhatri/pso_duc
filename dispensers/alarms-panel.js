@@ -27,8 +27,8 @@ function priceKey1dp(x) {
 
 // Panel widths (px). The host page's stage paddingRight tracks these via the
 // 'alarms-panel-resize' event so cards reclaim the freed space when collapsed.
-const ALARMS_PANEL_WIDTH_EXPANDED = 280;
-const ALARMS_PANEL_WIDTH_COLLAPSED = 36;
+const ALARMS_PANEL_WIDTH_EXPANDED = 210;
+const ALARMS_PANEL_WIDTH_COLLAPSED = 32;
 const ALARMS_PANEL_GUTTER = 25;  // right offset (15px) + small breathing room
 const ALARMS_COLLAPSED_KEY = 'alarmsPanelCollapsed';
 
@@ -47,7 +47,7 @@ function createAlarmsPanel() {
     Object.assign(panel.style, {
         position: 'fixed',
         right: '15px',
-        top: '90px',
+        top: '60px',
         width: `${collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED}px`,
         maxHeight: 'calc(100vh - 110px)',
         overflowY: 'auto',
@@ -120,13 +120,13 @@ function createAlarmsPanel() {
     const checkButton = createActionButton('#004D64', '#00324C');
     checkButton.textContent = 'Check Prices';
     checkButton.style.flex = '1';
-    checkButton.style.fontSize = '13px';
+    checkButton.style.fontSize = '12px';
     checkButton.style.padding = '8px';
 
     const clearButton = createActionButton('#626262', '#424242');
     clearButton.textContent = 'Clear All';
     clearButton.style.flex = '1';
-    clearButton.style.fontSize = '13px';
+    clearButton.style.fontSize = '12px';
     clearButton.style.padding = '8px';
 
     btnRow.appendChild(checkButton);
