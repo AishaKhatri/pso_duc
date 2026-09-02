@@ -6,7 +6,6 @@ const LAYOUT_CONFIG = {
         maxWidth: '195px',
         iconSize: '28px',
         fontSize: '26px',
-        showKeypad: true,
         showLockStatus: true,
         showMetrics: true,
         showTotals: true,
@@ -23,7 +22,6 @@ const LAYOUT_CONFIG = {
         maxWidth: '160px',
         iconSize: '26px',
         fontSize: '24px',
-        showKeypad: false,
         showLockStatus: false,
         showMetrics: false,
         showPricePerLitre: true,
@@ -333,7 +331,7 @@ function createTotalsFooter(data) {
     const salesTodayDiv = document.createElement('div');
     salesTodayDiv.innerHTML = `
         <div>Sales Today:</div>
-        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 22px;">${formatWithCommas(data.totalSalesToday)}</span></div>
+        <div style="text-align: right; font-weight: bold; color: var(--metric-value-text);">Rs. <span style="font-size: 18px;">${formatWithCommas(data.totalSalesToday)}</span></div>
     `;
     
     footer.appendChild(totalQuantityDiv);

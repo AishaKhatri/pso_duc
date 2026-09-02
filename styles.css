@@ -155,7 +155,7 @@ body {
     top: 0;
     left: 0;
     right: 0;
-    height: 60px;
+    height: 46px;
     background-color: var(--bg-topbar);
     border-bottom: 1px solid var(--border);
     color: var(--text-on-accent);
@@ -397,7 +397,7 @@ body {
 
 .content-wrapper {
     margin-left: 220px;
-    margin-top: 60px;
+    margin-top: 46px;
     padding: 12px 16px;
     flex-grow: 1;
     overflow-y: auto;

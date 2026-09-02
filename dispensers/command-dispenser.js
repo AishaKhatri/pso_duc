@@ -316,7 +316,6 @@ function showDispenserControls(dispenser, customerCode, city) {
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 
-    createInterfaceControlSection(dispenserTopic, controlsContainer, customerCode, city, dispenser.interface_type || 'ir');
     createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer, customerCode, city);
 }
 
@@ -358,44 +357,6 @@ function createControlRow(label, dropdownId, value, options, onConfirm) {
     controlRow.appendChild(confirmButton);
 
     return { controlRow, dropdown, confirmButton };
-}
-
-function createInterfaceControlSection(dispenserTopic, container, customerCode, city, dispenserInterface) {
-    const isKeypad = (dispenserInterface || 'ir').toLowerCase() === 'keypad';
-    const sectionLabel = isKeypad ? 'Keypad Control' : 'IR Control';
-    const msgType = isKeypad ? 5 : 6;
-
-    const section = document.createElement('div');
-    section.style.marginBottom = '30px';
-
-    const sectionTitle = document.createElement('h3');
-    sectionTitle.textContent = sectionLabel;
-    sectionTitle.style.marginTop = '0';
-    sectionTitle.style.borderBottom = '1px solid var(--border)';
-    sectionTitle.style.paddingBottom = '8px';
-    sectionTitle.style.color = 'var(--text-primary)';
-    section.appendChild(sectionTitle);
-
-    const { controlRow, dropdown, confirmButton } = createControlRow(
-        `${sectionLabel}:`,
-        'interfaceControl',
-        '0',
-        [
-            { value: '0', text: 'Unlock' },
-            { value: '1', text: 'Lock' }
-        ],
-        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
-            dis_addr: dispenserTopic,
-            req_type: 0,
-            side: 'A',
-            noz_number: 1,
-            msg_type: msgType,
-            message: dropdown.value
-        }, confirmButton, `${sectionLabel} ${dropdown.value === '0' ? 'Unlock' : 'Lock'}`)
-    );
-
-    section.appendChild(controlRow);
-    container.appendChild(section);
 }
 
 function createNozzlesSection(dispenserTopic, nozzles, container, customerCode, city) {

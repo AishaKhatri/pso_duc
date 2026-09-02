@@ -931,7 +931,7 @@ async function createCard(address, customer_code, opts = {}) {
         width: 'fit-content',
         // Extra top padding leaves room for the floating address/brand tab that
         // straddles the card's top edge (built at the end of this function).
-        padding: '24px 16px 16px',
+        padding: '8px 16px 16px',
         marginTop: '10px'
     });
 
@@ -1090,119 +1090,6 @@ async function createCard(address, customer_code, opts = {}) {
     card.appendChild(tab);
 
     return { card, titleContainer, statusContainer };
-}
-
-// Remark/comment block shown below a dispenser's nozzle cards. Shows the latest
-// remark inline (text + time) for every role, plus a link that opens the
-// device-status popup on its "Remarks" tab — where the full archived timeline
-// (with author + IP) lives and, for admin / super_admin, the add-remark box.
-// The latest value comes from the dispenser row already returned by
-// /api/dispensers[-full]. Returns a DOM node the card builders append after the
-// nozzle grid.
-function buildDispenserRemarkSection(dispenser) {
-    const role = window.StationAuth?.getUserInfo?.()?.role;
-    const canEdit = role === 'admin' || role === 'super_admin';
-
-    const wrap = document.createElement('div');
-    wrap.className = 'dispenser-remark';
-    Object.assign(wrap.style, {
-        marginTop: '14px',
-        paddingTop: '10px',
-        borderTop: '1px solid var(--border-soft)'
-    });
-
-    // Header row: "Remark" label + link into the Remarks tab.
-    const headRow = document.createElement('div');
-    Object.assign(headRow.style, {
-        display: 'flex', justifyContent: 'space-between',
-        alignItems: 'center', marginBottom: '6px'
-    });
-    const label = document.createElement('div');
-    label.textContent = 'Remark';
-    Object.assign(label.style, { fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' });
-    const historyLink = document.createElement('span');
-    historyLink.textContent = canEdit ? 'View / add remarks' : 'View history';
-    Object.assign(historyLink.style, { fontSize: '12px', color: 'var(--link)', cursor: 'pointer' });
-    historyLink.addEventListener('click', () => {
-        if (typeof window.showDevStatusPopup === 'function') {
-            window.showDevStatusPopup(ensureDAddress(dispenser.address), 'remarks');
-        }
-    });
-    headRow.appendChild(label);
-    headRow.appendChild(historyLink);
-    wrap.appendChild(headRow);
-
-    // Latest remark + when it was added (author/IP live in the Remarks tab).
-    const current = document.createElement('div');
-    Object.assign(current.style, {
-        fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
-    });
-    const hasRemark = dispenser.remark && String(dispenser.remark).trim() !== '';
-    current.textContent = hasRemark ? dispenser.remark : 'No remark added.';
-    current.style.color = hasRemark ? 'var(--text-primary)' : 'var(--text-secondary)';
-    current.style.fontStyle = hasRemark ? 'normal' : 'italic';
-    wrap.appendChild(current);
-
-    if (dispenser.remark_at) {
-        const meta = document.createElement('div');
-        Object.assign(meta.style, { fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' });
-        const dt = new Date(dispenser.remark_at);
-        meta.textContent = `Logged at: ${isNaN(dt.getTime()) ? dispenser.remark_at : dt.toLocaleString()}`;
-        wrap.appendChild(meta);
-    }
-
-    return wrap;
-}
-
-// Re-render a card's inline remark block from fresh dispenser data. Called by
-// the periodic refresh so a remark added via the popup (or by another user)
-// shows up without a page reload.
-function refreshDispenserRemarkSection(card, dispenser) {
-    if (!card) return;
-    const existing = card.querySelector('.dispenser-remark');
-    if (existing) existing.replaceWith(buildDispenserRemarkSection(dispenser));
-}
-
-function createInterfaceStatusIndicator(dispenser) {
-    const container = document.createElement('div');
-    container.style.position = 'absolute';
-    container.style.top = '0';
-    container.style.left = '45%';
-    container.style.transform = 'translateX(-25%)';
-    container.style.display = 'flex';
-    container.style.alignItems = 'center';
-    container.style.gap = '8px';
-
-    const isKeypad = (dispenser.interface_type || '').toLowerCase() === 'keypad';
-    const iconSrc = isKeypad ? 'assets/graphics/keypad-icon.png' : 'assets/graphics/ir-control-icon.png';
-    const iconAlt = isKeypad ? 'Keypad' : 'IR Control';
-    // Keypad icon sits inside a thin bordered box (visual cue distinguishing
-    // it from the IR icon, which is rendered bare).
-    const interfaceIcon = createIconFromImage(iconSrc, iconAlt, isKeypad ? '16px' : '20px');
-
-    let iconNode = interfaceIcon;
-    if (isKeypad) {
-        const box = document.createElement('div');
-        box.style.border = '1px solid var(--text-primary)';
-        box.style.borderRadius = '4px';
-        box.style.padding = '2px';
-        box.style.display = 'flex';
-        box.style.alignItems = 'center';
-        box.style.justifyContent = 'center';
-        box.appendChild(interfaceIcon);
-        iconNode = box;
-    }
-
-    const lockIcon = createIconFromImage('assets/graphics/green-lock.png', null, '20px');
-    lockIcon.className = 'interface-lock-icon';
-    lockIcon.src = dispenser.interface_lock_status
-        ? 'assets/graphics/green-lock.png'
-        : 'assets/graphics/red-unlock.png';
-    lockIcon.alt = dispenser.interface_lock_status ? 'Locked' : 'Unlocked';
-
-    container.appendChild(iconNode);
-    container.appendChild(lockIcon);
-    return container;
 }
 
 function createRefreshConnStatusButton() {

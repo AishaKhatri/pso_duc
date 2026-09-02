@@ -6,9 +6,7 @@ const GET_DATA_MSG_LABELS = {
     1: 'Price',
     2: 'Total Volume',
     3: 'Total Amount',
-    4: 'Nozzle Lock',
-    5: 'Interface (Keypad) Lock',
-    6: 'Interface (IR) Lock'
+    4: 'Nozzle Lock'
 };
 
 // nozzles.status is tri-state from the backend:
@@ -105,20 +103,6 @@ function getNozzleLayoutType(nozzleId) {
     return nozzleLayoutType.get(nozzleId);
 }
 
-async function updateInterfaceLockStatus(dispenserId, lockStatus) {
-    const dispenserCard = document.querySelector(`div[data-address="${dispenserId}"]`);
-    if (dispenserCard) {
-        const lockIcon = dispenserCard.querySelector('.interface-lock-icon');
-        if (lockIcon) {
-            const isLocked = lockStatus === 1;
-            lockIcon.src = isLocked
-                ? 'assets/graphics/green-lock.png'
-                : 'assets/graphics/red-unlock.png';
-            lockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
-        }
-    }
-}
-
 // Format the raw value string a dispenser sent back in its reply, per msg_type,
 // for display in the GET Data log.
 function _formatReplyMessage(msg_type, rawMessage) {
@@ -136,7 +120,6 @@ function _formatReplyMessage(msg_type, rawMessage) {
 
 async function sendGetCommandsForDispenser(dispenser) {
     const dis_addr = ensureDAddress(dispenser.address);
-    const interfaceType = String(dispenser.interface_type || 'ir').toLowerCase();
 
     // Which values to request.
     const messageTypesToRequest = {
@@ -145,8 +128,6 @@ async function sendGetCommandsForDispenser(dispenser) {
         2: true,                          // TOTAL_VOLUME
         3: true,                          // TOTAL_AMOUNT
         4: true,                          // LOCK_UNLOCK
-        5: interfaceType === 'keypad',    // KEYPAD_STATUS — keypad-interface only
-        6: interfaceType === 'ir'         // IR_STATUS — ir-interface only
     };
 
     // Delay between messages in milliseconds
@@ -298,6 +279,5 @@ window.NozzleData = NozzleData;
 window.nozzleStatusLabel = nozzleStatusLabel;
 window.setNozzleLayoutType = setNozzleLayoutType;
 window.getNozzleLayoutType = getNozzleLayoutType;
-window.updateInterfaceLockStatus = updateInterfaceLockStatus;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;
