@@ -5,8 +5,8 @@ async function showCommandDispenserPopup(options = {}) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '480px';
-    popup.style.height = '560px';
-    popup.style.maxHeight = '80vh';
+    popup.style.height = '520px';
+    popup.style.maxHeight = 'calc(var(--vh100) - 40px)';
     dragPopup(overlay, popup);
 
     const header = createHeader();
@@ -41,7 +41,7 @@ async function showCommandDispenserPopup(options = {}) {
     selectorsContainer.style.display = 'flex';
     selectorsContainer.style.flexWrap = 'wrap';
     selectorsContainer.style.gap = '20px';
-    selectorsContainer.style.marginBottom = '20px';
+    selectorsContainer.style.marginBottom = '12px';
     selectorsContainer.style.width = '100%';
 
     const citySelect = createDropdown('All Cities');
@@ -72,7 +72,7 @@ async function showCommandDispenserPopup(options = {}) {
 
     const statusContainer = document.createElement('div');
     statusContainer.id = 'commandStatus';
-    statusContainer.style.marginBottom = '20px';
+    statusContainer.style.marginBottom = '12px';
     popup.appendChild(statusContainer);
 
     overlay.appendChild(popup);
@@ -247,7 +247,7 @@ async function showCommandDispenserPopup(options = {}) {
             controlsContainer.innerHTML = '';
             const noDispenserMsg = document.createElement('div');
             noDispenserMsg.textContent = 'No dispensers available for this station';
-            noDispenserMsg.style.padding = '20px';
+            noDispenserMsg.style.padding = '14px';
             noDispenserMsg.style.textAlign = 'center';
             noDispenserMsg.style.color = 'var(--text-secondary)';
             controlsContainer.appendChild(noDispenserMsg);
@@ -329,7 +329,7 @@ function createControlRow(label, dropdownId, value, options, onConfirm) {
     const labelElement = document.createElement('label');
     labelElement.textContent = label;
     labelElement.style.fontWeight = 'bold';
-    labelElement.style.fontSize = '14px';
+    labelElement.style.fontSize = '13px';
 
     const dropdown = createDropdown();
     dropdown.id = dropdownId;
@@ -414,8 +414,8 @@ function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfi
     const nozzleIcon = document.createElement('img');
     nozzleIcon.src = 'assets/graphics/nozzle-icon.png';
     nozzleIcon.alt = 'Nozzle Icon';
-    nozzleIcon.style.width = '40px';
-    nozzleIcon.style.height = '40px';
+    nozzleIcon.style.width = '34px';
+    nozzleIcon.style.height = '34px';
     nozzleIcon.style.objectFit = 'contain';
 
     const nozzleNumber = document.createElement('div');
@@ -430,7 +430,7 @@ function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfi
     nozzleCard.appendChild(header);
 
     const content = document.createElement('div');
-    content.style.padding = '12px';
+    content.style.padding = '10px';
 
     const [_, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
     const nozzleNum = parseInt(number);
@@ -486,7 +486,7 @@ function confirmCommandPassword(commandName = 'this command') {
         const prompt = document.createElement('div');
         prompt.textContent = `Re-enter your password to publish "${commandName}".`;
         prompt.style.marginBottom = '14px';
-        prompt.style.fontSize = '14px';
+        prompt.style.fontSize = '13px';
         prompt.style.color = 'var(--text-secondary)';
         popup.appendChild(prompt);
 

@@ -99,7 +99,8 @@ function wireThemeToggle(btn, { aria = false } = {}) {
 }
 
 function applyInputStyles(el) {
-    el.style.padding = '8px';
+    el.style.padding = '6px 8px';
+    el.style.fontSize = '13px';
     el.style.border = '1px solid var(--border)';
     el.style.backgroundColor = 'var(--bg-surface)';
     el.style.color = 'var(--text-primary)';
@@ -152,7 +153,8 @@ function createLabeledField({ label, control, required = false, gap = '5px', mar
     if (label) {
         const lab = document.createElement('label');
         lab.textContent = required ? `${label} *` : label;
-        lab.style.fontWeight = 'bold';
+        lab.style.fontWeight = '600';
+        lab.style.fontSize = '12px';
         wrap.appendChild(lab);
     }
     if (control) wrap.appendChild(control);
@@ -163,7 +165,7 @@ function createLabeledField({ label, control, required = false, gap = '5px', mar
 // tweak further if they need to.
 function appendCell(tr, text, opts = {}) {
     const td = document.createElement('td');
-    td.style.padding = opts.padding || '12px';
+    td.style.padding = opts.padding || '7px 10px';
     if (opts.verticalAlign) td.style.verticalAlign = opts.verticalAlign;
     if (opts.maxWidth) td.style.maxWidth = opts.maxWidth;
     if (text instanceof Node) {
@@ -324,9 +326,9 @@ function renderMainContainer(pageTitle) {
 
 function createHeader(){
     const header = document.createElement('div');
-    header.style.paddingBottom = '5px';
+    header.style.paddingBottom = '4px';
     header.style.borderBottom = '2px solid var(--accent)';
-    header.style.marginBottom = '15px';
+    header.style.marginBottom = '10px';
     header.style.display = 'flex';
     header.style.justifyContent = 'space-between';
     header.style.alignItems = 'center';
@@ -339,14 +341,14 @@ function createTitle() {
     const title = document.createElement('h2');
     title.style.color = 'var(--text-heading)';
     title.style.margin = '0';
-    title.style.fontSize = '18px';
+    title.style.fontSize = '16px';
 
     return title;
 }
 
 function createLink() {
     const link = document.createElement('div');
-    link.style.fontSize = '16px';
+    link.style.fontSize = '14px';
     link.style.color = 'var(--link)';
     link.style.cursor = 'pointer';
     link.style.transition = 'text-decoration 0.2s ease';
@@ -398,7 +400,7 @@ function createNoDataMessage(message) {
     noData.textContent = message;
     noData.style.color = 'var(--text-secondary)';
     noData.style.textAlign = 'center';
-    noData.style.padding = '20px';
+    noData.style.padding = '14px';
     return noData;
 }
 
@@ -463,7 +465,7 @@ function createTable(columns) {
     table.style.width = '100%';
     table.style.borderCollapse = 'collapse';
     table.style.fontFamily = 'Arial, sans-serif';
-    table.style.fontSize = '14px';
+    table.style.fontSize = '13px';
     table.style.color = 'var(--text-primary)';
 
     const thead = document.createElement('thead');
@@ -472,7 +474,7 @@ function createTable(columns) {
     headerRow.style.backgroundColor = 'var(--bg-table-head)';
     columns.forEach(headerText => {
         const th = document.createElement('th');
-        th.style.padding = '12px';
+        th.style.padding = '8px 10px';
         th.style.textAlign = 'left';
         th.style.borderBottom = '1px solid var(--border)';
         th.style.fontWeight = '600';
@@ -569,7 +571,7 @@ function createSearchableDropdown(opts) {
     const input = document.createElement('input');
     input.type = 'search';
     input.className = 'filter-search';
-    input.style.height = '38px';
+    input.style.height = '30px';
     input.style.borderRadius = '6px';
     input.placeholder = placeholder;
     input.autocomplete = 'off';
@@ -681,11 +683,12 @@ function createPageLoader(message = 'Loading…') {
 
 function createDropdown(placeholderText) {
     const dropdown = document.createElement('select');
-    dropdown.style.padding = '8px';
+    dropdown.style.padding = '6px 8px';
+    dropdown.style.fontSize = '13px';
     dropdown.style.border = '1px solid var(--border)';
     dropdown.style.borderRadius = '6px';
     dropdown.style.width = '100%';
-    dropdown.style.marginBottom = '20px';
+    dropdown.style.marginBottom = '12px';
     dropdown.style.backgroundColor = 'var(--bg-surface)';
     dropdown.style.color = 'var(--text-primary)';
 
@@ -1411,14 +1414,14 @@ function renderPageHeader(pageTitleText) {
     headerContainer.style.alignItems = 'center';
     headerContainer.style.backgroundColor = 'var(--bg-surface)';
     headerContainer.style.color = 'var(--text-primary)';
-    headerContainer.style.padding = '20px';
+    headerContainer.style.padding = '12px 16px';
     headerContainer.style.border = '1px solid var(--border)';
     headerContainer.style.borderRadius = '10px';
-    headerContainer.style.marginBottom = '20px';
+    headerContainer.style.marginBottom = '12px';
     headerContainer.style.boxShadow = 'var(--shadow-card)';
 
     const pageTitle = document.createElement('h1');
-    pageTitle.style.fontSize = '32px';
+    pageTitle.style.fontSize = '20px';
     pageTitle.textContent = pageTitleText;
     headerContainer.appendChild(pageTitle);
 
@@ -1429,7 +1432,7 @@ function renderPageHeader(pageTitleText) {
     const gridContainer = document.createElement('div');
     gridContainer.style.display = 'flex';
     gridContainer.style.flexWrap = 'wrap';
-    gridContainer.style.gap = '15px';
+    gridContainer.style.gap = '10px';
     gridContainer.style.justifyContent = 'flex-start';
 
     return { headerContainer, optionsContainer, gridContainer };
@@ -1451,7 +1454,7 @@ function createDeletePopup(confirmationQuestion, opts = {}) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '300px';
-    popup.style.maxWidth = '90vw';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
     const header = createHeader();
 
@@ -1466,7 +1469,7 @@ function createDeletePopup(confirmationQuestion, opts = {}) {
 
     const message = document.createElement('p');
     message.textContent = confirmationQuestion;
-    message.style.marginBottom = '20px';
+    message.style.marginBottom = '14px';
     message.style.textAlign = 'center';
     popup.appendChild(message);
 
@@ -1505,8 +1508,8 @@ function createIconButton(btnClass, iconSrc, titleText) {
     icon.className = 'icon';
     icon.src = iconSrc;
     icon.title = titleText;
-    icon.style.width = '20px';
-    icon.style.height = '20px';
+    icon.style.width = '18px';
+    icon.style.height = '18px';
     btn.appendChild(icon);
 
     return btn;
@@ -1579,32 +1582,30 @@ function configPage(pageTitle, backButtonText, backToPage, addButtonText) {
     }
     content.innerHTML = '';
 
-    // Page title now lives in the topbar; this row only carries the back button.
-    const headerContainer = document.createElement('div');
-    headerContainer.style.display = 'flex';
-    headerContainer.style.alignItems = 'left';
-    headerContainer.style.marginBottom = '16px';
-    headerContainer.style.width = '100%';
+    // Page title now lives in the topbar. Back and Add share a single row so the
+    // 800px-tall panel spends its height on the table, not on stacked toolbars.
+    // Back sits left (margin-right:auto), everything callers insert before
+    // addButton lands on the right.
+    const buttonContainer = document.createElement('div');
+    buttonContainer.style.display = 'flex';
+    buttonContainer.style.gap = '10px';
+    buttonContainer.style.marginBottom = '10px';
+    buttonContainer.style.justifyContent = 'flex-end';
+    buttonContainer.style.alignItems = 'center';
+    buttonContainer.style.width = '100%';
 
     const backButton = createActionButton();
     backButton.textContent = backButtonText;
+    backButton.style.marginRight = 'auto';
+    backButton.style.flex = '0 0 auto';
     backButton.addEventListener('click', () => {
         window.location.href = backToPage;
     });
 
-    headerContainer.appendChild(backButton);
-    content.appendChild(headerContainer);
-
-    const buttonContainer = document.createElement('div');
-    buttonContainer.style.display = 'flex';
-    buttonContainer.style.gap = '10px';
-    buttonContainer.style.marginBottom = '20px';
-    buttonContainer.style.justifyContent = 'flex-end';
-    buttonContainer.style.alignItems = 'right';
-
     const addButton = createActionButton();
     addButton.textContent = addButtonText;
 
+    buttonContainer.appendChild(backButton);
     buttonContainer.appendChild(addButton);
     content.appendChild(buttonContainer);
 

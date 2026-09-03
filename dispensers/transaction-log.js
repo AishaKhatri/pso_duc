@@ -12,7 +12,7 @@ async function showTransactionLogPopup(nozzle_id) {
         modal.className = 'popup-modal';
         modal.style.width = '90%';
         modal.style.maxWidth = '1000px';
-        modal.style.maxHeight = '80%';
+        modal.style.maxHeight = 'calc(var(--vh100) - 40px)';
         modal.style.display = 'flex';
         modal.style.flexDirection = 'column';
         dragPopup(overlay, modal);
@@ -214,12 +214,12 @@ function createLabeledDateField(labelText, inputId) {
     const input = document.createElement('input');
     input.type = 'date';
     input.id = inputId;
-    input.style.padding = '8px';
+    input.style.padding = '6px 8px';
     input.style.border = '1px solid var(--border)';
     input.style.backgroundColor = 'var(--bg-surface)';
     input.style.color = 'var(--text-primary)';
     input.style.borderRadius = '4px';
-    input.style.fontSize = '14px';
+    input.style.fontSize = '13px';
 
     container.appendChild(label);
     container.appendChild(input);
@@ -231,7 +231,7 @@ function createSummaryRow(labelText, valueId, valueColor, initialText) {
     const container = document.createElement('div');
     container.style.display = 'flex';
     container.style.justifyContent = 'space-between';
-    container.style.padding = '10px';
+    container.style.padding = '7px 10px';
     container.style.backgroundColor = 'var(--bg-surface-2)';
     container.style.borderRadius = '6px';
 
@@ -255,7 +255,7 @@ function createDateFilterSection() {
     const section = document.createElement('div');
     section.style.backgroundColor = 'var(--bg-surface)';
     section.style.color = 'var(--text-primary)';
-    section.style.padding = '15px';
+    section.style.padding = '10px 12px';
     section.style.borderRadius = '8px';
     section.style.border = '1px solid var(--border)';
 
@@ -263,7 +263,7 @@ function createDateFilterSection() {
     
     const sectionTitle = createTitle();
     sectionTitle.textContent = 'Date Filter';
-    sectionTitle.style.fontSize = '16px';
+    sectionTitle.style.fontSize = '14px';
 
     sectionHeader.appendChild(sectionTitle);
     section.appendChild(sectionHeader);
@@ -308,7 +308,7 @@ function createSummarySection() {
     const section = document.createElement('div');
     section.style.backgroundColor = 'var(--bg-surface)';
     section.style.color = 'var(--text-primary)';
-    section.style.padding = '15px';
+    section.style.padding = '10px 12px';
     section.style.borderRadius = '8px';
     section.style.border = '1px solid var(--border)';
 
@@ -316,7 +316,7 @@ function createSummarySection() {
     
     const sectionTitle = createTitle();
     sectionTitle.textContent = 'Summary';
-    sectionTitle.style.fontSize = '16px';
+    sectionTitle.style.fontSize = '14px';
 
     sectionHeader.appendChild(sectionTitle);
     section.appendChild(sectionHeader);
@@ -391,7 +391,7 @@ function createTransactionTable(transactions) {
         cells.forEach((cellText) => {
             const td = document.createElement('td');
             td.textContent = cellText;
-            td.style.padding = '12px';
+            td.style.padding = '7px 10px';
             td.style.borderBottom = '1px solid var(--border)';
             row.appendChild(td);
         });

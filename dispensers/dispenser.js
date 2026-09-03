@@ -368,6 +368,11 @@ async function renderDispenser() {
         gridContainer.style.flexWrap = 'wrap';
         gridContainer.style.gap = '15px';
         gridContainer.style.justifyContent = 'flex-start';
+        // Cards are fixed-width and wrap, so a wider viewport would fit a
+        // different number per row. Give the grid the exact width it has on the
+        // 10-inch panel (its containing block already nets out the sidebar,
+        // page padding and alarms-panel gutter) so both panels wrap the same.
+        gridContainer.style.maxWidth = 'calc(100% - var(--width-slack))';
 
         if (customerCodeFilter) {
             const [stationInfo, stationStats] = await Promise.all([
@@ -437,7 +442,7 @@ async function renderDispenser() {
             backRow.style.display = 'flex';
             backRow.style.justifyContent = 'space-between';
             backRow.style.alignItems = 'center';
-            backRow.style.marginBottom = '14px';
+            backRow.style.marginBottom = '8px';
 
             const backBtn = createActionButton();
             backBtn.textContent = '← Back to ATG';

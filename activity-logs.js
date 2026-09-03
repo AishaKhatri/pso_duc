@@ -34,7 +34,7 @@ async function renderActivityLogs() {
     const statusLine = document.createElement('div');
     statusLine.style.fontSize = '13px';
     statusLine.style.color = 'var(--text-secondary)';
-    statusLine.style.width = '140px';
+    statusLine.style.width = '120px';
 
     // User / Action filters
     let currentRows = [];      // everything fetched for the date range
@@ -44,13 +44,13 @@ async function renderActivityLogs() {
     let entityFilter = 'all';  // customer code; only active when Action = price update
 
     const userDd = createSearchableDropdown({
-        placeholder: 'All Users', width: '180px', bgWhite: true,
+        placeholder: 'All Users', width: '150px', bgWhite: true,
         items: [{ value: 'all', label: 'All Users' }],
         emptyText: 'No matching user',
         onSelect: (v) => { userFilter = v; if (v === 'all') userDd.setQuery(''); applyFilters(); }
     });
     const actionDd = createSearchableDropdown({
-        placeholder: 'All Actions', width: '220px', bgWhite: true,
+        placeholder: 'All Actions', width: '180px', bgWhite: true,
         items: [{ value: 'all', label: 'All Actions' }],
         emptyText: 'No matching action',
         onSelect: (v) => {
@@ -62,14 +62,14 @@ async function renderActivityLogs() {
     });
     // Entity = customer code. Only meaningful (and enabled) for price-update actions.
     const entityDd = createSearchableDropdown({
-        placeholder: 'All Customers', width: '200px', bgWhite: true,
+        placeholder: 'All Customers', width: '170px', bgWhite: true,
         items: [{ value: 'all', label: 'All Customers' }],
         emptyText: 'No matching customer',
         onSelect: (v) => { entityFilter = v; if (v === 'all') entityDd.setQuery(''); applyFilters(); }
     });
 
-    const filterBar = createFlexRow({ gap: '12px', align: 'flex-end', wrap: 'wrap' });
-    filterBar.style.marginBottom = '16px';
+    const filterBar = createFlexRow({ gap: '8px', align: 'flex-end', wrap: 'wrap' });
+    filterBar.style.marginBottom = '10px';
     filterBar.appendChild(createLabeledField({ label: 'From', control: fromInput, gap: '4px' }));
     filterBar.appendChild(createLabeledField({ label: 'To',   control: toInput,   gap: '4px' }));
     filterBar.appendChild(fetchButton);
@@ -251,7 +251,7 @@ function renderActivityRows(rows, usersById) {
         return;
     }
 
-    const cellOpts = { padding: '10px 12px', verticalAlign: 'top' };
+    const cellOpts = { padding: '7px 10px', verticalAlign: 'top' };
     rows.forEach(row => {
         const tr = createTableRow();
         appendCell(tr, new Date(row.created_at).toLocaleString(), cellOpts);
@@ -267,7 +267,7 @@ function renderActivityRows(rows, usersById) {
 
 function appendDetailsCell(tr, details) {
     const td = document.createElement('td');
-    td.style.padding = '10px 12px';
+    td.style.padding = '7px 10px';
     td.style.verticalAlign = 'top';
     td.style.maxWidth = '480px';
 
@@ -300,7 +300,7 @@ function appendDetailsCell(tr, details) {
     fullPre.style.padding = '8px';
     fullPre.style.backgroundColor = 'var(--bg-surface-2, var(--bg-surface))';
     fullPre.style.borderRadius = '4px';
-    fullPre.style.maxHeight = '320px';
+    fullPre.style.maxHeight = '220px';
     fullPre.style.overflow = 'auto';
     fullPre.textContent = pretty;
     fullPre.hidden = true;

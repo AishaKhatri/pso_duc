@@ -9,8 +9,8 @@ function _labelEl(text) {
     const label = document.createElement('label');
     label.textContent = text;
     label.style.display = 'block';
-    label.style.marginBottom = '6px';
-    label.style.fontSize = '14px';
+    label.style.marginBottom = '4px';
+    label.style.fontSize = '13px';
     label.style.fontWeight = '600';
     label.style.color = 'var(--text-secondary)';
     return label;
@@ -19,18 +19,18 @@ function _labelEl(text) {
 function _styleControl(el) {
     el.style.width = '100%';
     el.style.boxSizing = 'border-box';
-    el.style.padding = '8px 10px';
+    el.style.padding = '6px 9px';
     el.style.border = '1px solid var(--border)';
     el.style.borderRadius = '6px';
     el.style.background = 'var(--bg-surface)';
     el.style.color = 'var(--text-primary)';
-    el.style.fontSize = '14px';
+    el.style.fontSize = '13px';
     return el;
 }
 
 function _fieldBlock(labelText, control, hint) {
     const block = document.createElement('div');
-    block.style.marginBottom = '16px';
+    block.style.marginBottom = '10px';
     block.appendChild(_labelEl(labelText));
     block.appendChild(control);
     if (hint) {
@@ -65,11 +65,11 @@ function _makeInput(type = 'text') {
 function _sectionHeader(text) {
     const h = document.createElement('h3');
     h.textContent = text;
-    h.style.margin = '24px 0 12px';
-    h.style.fontSize = '16px';
+    h.style.margin = '14px 0 8px';
+    h.style.fontSize = '14px';
     h.style.color = 'var(--text-heading)';
     h.style.borderBottom = '1px solid var(--border)';
-    h.style.paddingBottom = '6px';
+    h.style.paddingBottom = '4px';
     return h;
 }
 
@@ -81,8 +81,8 @@ async function renderDucConfig() {
 
     const card = document.createElement('div');
     card.style.maxWidth = '640px';
-    card.style.margin = '20px auto';
-    card.style.padding = '24px';
+    card.style.margin = '6px auto';
+    card.style.padding = '14px 18px';
     card.style.background = 'var(--bg-surface)';
     card.style.border = '1px solid var(--border)';
     card.style.borderRadius = '10px';
@@ -96,8 +96,8 @@ async function renderDucConfig() {
 
     const subtitle = document.createElement('p');
     subtitle.textContent = 'Rewrite one server-location slot on a DUC. Server name/IP are filled in automatically.';
-    subtitle.style.margin = '0 0 8px';
-    subtitle.style.fontSize = '14px';
+    subtitle.style.margin = '0 0 6px';
+    subtitle.style.fontSize = '13px';
     subtitle.style.color = 'var(--text-secondary)';
     card.appendChild(subtitle);
 
@@ -174,8 +174,8 @@ async function renderDucConfig() {
     ntpSameWrap.style.display = 'flex';
     ntpSameWrap.style.alignItems = 'center';
     ntpSameWrap.style.gap = '8px';
-    ntpSameWrap.style.marginBottom = '8px';
-    ntpSameWrap.style.fontSize = '14px';
+    ntpSameWrap.style.marginBottom = '6px';
+    ntpSameWrap.style.fontSize = '13px';
     ntpSameWrap.style.color = 'var(--text-primary)';
     ntpSameWrap.style.cursor = 'pointer';
     const ntpSameCheckbox = document.createElement('input');
@@ -197,7 +197,7 @@ async function renderDucConfig() {
     ntpSameCheckbox.addEventListener('change', syncNtpState);
 
     const ntpBlock = document.createElement('div');
-    ntpBlock.style.marginBottom = '16px';
+    ntpBlock.style.marginBottom = '10px';
     ntpBlock.appendChild(_labelEl('NTP Server'));
     ntpBlock.appendChild(ntpSameWrap);
     ntpBlock.appendChild(ntpInput);
@@ -214,7 +214,7 @@ async function renderDucConfig() {
     // ----- Submit -----
     const statusMsg = document.createElement('div');
     statusMsg.style.margin = '12px 0';
-    statusMsg.style.fontSize = '14px';
+    statusMsg.style.fontSize = '13px';
     statusMsg.style.minHeight = '18px';
 
     const submitBtn = document.createElement('button');
@@ -222,8 +222,8 @@ async function renderDucConfig() {
     submitBtn.className = 'action-button';
     submitBtn.style.backgroundColor = '#004D64';
     submitBtn.style.borderRadius = '8px';
-    submitBtn.style.padding = '12px 20px';
-    submitBtn.style.fontSize = '15px';
+    submitBtn.style.padding = '8px 16px';
+    submitBtn.style.fontSize = '13px';
     submitBtn.style.cursor = 'pointer';
 
     card.appendChild(statusMsg);

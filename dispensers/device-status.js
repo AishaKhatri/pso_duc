@@ -42,8 +42,8 @@ function createSectionHeader(title, color = 'var(--text-heading)') {
     const header = document.createElement('h3');
     header.textContent = title;
     header.style.color = color;
-    header.style.margin = '0 0 15px 0';
-    header.style.fontSize = '16px';
+    header.style.margin = '0 0 10px 0';
+    header.style.fontSize = '14px';
     header.style.borderBottom = `2px solid ${color}`;
     header.style.paddingBottom = '5px';
     return header;
@@ -54,8 +54,8 @@ function createLastUpdatedText(timestamp) {
     const lastUpdated = document.createElement('div');
     lastUpdated.textContent = `Last updated: ${new Date(timestamp).toLocaleString()}`;
     lastUpdated.style.color = 'var(--text-secondary)';
-    lastUpdated.style.fontSize = '14px';
-    lastUpdated.style.marginTop = '15px';
+    lastUpdated.style.fontSize = '12px';
+    lastUpdated.style.marginTop = '10px';
     lastUpdated.style.textAlign = 'right';
     return lastUpdated;
 }
@@ -85,7 +85,7 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
         btn.style.background = 'var(--bg-surface-2)';
         btn.style.color = 'var(--text-primary)';
         btn.style.borderRadius = '4px';
-        btn.style.fontSize = '14px';
+        btn.style.fontSize = '13px';
         btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
         btn.disabled = !enabled;
         return btn;
@@ -136,7 +136,7 @@ function createWirelessConnectivityButtons(gsmEnabled, wifiEnabled, onButtonChan
 function createMainTabs(onTabChange, initialActive = 'connectivity') {
     const tabsContainer = document.createElement('div');
     tabsContainer.style.display = 'flex';
-    tabsContainer.style.marginBottom = '20px';
+    tabsContainer.style.marginBottom = '12px';
     tabsContainer.style.borderBottom = '2px solid var(--border)';
 
     const role = window.StationAuth?.getUserInfo?.()?.role;
@@ -145,11 +145,11 @@ function createMainTabs(onTabChange, initialActive = 'connectivity') {
     const makeTab = (label) => {
         const tab = document.createElement('button');
         tab.textContent = label;
-        tab.style.padding = '10px 20px';
+        tab.style.padding = '7px 16px';
         tab.style.border = 'none';
         tab.style.background = 'none';
         tab.style.cursor = 'pointer';
-        tab.style.fontSize = '16px';
+        tab.style.fontSize = '14px';
         // Sit on top of the container's border so the active 3px underline
         // visually replaces it rather than stacking below.
         tab.style.marginBottom = '-2px';
@@ -249,7 +249,7 @@ function createGsmStatusContent(gsmStatus) {
         pdpHeader.textContent = 'PDP Contexts';
         pdpHeader.style.margin = '15px 0 10px 0';
         pdpHeader.style.color = 'var(--text-primary)';
-        pdpHeader.style.fontSize = '14px';
+        pdpHeader.style.fontSize = '13px';
         // Match the separator under the status rows above/below it.
         pdpHeader.style.paddingBottom = '5px';
         pdpHeader.style.borderBottom = '1px solid var(--border-soft)';
@@ -323,7 +323,7 @@ function createMqttStatusSection(mqttStatus, powerStatus, dispenserAddress) {
         
         if (mqttStatus.subscribedTopics && mqttStatus.subscribedTopics.length > 0) {
             const topicsList = createStyledContainer();
-            topicsList.style.maxHeight = '120px';
+            topicsList.style.maxHeight = '100px';
             topicsList.style.overflowY = 'auto';
             
             mqttStatus.subscribedTopics.forEach(topic => {
@@ -331,7 +331,7 @@ function createMqttStatusSection(mqttStatus, powerStatus, dispenserAddress) {
                 topicItem.textContent = topic;
                 topicItem.style.padding = '2px 0';
                 topicItem.style.fontFamily = 'monospace';
-                topicItem.style.fontSize = '14px';
+                topicItem.style.fontSize = '12px';
                 topicsList.appendChild(topicItem);
             });
             
@@ -343,7 +343,7 @@ function createMqttStatusSection(mqttStatus, powerStatus, dispenserAddress) {
 
     const sectionGap = document.createElement('div');
     sectionGap.style.flex = '1';
-    sectionGap.style.padding = '15px 15px';
+    sectionGap.style.padding = '8px';
     section.appendChild(sectionGap);
 
     section.appendChild(createSectionHeader('Power Status'));
@@ -375,7 +375,7 @@ function createMqttStatusSection(mqttStatus, powerStatus, dispenserAddress) {
         
         const messageDiv = createStyledContainer();
         messageDiv.style.fontFamily = 'monospace';
-        messageDiv.style.fontSize = '14px';
+        messageDiv.style.fontSize = '13px';
         
         infoText.forEach(text => {
             const topicItem = document.createElement('div');
@@ -415,7 +415,7 @@ function createRestartDeviceButton(dispenserAddress) {
     btn.style.background = 'var(--accent)';
     btn.style.color = 'var(--text-on-accent)';
     btn.style.borderRadius = '4px';
-    btn.style.fontSize = '14px';
+    btn.style.fontSize = '13px';
     btn.style.cursor = 'pointer';
 
     btn.addEventListener('click', () => {
@@ -474,18 +474,19 @@ function buildLogActionBar({ allOptionText, currentFilter, totalCount, uncleared
     actionBar.style.display = 'flex';
     actionBar.style.justifyContent = 'space-between';
     actionBar.style.alignItems = 'center';
-    actionBar.style.padding = '10px';
+    actionBar.style.padding = '8px';
     actionBar.style.backgroundColor = 'var(--bg-surface-2)';
     actionBar.style.borderRadius = '8px';
     actionBar.style.border = '1px solid var(--border)';
 
     const filterDropdown = document.createElement('select');
-    filterDropdown.style.padding = '8px';
+    filterDropdown.style.padding = '6px 8px';
+    filterDropdown.style.fontSize = '13px';
     filterDropdown.style.border = '1px solid var(--border)';
     filterDropdown.style.backgroundColor = 'var(--bg-surface)';
     filterDropdown.style.color = 'var(--text-primary)';
     filterDropdown.style.borderRadius = '4px';
-    filterDropdown.style.width = '200px';
+    filterDropdown.style.width = '170px';
     filterDropdown.style.marginBottom = '0';
 
     const allOption = document.createElement('option');
@@ -502,7 +503,7 @@ function buildLogActionBar({ allOptionText, currentFilter, totalCount, uncleared
 
     const statsSpan = document.createElement('span');
     statsSpan.textContent = `Total: ${totalCount} | Uncleared: ${unclearedCount}`;
-    statsSpan.style.fontSize = '14px';
+    statsSpan.style.fontSize = '13px';
     statsSpan.style.fontWeight = 'bold';
     statsSpan.style.color = 'var(--text-secondary)';
 
@@ -618,7 +619,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             
             // Checkbox cell
             const checkboxTd = document.createElement('td');
-            checkboxTd.style.padding = '12px';
+            checkboxTd.style.padding = '7px 10px';
             checkboxTd.style.textAlign = 'center';
             checkboxTd.style.borderBottom = '1px solid var(--border)';
             const checkbox = document.createElement('input');
@@ -657,7 +658,7 @@ function createResetLogsTable(powerStatuses, dispenserAddress, onRefresh, curren
             cells.forEach((cellText) => {
                 const td = document.createElement('td');
                 td.textContent = cellText;
-                td.style.padding = '12px';
+                td.style.padding = '7px 10px';
                 td.style.borderBottom = '1px solid var(--border)';
                 if (isCleared) {
                     td.style.color = 'var(--text-secondary)';
@@ -801,7 +802,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             row.style.opacity = log.cleared ? '0.6' : '1';
             
             const checkboxTd = document.createElement('td');
-            checkboxTd.style.padding = '12px';
+            checkboxTd.style.padding = '7px 10px';
             checkboxTd.style.textAlign = 'center';
             checkboxTd.style.borderBottom = '1px solid var(--border)';
             const checkbox = document.createElement('input');
@@ -841,7 +842,7 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             cells.forEach((cellText, cellIndex) => {
                 const td = document.createElement('td');
                 td.textContent = cellText;
-                td.style.padding = '12px';
+                td.style.padding = '7px 10px';
                 td.style.borderBottom = '1px solid var(--border)';
                 if (cellIndex === cells.length - 2) {
                     td.style.maxWidth = '300px';
@@ -973,7 +974,7 @@ function createRemarksTab(dispenserTopic) {
             cells.forEach((text, i) => {
                 const td = document.createElement('td');
                 td.textContent = text;
-                td.style.padding = '12px';
+                td.style.padding = '7px 10px';
                 td.style.borderBottom = '1px solid var(--border)';
                 if (i === 1) {  // Remark column: allow wrapping for long notes.
                     td.style.maxWidth = '420px';
@@ -995,7 +996,7 @@ function createRemarksTab(dispenserTopic) {
         const addBox = document.createElement('div');
         addBox.style.backgroundColor = 'var(--bg-surface)';
         addBox.style.color = 'var(--text-primary)';
-        addBox.style.padding = '15px';
+        addBox.style.padding = '10px 12px';
         addBox.style.borderRadius = '8px';
         addBox.style.border = '1px solid var(--border)';
         addBox.style.flex = '0 0 300px';
@@ -1004,7 +1005,7 @@ function createRemarksTab(dispenserTopic) {
         const addHeader = createHeader();
         const addTitle = createTitle();
         addTitle.textContent = 'Add Remark';
-        addTitle.style.fontSize = '16px';
+        addTitle.style.fontSize = '14px';
         addHeader.appendChild(addTitle);
         addBox.appendChild(addHeader);
 
@@ -1234,8 +1235,8 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         modal.className = 'popup-modal';
         modal.style.width = '1200px';
         modal.style.maxWidth = '95%';
-        modal.style.height = '700px';
-        modal.style.maxHeight = '85%';
+        modal.style.height = '620px';
+        modal.style.maxHeight = 'calc(var(--vh100) - 40px)';
         modal.style.display = 'flex';
         modal.style.flexDirection = 'column';
         dragPopup(overlay, modal);

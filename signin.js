@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', () => {
   document.body.style.display = 'flex';
   document.body.style.justifyContent = 'center';
   document.body.style.alignItems = 'center';
-  document.body.style.height = '100vh';
+  document.body.style.height = 'var(--vh100)';
 
   // Create main container
   const container = document.createElement('div');

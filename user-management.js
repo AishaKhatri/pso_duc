@@ -85,7 +85,7 @@ async function renderUsersTable(users) {
         errorCell.colSpan = columns.length;
         errorCell.style.color = 'var(--danger)';
         errorCell.style.textAlign = 'center';
-        errorCell.style.padding = '20px';
+        errorCell.style.padding = '14px';
         errorCell.textContent = 'Error loading users. Please try again.';
         errorRow.appendChild(errorCell);
         tbody.appendChild(errorRow);
@@ -97,7 +97,7 @@ function showUserFormPopup(user = null) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '400px';
-    popup.style.maxWidth = '90vw';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
     const header = createHeader();
     const title = createTitle();
@@ -106,7 +106,7 @@ function showUserFormPopup(user = null) {
     header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const form = createFlexColumn('15px');
+    const form = createFlexColumn('10px');
 
     const usernameInput = createTextInput({ value: user?.username || '', required: true });
     const passwordInput = !user ? createTextInput({ type: 'password', required: true }) : null;
@@ -135,7 +135,7 @@ function showUserFormPopup(user = null) {
     popup.appendChild(form);
 
     const buttonContainer = createFlexRow({ justify: 'flex-end' });
-    buttonContainer.style.marginTop = '20px';
+    buttonContainer.style.marginTop = '14px';
 
     const cancelButton = createActionButton('#626262', '#424242');
     cancelButton.textContent = 'Cancel';
@@ -274,7 +274,7 @@ function showChangePasswordPopup(user) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '400px';
-    popup.style.maxWidth = '90vw';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
     const header = createHeader();
     const title = createTitle();
@@ -283,13 +283,13 @@ function showChangePasswordPopup(user) {
     header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const form = createFlexColumn('15px');
+    const form = createFlexColumn('10px');
     const passwordInput = createTextInput({ type: 'password', required: true });
     form.appendChild(createLabeledField({ label: 'New Password', control: passwordInput, required: true }));
     popup.appendChild(form);
 
     const buttonContainer = createFlexRow({ justify: 'flex-end' });
-    buttonContainer.style.marginTop = '20px';
+    buttonContainer.style.marginTop = '14px';
 
     const cancelButton = createActionButton('#626262', '#424242');
     cancelButton.textContent = 'Cancel';

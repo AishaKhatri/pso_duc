@@ -19,6 +19,7 @@ function createFormRow(labelText, control, labelWidth = '100px') {
     label.className = 'label-text';
     label.textContent = labelText;
     label.style.width = labelWidth;
+    label.style.fontSize = '13px';
 
     container.appendChild(label);
     container.appendChild(control);
@@ -484,7 +485,7 @@ async function renderConfigDispensers() {
         const popup = document.createElement('div');
         popup.className = 'popup-modal';
         popup.style.width = '350px';
-        popup.style.maxWidth = '90vw';
+        popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
         const header = createHeader();
         
@@ -597,6 +598,7 @@ async function renderConfigDispensers() {
             const label = document.createElement('label');
             label.htmlFor = `nozzle-${nozzle}`;
             label.textContent = nozzle;
+            label.style.fontSize = '13px';
             
             nozzleItem.appendChild(checkbox);
             nozzleItem.appendChild(label);
@@ -662,7 +664,7 @@ async function renderConfigDispensers() {
             td.colSpan = columns.length;
             td.style.textAlign = 'center';
             td.style.borderBottom = '1px solid var(--border)';
-            td.style.padding = '10px';
+            td.style.padding = '7px 10px';
             const anyFilterActive = configFilters.address.trim() !== '' ||
                 configFilters.city !== 'all' ||
                 configFilters.station !== 'all' ||
@@ -924,7 +926,7 @@ async function renderConfigDispensers() {
         const checkboxLabel = document.createElement('label');
         checkboxLabel.htmlFor = 'deleteHistory';
         checkboxLabel.textContent = 'Delete all historical records (transactions, sales history)';
-        checkboxLabel.style.fontSize = '14px';
+        checkboxLabel.style.fontSize = '13px';
         checkboxLabel.style.color = 'var(--text-secondary)';
         
         checkboxContainer.appendChild(checkbox);
@@ -941,7 +943,7 @@ async function renderConfigDispensers() {
         warningContainer.style.border = '1px solid var(--badge-reset-text)';
         warningContainer.style.borderRadius = '4px';
         warningContainer.style.color = 'var(--badge-reset-text)';
-        warningContainer.style.fontSize = '14px';
+        warningContainer.style.fontSize = '13px';
         
         const warningText = document.createElement('p');
         warningText.textContent = 'WARNING: This action is irreversible and will permanently delete all transactions and historical data.';

@@ -58,7 +58,7 @@ async function loadPricesFromDB() {
 // muted "None" line when there's nothing to show.
 function buildStationListBox(entries, emptyText) {
     const box = document.createElement('div');
-    box.style.maxHeight = '180px';
+    box.style.maxHeight = '150px';
     box.style.overflow = 'auto';
     box.style.padding = '6px 8px';
     box.style.background = 'var(--bg-surface-2)';
@@ -103,8 +103,8 @@ function showUploadResultPopup({ updated, sheetsPresent, missingPrice, notListed
 
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
-    popup.style.width = '560px';
-    popup.style.maxWidth = '92vw';
+    popup.style.width = '520px';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.92)';
 
     const header = createHeader();
     const title = createTitle();
@@ -246,7 +246,7 @@ function showManualEntryPopup(onSaved) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '380px';
-    popup.style.maxWidth = '90vw';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
     const header = createHeader();
     const title = createTitle();
@@ -497,7 +497,7 @@ async function renderPrices() {
             const td = document.createElement('td');
             td.colSpan = columns.length;
             td.style.textAlign = 'center';
-            td.style.padding = '14px';
+            td.style.padding = '7px 10px';
             td.style.color = 'var(--text-secondary)';
             td.textContent = pricesSearchQuery
                 ? 'No stations match'

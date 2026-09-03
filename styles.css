@@ -1,5 +1,18 @@
 /* ===== Theme variables ===== */
 :root {
+    /* Layout scale applied to <html> by viewport-scale.js: 1 on the 10-inch
+       panel (1280x800), 0.75 on the 7-inch (1024x600 / 1080x600). Viewport
+       units resolve against the UNZOOMED viewport, so anything that must track
+       the physical screen edge divides the scale back out via these two. */
+    --ui-scale: 1;
+    --vh100: calc(100vh / var(--ui-scale));
+    --vw100: calc(100vw / var(--ui-scale));
+    /* How much wider the scaled viewport is than the 1280px design width. The
+       panels have different aspect ratios, so matching height exactly leaves
+       the shorter panel some spare width. Layouts whose wrapping must stay
+       identical across panels subtract this; everything else just uses it. */
+    --width-slack: 0px;
+
     --bg-page: #f5f5f5;
     --bg-surface: #ffffff;
     --bg-surface-1: #fcfcfc;
@@ -362,7 +375,7 @@ body {
     opacity: 0;
     transition: opacity 0.3s ease, transform 0.3s ease;
     z-index: 10000;
-    max-width: 80vw;
+    max-width: calc(var(--vw100) * 0.8);
 }
 
 .sidebar-toast.visible {
@@ -383,21 +396,21 @@ body {
 }
 
 h1 {
-    font-size: clamp(20px, 2.1vw, 28px);
+    font-size: 22px;
     color: var(--text-heading);
     margin: 0;
 }
 
 h2 {
-    font-size: clamp(16px, 1.6vw, 20px);
+    font-size: 17px;
     color: var(--text-heading);
     margin: 0;
 }
 
 h3 {
-    font-size: clamp(13px, 1.2vw, 16px);
+    font-size: 14px;
     color: var(--text-secondary);
-    margin-bottom: 10px;
+    margin-bottom: 8px;
 }
 
 .overlay {
@@ -417,7 +430,8 @@ h3 {
     background-color: var(--bg-surface);
     color: var(--text-primary);
     border-radius: 10px;
-    padding: 20px;
+    padding: 14px 16px;
+    max-height: calc(var(--vh100) - 30px);
     overflow-y: auto;
     box-shadow: var(--shadow-modal);
     position: absolute;
@@ -426,27 +440,27 @@ h3 {
 .modal-close-button {
     background: none;
     border: none;
-    font-size: 24px;
+    font-size: 20px;
     cursor: pointer;
     color: var(--text-secondary);
 }
 
 .action-button {
-    padding: 10px 20px;
+    padding: 7px 14px;
     color: var(--text-on-accent);
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
     box-shadow: var(--shadow-btn);
     transition: background-color 0.2s ease;
 }
 
 .icon {
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     vertical-align: middle;
-    margin-right: 15px;
+    margin-right: 8px;
 }
 
 .card {
@@ -454,12 +468,12 @@ h3 {
     color: var(--text-primary);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 20px;
+    padding: 14px 16px;
 }
 
 .action-btn {
-    padding: 6px 12px;
-    margin-right: 5px;
+    padding: 5px 10px;
+    margin-right: 4px;
     border: none;
     border-radius: 4px;
     cursor: pointer;
@@ -485,12 +499,12 @@ h3 {
 .modal-content {
     background-color: var(--bg-surface);
     color: var(--text-primary);
-    margin: 5% auto;
-    padding: 20px;
+    margin: 2% auto;
+    padding: 14px 16px;
     border-radius: 8px;
     width: 90%;
     max-width: 600px;
-    max-height: 80vh;
+    max-height: calc(var(--vh100) - 30px);
     overflow-y: auto;
     box-sizing: border-box;
 }
@@ -499,12 +513,12 @@ h3 {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 15px;
+    margin-bottom: 10px;
 }
 
 .close-btn {
     cursor: pointer;
-    font-size: 24px;
+    font-size: 20px;
     font-weight: bold;
     line-height: 1;
     color: var(--text-primary);
@@ -521,7 +535,7 @@ h3 {
     font-size: 12px;
     margin-top: 5px;
     text-align: center;
-    padding: 20px;
+    padding: 12px;
 }
 
 .ir-lock-icon {
@@ -530,13 +544,13 @@ h3 {
 
 /* Common Styles */
 .primary-btn {
-    padding: 14px 22px;
+    padding: 10px 18px;
     background-color: var(--accent);
     color: var(--text-on-accent);
     border: none;
     border-radius: 8px;
     cursor: pointer;
-    font-size: 18px;
+    font-size: 15px;
     box-shadow: var(--shadow-primary);
 }
 
@@ -545,13 +559,13 @@ h3 {
 }
 
 .save-btn {
-    padding: 8px 12px;
+    padding: 6px 12px;
     background-color: var(--accent);
     color: var(--text-on-accent);
     border: none;
     border-radius: 5px;
     cursor: pointer;
-    font-size: 14px;
+    font-size: 13px;
 }
 
 .save-btn:hover {
@@ -560,12 +574,12 @@ h3 {
 
 .loading {
     text-align: center;
-    padding: 20px;
+    padding: 12px;
     color: var(--text-secondary);
 }
 
 .retry-btn {
-    padding: 8px 16px;
+    padding: 6px 14px;
     background-color: var(--accent);
     color: var(--text-on-accent);
     border: none;
@@ -579,7 +593,7 @@ h3 {
 }
 
 .user-controls {
-    margin-bottom: 20px;
+    margin-bottom: 12px;
 }
 
 @keyframes slideDown {
@@ -629,13 +643,13 @@ td {
     border: 1px solid rgba(255,255,255,0.25);
     color: #fff;
     border-radius: 50%;
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
     display: flex;
     align-items: center;
     justify-content: center;
     cursor: pointer;
-    font-size: 18px;
+    font-size: 16px;
     transition: background-color 0.2s ease, transform 0.2s ease;
     user-select: none;
 }
@@ -685,7 +699,7 @@ td {
 }
 .kpi:last-child { border-right: none; }
 .kpi-label {
-    font-size: clamp(10px, 0.9vw, 14px);
+    font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
@@ -696,7 +710,7 @@ td {
     text-overflow: ellipsis;
 }
 .kpi-value {
-    font-size: clamp(18px, 2.6vw, 38px);
+    font-size: 33px;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
@@ -705,7 +719,7 @@ td {
     text-overflow: ellipsis;
 }
 .kpi-sub {
-    font-size: clamp(11px, 1.1vw, 16px);
+    font-size: 14px;
     color: var(--text-secondary);
     white-space: nowrap;
 }
@@ -764,7 +778,7 @@ td {
     border: 1px solid var(--chip-border);
     border-radius: 14px;
     padding: 3px 10px;
-    font-size: clamp(11px, 0.9vw, 13px);
+    font-size: 12px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
 }
@@ -917,7 +931,7 @@ td {
    100vh and the body becomes scrollable (we deliberately avoid clipping
    with overflow:hidden — the user wants real scroll on tight screens). */
 .content-wrapper.dashboard-page {
-    min-height: calc(100vh - 60px);
+    min-height: calc(var(--vh100) - 60px);
     /* Padding is part of the height calc, not added on top of it. */
     box-sizing: border-box;
     display: flex;
@@ -953,7 +967,7 @@ td {
        at any size. Hard floor (180px) keeps 'Hide' a strict size decrease;
        without it, a saturated layout would squeeze the panel to 0 and
        collapse would *grow* it to its header height (the bug). */
-    min-height: clamp(180px, 28vh, 380px);
+    min-height: 224px;
     max-height: none;
     /* Reset the base .alerts-panel rule's height: 100% — with flex-basis:auto
        (set by the collapsed rule), height:100% would make the panel try to
@@ -1075,7 +1089,7 @@ td {
     background: var(--bg-surface-2);
     border-radius: 6px;
     padding: 6px 10px;
-    font-size: clamp(11px, 0.95vw, 13px);
+    font-size: 12px;
     line-height: 1.3;
 }
 .alert-row .alert-row-main {
@@ -1146,7 +1160,7 @@ td {
     grid-template-columns: 110px 1fr 38px;
     align-items: center;
     gap: 8px;
-    font-size: clamp(11px, 0.95vw, 13px);
+    font-size: 12px;
 }
 .network-bar-row .nb-label { color: var(--text-primary); }
 .network-bar-row .nb-track {
@@ -1227,7 +1241,7 @@ td {
     justify-content: center;
     width: 100%;
     min-width: 0;
-    font-size: clamp(13px, 1.2vw, 16px);
+    font-size: 15px;
 }
 /* Row wrapper participates transparently in the parent grid so swatch / name
    / value columns align across all products, regardless of name lengths. */
@@ -1284,11 +1298,11 @@ td {
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 8px 12px;
-    margin-bottom: 12px;
+    padding: 6px 10px;
+    margin-bottom: 8px;
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 5px;
 }
 .filter-row {
     display: flex;
@@ -1297,7 +1311,7 @@ td {
     align-items: center;
 }
 .filter-row .filter-label {
-    font-size: clamp(10px, 0.9vw, 13px);
+    font-size: 11px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
@@ -1310,7 +1324,7 @@ td {
     border: 1px solid var(--chip-border);
     border-radius: 14px;
     padding: 3px 10px;
-    font-size: clamp(11px, 0.9vw, 13px);
+    font-size: 12px;
     cursor: pointer;
     transition: background-color 0.15s ease, color 0.15s ease, transform 0.1s ease;
     user-select: none;
@@ -1351,24 +1365,24 @@ td {
 }
 .filter-search-wrap {
     position: relative;
-    width: 320px;
+    width: 260px;
     max-width: 100%;
 }
 .filter-search-icon {
     position: absolute;
-    left: 10px;
+    left: 9px;
     top: 50%;
     transform: translateY(-50%);
-    width: 18px;
-    height: 18px;
+    width: 16px;
+    height: 16px;
     pointer-events: none;
     opacity: 0.55;
 }
 .filter-search {
     width: 100%;
     box-sizing: border-box;
-    padding: 6px 12px 3px 36px;
-    font-size: 14px;
+    padding: 5px 12px 3px 32px;
+    font-size: 13px;
     border-radius: 14px;
     border: 1px solid var(--chip-border);
     background: var(--chip-bg);
@@ -1378,7 +1392,7 @@ td {
 }
 /* Dashboard: search lives inside the Division filter row, right-aligned. */
 .filter-row .filter-search-wrap {
-    width: clamp(180px, 20vw, 260px);
+    width: 256px;
     margin-left: auto;
     flex: 0 0 auto;
 }
@@ -1402,7 +1416,7 @@ td {
     top: calc(100% + 4px);
     right: 0;
     left: 0;
-    max-height: 280px;
+    max-height: 220px;
     overflow-y: auto;
     background: var(--bg-surface);
     border: 1px solid var(--border);
@@ -1414,7 +1428,7 @@ td {
     display: flex;
     flex-direction: column;
     gap: 2px;
-    padding: 6px 12px;
+    padding: 5px 10px;
     cursor: pointer;
     border-bottom: 1px solid var(--border-soft);
 }
@@ -1423,20 +1437,20 @@ td {
     background: var(--bg-sidebar-hover);
 }
 .filter-search-option .opt-code {
-    font-size: clamp(11px, 0.85vw, 13px);
+    font-size: 11px;
     font-weight: 700;
     color: var(--text-heading);
     letter-spacing: 0.3px;
 }
 .filter-search-option .opt-name {
-    font-size: clamp(10px, 0.8vw, 12px);
+    font-size: 10px;
     color: var(--text-secondary);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
 }
 .filter-search-empty {
-    padding: 10px 12px;
+    padding: 7px 10px;
     font-size: 12px;
     color: var(--text-secondary);
     text-align: center;
@@ -1452,12 +1466,12 @@ td {
 .searchable-select-input {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 26px 8px 10px;
+    padding: 6px 24px 6px 9px;
     border: 1px solid var(--border);
     border-radius: 6px;
     background: var(--bg-surface);
     color: var(--text-primary);
-    font-size: 14px;
+    font-size: 13px;
     outline: none;
     transition: border-color 0.15s ease, box-shadow 0.15s ease;
 }
@@ -1483,7 +1497,7 @@ td {
     top: calc(100% + 2px);
     left: 0;
     right: 0;
-    max-height: 240px;
+    max-height: 200px;
     overflow-y: auto;
     background: var(--bg-surface);
     border: 1px solid var(--border);
@@ -1521,7 +1535,7 @@ td {
     border: 1px solid var(--border);
     border-radius: 10px;
     box-shadow: var(--shadow-card);
-    padding: 8px 12px;
+    padding: 6px 12px;
     margin-bottom: 4px;
 }
 .station-header-top {
@@ -1547,7 +1561,7 @@ td {
 .station-header-options:empty { display: none; }
 .station-header-title {
     text-transform: uppercase;
-    font-size: clamp(18px, 1.9vw, 24px);
+    font-size: 24px;
     margin: 0 0 4px 0;
     color: var(--text-heading);
 }
@@ -1555,7 +1569,7 @@ td {
     display: flex;
     gap: 12px;
     flex-wrap: wrap;
-    font-size: clamp(11px, 1vw, 13px);
+    font-size: 13px;
     color: var(--text-secondary);
 }
 .station-header-meta-item {
@@ -1578,7 +1592,7 @@ td {
 .station-header-stat {
     background: var(--bg-surface-2);
     border-radius: 8px;
-    padding: 8px 14px;
+    padding: 6px 12px;
     border: 1px solid var(--border-soft);
     min-width: 90px;
     display: flex;
@@ -1587,7 +1601,7 @@ td {
     justify-content: center;
 }
 .station-header-stat-label {
-    font-size: clamp(10px, 0.9vw, 10px);
+    font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 0.5px;
     color: var(--text-secondary);
@@ -1596,7 +1610,7 @@ td {
     white-space: nowrap;
 }
 .station-header-stat-value {
-    font-size: clamp(18px, 1.9vw, 18px);
+    font-size: 18px;
     font-weight: 700;
     color: var(--text-primary);
     line-height: 1.1;
@@ -1628,7 +1642,7 @@ td {
     gap: 16px;
     flex-wrap: wrap;
     padding: 10px 4px 4px;
-    font-size: clamp(12px, 1.1vw, 16px);
+    font-size: 14px;
     color: var(--text-primary);
 }
 .legend-dot {
@@ -1851,14 +1865,14 @@ td {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 14px;
-    padding: 60px 20px;
+    gap: 10px;
+    padding: 28px 16px;
     color: var(--text-secondary);
-    font-size: 14px;
+    font-size: 13px;
 }
 .page-loader .page-loader-spinner {
-    width: 36px;
-    height: 36px;
+    width: 28px;
+    height: 28px;
     border: 3px solid var(--border-soft, rgba(0,0,0,0.12));
     border-top-color: var(--accent, #004D64);
     border-radius: 50%;
@@ -2000,7 +2014,7 @@ td {
 }
 .analysis-viewer-table-host {
     min-width: 0;
-    max-height: 65vh;
+    max-height: calc(var(--vh100) * 0.65);
     overflow: auto;     /* long lists scroll vertically; wide tables horizontally */
 }
 .analysis-viewer-search-row {

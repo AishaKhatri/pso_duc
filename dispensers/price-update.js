@@ -6,7 +6,7 @@ async function showPriceUpdatePopup() {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '300px';
-    popup.style.maxHeight = '80vh';
+    popup.style.maxHeight = 'calc(var(--vh100) - 40px)';
     dragPopup(overlay, popup);
 
     const header = createHeader();
@@ -32,7 +32,8 @@ async function showPriceUpdatePopup() {
     const productLabel = document.createElement('label');
     productLabel.textContent = 'Select Product:';
     productLabel.style.display = 'block';
-    productLabel.style.marginBottom = '8px';
+    productLabel.style.marginBottom = '6px';
+    productLabel.style.fontSize = '13px';
     formContainer.appendChild(productLabel);
 
     const productSelect = createDropdown('Select product');
@@ -55,7 +56,8 @@ async function showPriceUpdatePopup() {
     const priceLabel = document.createElement('label');
     priceLabel.textContent = 'New Price:';
     priceLabel.style.display = 'block';
-    priceLabel.style.marginBottom = '8px';
+    priceLabel.style.marginBottom = '6px';
+    priceLabel.style.fontSize = '13px';
     formContainer.appendChild(priceLabel);
 
     const priceInput = document.createElement('input');
@@ -64,8 +66,9 @@ async function showPriceUpdatePopup() {
     priceInput.min = '0';
     priceInput.style.width = '100%';
     priceInput.style.maxWidth = '280px';
-    priceInput.style.padding = '8px';
-    priceInput.style.marginBottom = '20px';
+    priceInput.style.padding = '6px 8px';
+    priceInput.style.fontSize = '13px';
+    priceInput.style.marginBottom = '12px';
     formContainer.appendChild(priceInput);
 
     contentContainer.appendChild(formContainer);
@@ -73,12 +76,12 @@ async function showPriceUpdatePopup() {
 
     const nozzlesContainer = document.createElement('div');
     nozzlesContainer.id = 'nozzlesList';
-    nozzlesContainer.style.marginBottom = '20px';
+    nozzlesContainer.style.marginBottom = '12px';
     popup.appendChild(nozzlesContainer);
 
     const statusContainer = document.createElement('div');
     statusContainer.id = 'updateStatus';
-    statusContainer.style.marginBottom = '20px';
+    statusContainer.style.marginBottom = '12px';
     popup.appendChild(statusContainer);
 
     const buttonsContainer = document.createElement('div');
@@ -142,7 +145,7 @@ function showStatusMessage(message, type) {
 
     const messageElement = document.createElement('div');
     messageElement.textContent = message;
-    messageElement.style.padding = '10px';
+    messageElement.style.padding = '8px 10px';
     messageElement.style.borderRadius = '4px';
     messageElement.style.marginBottom = '10px';
 

@@ -49,7 +49,7 @@ function createAlarmsPanel() {
         right: '15px',
         top: '60px',
         width: `${collapsed ? ALARMS_PANEL_WIDTH_COLLAPSED : ALARMS_PANEL_WIDTH_EXPANDED}px`,
-        maxHeight: 'calc(100vh - 110px)',
+        maxHeight: 'calc(var(--vh100) - 110px)',
         overflowY: 'auto',
         overflowX: 'hidden',
         background: 'var(--bg-surface)',

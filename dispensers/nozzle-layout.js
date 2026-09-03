@@ -221,7 +221,7 @@ function createMetricsSection(data) {
         div.style.display = 'flex';
         div.style.justifyContent = 'space-between';
         div.style.alignItems = 'center';
-        div.style.marginBottom = '7px';
+        div.style.marginBottom = '6px';
         div.style.padding = '0 12px';
 
         const labelDiv = document.createElement('div');
@@ -251,9 +251,7 @@ function createMetricsSection(data) {
 
     // "Last Sale" groups Amount + Volume under a shared heading.
     const lastSale = document.createElement('div');
-    lastSale.style.marginBottom = '10px';
-    // lastSale.style.marginTop = '4px';
-    // lastSale.style.borderTop = '2px solid var(--border)';
+    lastSale.style.marginBottom = '6px';
     lastSale.style.borderBottom = '2px solid var(--border)';
 
     const printSaleIcon = createIconFromImage('assets/graphics/printer-icon.svg', 'Print Receipt', '20px', '20px');
@@ -293,8 +291,8 @@ function createMetricsSection(data) {
     lastSaleHeading.style.textTransform = 'uppercase';
     lastSaleHeading.style.letterSpacing = '0.5px';
     lastSaleHeading.style.padding = '0 12px';
-    lastSaleHeading.style.marginBottom = '14px';
-    lastSaleHeading.style.marginTop = '5px';
+    lastSaleHeading.style.marginBottom = '10px';
+    lastSaleHeading.style.marginTop = '4px';
     lastSaleHeading.textContent = 'Last Sale';
     lastSale.appendChild(lastSaleHeading);
 

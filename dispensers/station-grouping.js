@@ -330,10 +330,10 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationHeader.style.justifyContent = 'space-between';
     stationHeader.style.alignItems = 'center';
     stationHeader.style.marginBottom = '5px';
-    stationHeader.style.paddingBottom = '10px';
+    stationHeader.style.paddingBottom = '8px';
     stationHeader.style.borderBottom = `2px solid var(--accent)`;
     stationHeader.style.cursor = 'pointer';
-    stationHeader.style.padding = '6px 10px 10px';
+    stationHeader.style.padding = '4px 10px 8px';
     stationHeader.style.transition = 'background-color 0.15s ease';
     stationHeader.title = `Open dispenser page for station ${stationCode}`;
     stationHeader.addEventListener('mouseenter', () => {
@@ -351,7 +351,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     stationTitle.textContent = `${stationCode} - ${stationInfo.station_id}`;
     stationTitle.style.margin = '0';
     stationTitle.style.color = 'var(--text-primary)';
-    stationTitle.style.fontSize = '22px';
+    stationTitle.style.fontSize = '18px';
     stationTitle.style.fontWeight = '650';
     
     // Center - Location info with icon
@@ -362,7 +362,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     locationContainer.style.gap = '6px';
     locationContainer.style.flex = '1';
     
-    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '20px');
+    const locationIcon = createIconFromImage('assets/graphics/location-icon.png', 'Location', '17px');
     
     const locationText = document.createElement('span');
     const cityName = titleCase(stationInfo.city || '');
@@ -376,7 +376,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
         locationString = 'Location not available';
     }
     locationText.textContent = locationString;
-    locationText.style.fontSize = '18px';
+    locationText.style.fontSize = '15px';
     locationText.style.fontWeight = '500';
     
     locationContainer.appendChild(locationIcon);
@@ -386,9 +386,9 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     const dispenserCountSpan = document.createElement('span');
     dispenserCountSpan.textContent = `${dispenserCount} Dispenser${dispenserCount !== 1 ? 's' : ''}`;
     dispenserCountSpan.style.backgroundColor = 'var(--bg-surface-2)';
-    dispenserCountSpan.style.padding = '6px 16px';
+    dispenserCountSpan.style.padding = '4px 14px';
     dispenserCountSpan.style.borderRadius = '20px';
-    dispenserCountSpan.style.fontSize = '18px';
+    dispenserCountSpan.style.fontSize = '15px';
     dispenserCountSpan.style.fontWeight = '600';
     dispenserCountSpan.style.color = 'var(--text-secondary)';
     

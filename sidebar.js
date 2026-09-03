@@ -133,7 +133,7 @@ function renderSidebar() {
 
         // Adjust content wrapper
         if (contentWrapper) {
-            contentWrapper.style.marginLeft = isNowCollapsed ? '55px' : '220px';
+            contentWrapper.style.marginLeft = isNowCollapsed ? '50px' : '180px';
         }
     });
 }

@@ -213,7 +213,7 @@ function renderStationsTable(stations) {
         errorCell.colSpan = columns.length;
         errorCell.style.color = 'var(--danger)';
         errorCell.style.textAlign = 'center';
-        errorCell.style.padding = '20px';
+        errorCell.style.padding = '14px';
         errorCell.textContent = 'Error loading stations. Please try again.';
         errorRow.appendChild(errorCell);
         tbody.appendChild(errorRow);
@@ -225,7 +225,7 @@ function showStationFormPopup(station = null) {
     const popup = document.createElement('div');
     popup.className = 'popup-modal';
     popup.style.width = '400px';
-    popup.style.maxWidth = '90vw';
+    popup.style.maxWidth = 'calc(var(--vw100) * 0.9)';
 
     const header = createHeader();
     const title = createTitle();
@@ -234,7 +234,7 @@ function showStationFormPopup(station = null) {
     header.appendChild(createCloseButton(overlay));
     popup.appendChild(header);
 
-    const form = createFlexColumn('15px');
+    const form = createFlexColumn('10px');
     // <form> semantics aren't load-bearing here; visual layout is what matters.
 
     const usernameInput     = createTextInput({ value: station?.username || '', required: true });

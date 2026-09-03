@@ -159,7 +159,7 @@ function _puConfirmDismiss(isRetained) {
         const popup = document.createElement('div');
         Object.assign(popup.style, {
             background: 'var(--bg-surface)', border: '1px solid var(--border)',
-            borderRadius: '8px', padding: '20px', width: '380px', maxWidth: '90vw',
+            borderRadius: '8px', padding: '14px 16px', width: '360px', maxWidth: 'calc(var(--vw100) * 0.9)',
             boxShadow: '0 8px 30px rgba(0,0,0,0.35)'
         });
 
@@ -196,7 +196,7 @@ function _puConfirmDismiss(isRetained) {
             hint.textContent = 'If unchecked, the last price stays retained for DUCs that connect later.';
             hint.style.fontSize = '12px';
             hint.style.color = 'var(--text-secondary)';
-            hint.style.marginBottom = '16px';
+            hint.style.marginBottom = '10px';
             popup.appendChild(hint);
         }
 
@@ -370,18 +370,18 @@ function _puRenderForm(container) {
             background: 'var(--bg-surface)',
             border: '1px solid var(--border)',
             borderRadius: '8px',
-            padding: '16px',
-            marginBottom: '16px'
+            padding: '10px 14px',
+            marginBottom: '10px'
         });
         return card;
     };
     const cardTitle = (text) => {
         const h = document.createElement('div');
         h.textContent = text;
-        h.style.fontSize = '15px';
+        h.style.fontSize = '14px';
         h.style.fontWeight = '600';
         h.style.color = 'var(--text-heading)';
-        h.style.marginBottom = '12px';
+        h.style.marginBottom = '8px';
         return h;
     };
     const fieldLabel = (text) => {
@@ -391,7 +391,7 @@ function _puRenderForm(container) {
         label.style.fontSize = '13px';
         label.style.fontWeight = '600';
         label.style.color = 'var(--text-primary)';
-        label.style.marginBottom = '6px';
+        label.style.marginBottom = '4px';
         return label;
     };
 
@@ -401,8 +401,8 @@ function _puRenderForm(container) {
 
     const row1 = document.createElement('div');
     row1.style.display = 'grid';
-    row1.style.gridTemplateColumns = 'repeat(auto-fit, minmax(240px, 1fr))';
-    row1.style.gap = '16px';
+    row1.style.gridTemplateColumns = 'repeat(auto-fit, minmax(220px, 1fr))';
+    row1.style.gap = '12px';
 
     // City picker
     const cityWrap = document.createElement('div');
@@ -499,7 +499,7 @@ function _puRenderForm(container) {
     const pricesUpdatedLine = document.createElement('div');
     pricesUpdatedLine.style.fontSize = '12px';
     pricesUpdatedLine.style.color = 'var(--text-secondary)';
-    pricesUpdatedLine.style.marginBottom = '12px';
+    pricesUpdatedLine.style.marginBottom = '8px';
     priceCard.appendChild(pricesUpdatedLine);
     _pu.el.pricesUpdatedLine = pricesUpdatedLine;
 
@@ -509,7 +509,7 @@ function _puRenderForm(container) {
     const priceGrid = document.createElement('div');
     priceGrid.style.display = 'grid';
     priceGrid.style.gridTemplateColumns = 'repeat(auto-fit, minmax(200px, 1fr))';
-    priceGrid.style.gap = '14px';
+    priceGrid.style.gap = '10px';
 
     _pu.el.priceInputs = {};
     _pu.el.priceChecks = {};
@@ -596,7 +596,7 @@ function _puRenderForm(container) {
     const effRow = document.createElement('div');
     effRow.style.display = 'flex';
     effRow.style.alignItems = 'center';
-    effRow.style.gap = '14px';
+    effRow.style.gap = '10px';
     effRow.style.marginTop = '12px';
     effRow.style.flexWrap = 'wrap';
 
@@ -668,14 +668,14 @@ function _puRenderForm(container) {
 
     const publishBtn = createActionButton('#004D64', '#00324C');
     publishBtn.textContent = 'Publish';
-    publishBtn.style.padding = '8px 22px';
+    publishBtn.style.padding = '7px 18px';
     publishBtn.addEventListener('click', () => _puPublish(publishBtn, statusLine));
     actionRow.appendChild(publishBtn);
 
     // Dismiss — manually ends the in-flight job early. Hidden unless a job is active.
     const dismissBtn = createActionButton('#a72929', '#7a2b2b');
     dismissBtn.textContent = 'Dismiss';
-    dismissBtn.style.padding = '8px 18px';
+    dismissBtn.style.padding = '7px 16px';
     dismissBtn.style.display = 'none';
     dismissBtn.addEventListener('click', () => _puDismiss());
     actionRow.appendChild(dismissBtn);
@@ -1131,7 +1131,7 @@ async function renderPriceUpdate() {
     if (role !== 'admin' && role !== 'super_admin') {
         const denied = document.createElement('div');
         denied.textContent = 'Access denied — Price Update is restricted to administrators.';
-        denied.style.padding = '24px';
+        denied.style.padding = '16px';
         denied.style.color = 'var(--danger)';
         content.appendChild(denied);
         return;
@@ -1147,7 +1147,7 @@ async function renderPriceUpdate() {
         const err = document.createElement('div');
         err.textContent = `Failed to load DUC inventory: ${e.message}`;
         err.style.color = 'var(--danger)';
-        err.style.padding = '20px';
+        err.style.padding = '14px';
         content.appendChild(err);
         return;
     }
