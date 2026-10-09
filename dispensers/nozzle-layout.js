@@ -1,8 +1,8 @@
 // Common configuration for both layouts
 const LAYOUT_CONFIG = {
     [NOZZLE_LAYOUTS.FULL]: {
-        width: '175px',
-        minWidth: '175px',
+        width: '170px',
+        minWidth: '170px',
         maxWidth: '195px',
         iconSize: '28px',
         fontSize: '26px',

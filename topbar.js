@@ -164,31 +164,6 @@ function renderTopbar(pageTitle) {
         dropdown.appendChild(usersLink);
     }
 
-    // Upload Price File link — shown only to users a super_admin has granted
-    // price-file access (allow_price_update). Access is enforced on prices.html.
-    if (userInfo?.allow_price_update) {
-        const priceLink = document.createElement('a');
-        priceLink.textContent = 'Upload Price File';
-        priceLink.href = 'prices.html';
-        priceLink.style.cssText = `
-            padding: 10px 16px;
-            background: none;
-            border: none;
-            border-bottom: 1px solid var(--border-soft);
-            text-align: left;
-            cursor: pointer;
-            color: var(--text-primary);
-            font-size: 14px;
-            width: 100%;
-            text-decoration: none;
-            display: block;
-            box-sizing: border-box;
-        `;
-        priceLink.onmouseover = () => { priceLink.style.backgroundColor = 'var(--bg-sidebar-hover)'; };
-        priceLink.onmouseout = () => { priceLink.style.backgroundColor = 'transparent'; };
-        dropdown.appendChild(priceLink);
-    }
-
     // Sign out button
     const signOutBtn = document.createElement('button');
     signOutBtn.textContent = 'Sign Out';

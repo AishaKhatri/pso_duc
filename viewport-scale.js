@@ -8,7 +8,7 @@
 // proportions — differing only in physical size.
 //
 // `zoom` rather than `transform: scale()` is deliberate. zoom is a layout-level
-// scale, so position:fixed chrome (topbar, sidebar, alarms panel), scrolling
+// scale, so position:fixed chrome (topbar, sidebar), scrolling
 // and hit-testing all keep working. It also scales the inline `element.style.*`
 // px values this codebase sets from JS, which a media query could never reach.
 //

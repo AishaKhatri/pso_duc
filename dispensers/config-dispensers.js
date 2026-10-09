@@ -734,9 +734,17 @@ async function renderConfigDispensers() {
         
         const isExistingEdit = index < window.dispensers.length;
 
+        // A new dispenser belongs to the station being configured (the page's
+        // customer_code filter, or the only station on a single-site install),
+        // so its customer code is shown but locked.
+        const defaultCustomerCode = customerCodeFilter
+            || (stationsList.length === 1 ? stationsList[0].customer_code : '');
+
         // Set form values
         if (dispenser.customer_code) {
             form.customer_code.value = dispenser.customer_code;
+        } else if (defaultCustomerCode) {
+            form.customer_code.value = defaultCustomerCode;
         }
         // Input expects naked numeric; backend re-prepends D on save.
         form.address.value = stripDAddress(dispenser.address || '');
@@ -746,9 +754,11 @@ async function renderConfigDispensers() {
 
         // Customer code and address identify the dispenser — locking them on
         // edit prevents accidental re-targeting of an unrelated row.
-        if (isExistingEdit) {
+        if (isExistingEdit || form.customer_code.value) {
             form.customer_code.disabled = true;
             form.customer_code.style.opacity = '0.6';
+        }
+        if (isExistingEdit) {
             form.address.readOnly = true;
             form.address.style.cursor = 'auto';
             form.address.style.opacity = '0.6';

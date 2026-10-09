@@ -155,8 +155,9 @@ function renderHourlySalesLineChart(container, hourly) {
         tooltip.style.display = 'block';
         const dotRect = dot.getBoundingClientRect();
         const cRect = container.getBoundingClientRect();
-        const left = dotRect.left - cRect.left + dotRect.width / 2;
-        const top = dotRect.top - cRect.top - 8;
+        const ratio = getZoomRatio();
+        const left = (dotRect.left - cRect.left + dotRect.width / 2) / ratio;
+        const top = (dotRect.top - cRect.top) / ratio - 8;
         tooltip.style.left = `${left}px`;
         tooltip.style.top = `${top}px`;
         tooltip.style.transform = 'translate(-50%, -100%)';
@@ -313,7 +314,7 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const optionsRow = document.createElement('div');
     optionsRow.className = 'station-header-options';
 
-    return { wrap, optionsContainer: optionsRow };
+    return { wrap, optionsContainer: optionsRow, refreshTimestamp };
 }
 
 async function renderDispenser() {
@@ -361,17 +362,22 @@ async function renderDispenser() {
         if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
         const dispensers = await dispensersResponse.json();
 
-        let headerContainer = null, optionsContainer;
+        // refreshTimestamp only exists in the single-station view, whose header
+        // carries the "Last Updated" line; the periodic tick calls it if set.
+        let headerContainer = null, optionsContainer, refreshTimestamp = null;
 
         const gridContainer = document.createElement('div');
         gridContainer.style.display = 'flex';
         gridContainer.style.flexWrap = 'wrap';
-        gridContainer.style.gap = '15px';
+        // Rows need more room than columns: each card's floating address tab
+        // sticks up above its top edge into the gap.
+        gridContainer.style.rowGap = '18px';
+        gridContainer.style.columnGap = '12px';
         gridContainer.style.justifyContent = 'flex-start';
         // Cards are fixed-width and wrap, so a wider viewport would fit a
         // different number per row. Give the grid the exact width it has on the
         // 10-inch panel (its containing block already nets out the sidebar,
-        // page padding and alarms-panel gutter) so both panels wrap the same.
+        // page padding) so both panels wrap the same.
         gridContainer.style.maxWidth = 'calc(100% - var(--width-slack))';
 
         if (customerCodeFilter) {
@@ -379,10 +385,10 @@ async function renderDispenser() {
                 fetchStationInfo(customerCodeFilter),
                 fetchStationStats(customerCodeFilter)
             ]);
-            const { wrap, optionsContainer: optsRight } =
-                buildStationDetailHeader(customerCodeFilter, stationInfo, stationStats, dispensers);
-            headerContainer = wrap;
-            optionsContainer = optsRight;
+            const header = buildStationDetailHeader(customerCodeFilter, stationInfo, stationStats, dispensers);
+            headerContainer = header.wrap;
+            optionsContainer = header.optionsContainer;
+            refreshTimestamp = header.refreshTimestamp;
             gridContainer.style.marginTop = '20px';
         } else {
             // Buttons live inside the filter row (rendered by renderStationWiseDispensers)
@@ -392,11 +398,11 @@ async function renderDispenser() {
             optionsContainer.style.gap = '4px';
         }
 
-        // Lock/Unlock is available to admin, super_admin and operator.
+        // Lock/Unlock is available to admin, super_admin.
         // Configure (add/edit/delete dispensers) is admin/super_admin only
         const role = window.StationAuth?.getUserInfo?.()?.role;
-        const canCommand = role === 'admin' || role === 'super_admin' || role === 'operator';
-        const canConfigure = role === 'admin' || role === 'super_admin';
+        const canCommand = role === 'admin' || role === 'super_admin';
+        const canConfigure = role === 'super_admin';
 
         if (canCommand) {
             const commandDispenserButton = createMainButton();
@@ -438,18 +444,13 @@ async function renderDispenser() {
         if (refreshConnBtn) optionsContainer.appendChild(refreshConnBtn);
 
         if (customerCodeFilter) {
-            const backRow = document.createElement('div');
-            backRow.style.display = 'flex';
-            backRow.style.justifyContent = 'space-between';
-            backRow.style.alignItems = 'center';
-            backRow.style.marginBottom = '8px';
-
-            const backBtn = createActionButton();
-            backBtn.textContent = '← Back to ATG';
-            backBtn.addEventListener('click', () => { window.location.href = 'http://localhost:3000'; });
-            backRow.appendChild(backBtn);
-            backRow.appendChild(optionsContainer);
-            stage.appendChild(backRow);
+            const actionsRow = document.createElement('div');
+            actionsRow.style.display = 'flex';
+            actionsRow.style.justifyContent = 'flex-end';
+            actionsRow.style.alignItems = 'center';
+            actionsRow.style.marginBottom = '8px';
+            actionsRow.appendChild(optionsContainer);
+            stage.appendChild(actionsRow);
         }
         if (headerContainer) {
             stage.appendChild(headerContainer);
@@ -457,17 +458,6 @@ async function renderDispenser() {
 
         gridContainer.id = 'dispenser-grid';
         stage.appendChild(gridContainer);
-
-        // Sticky right-side Alarms panel (Check Prices etc.). Reserve right
-        // padding on the stage so cards don't render under the fixed panel.
-        // The panel broadcasts 'alarms-panel-resize' when collapsed/expanded
-        // so the gutter can shrink/grow accordingly.
-        const alarmsPanel = createAlarmsPanel();
-        stage.appendChild(alarmsPanel);
-        stage.style.paddingRight = '305px';
-        window.addEventListener('alarms-panel-resize', (e) => {
-            stage.style.paddingRight = `${e.detail.reservedRight}px`;
-        });
 
         if (dispensers.length === 0) {
             const message = createNoDataMessage('No dispensers configured');
@@ -508,7 +498,7 @@ async function renderDispenser() {
                     const updatedDispensers = await updatedDispensersResponse.json();
 
                     await Promise.all(updatedDispensers.map(updateDispenserCard));
-                    refreshTimestamp();
+                    refreshTimestamp?.();
                 } catch (error) {
                     console.error('Error during periodic update:', error);
                 }
@@ -554,7 +544,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     // offers "GET Data" and "Refresh Status". Available to every role.
     statusContainer.appendChild(createDispenserRefreshButton(dispenser));
 
-    const NOZZLE_GRID_GAP = 16;   // gap between the two nozzle columns
+    const NOZZLE_GRID_GAP = 10;   // gap between the two nozzle columns
 
     const nozzleGrid = document.createElement('div');
     nozzleGrid.style.display = 'grid';
@@ -655,8 +645,6 @@ async function updateDispenserCard(dispenser) {
     if (Array.isArray(dispenser.nozzles)) {
         card._dispenserNozzles = dispenser.nozzles;
     }
-
-    refreshDispenserRemarkSection(card, dispenser);
 
     const dispenserTopic = ensureDAddress(dispenser.address);
 

@@ -2,7 +2,7 @@
 let stationsList = [];
 let usersList = [];
 
-const columns = ['ID', 'Username', 'Role', 'Allow Price Update', 'Last Login', 'Created At', 'Actions'];
+const columns = ['ID', 'Username', 'Role', 'Last Login', 'Created At', 'Actions'];
 const userInfo = StationAuth.getUserInfo();
 
 async function renderUserManagement() {
@@ -61,7 +61,6 @@ async function renderUsersTable(users) {
                 user.id,
                 user.username,
                 user.role,
-                createAllowPriceToggle(user, canEdit),
                 user.last_login ? new Date(user.last_login).toLocaleString() : '-',
                 new Date(user.created_at).toLocaleString()
             ]);
@@ -222,49 +221,6 @@ function showDeleteUserConfirmation(user) {
             alert(`Error: ${error.message}`);
         }
     });
-}
-
-// Checkbox cell for the "Allow Price Update" column. Interactive only for a
-// super_admin (canEdit); toggling it PUTs the new grant and reverts on failure.
-function createAllowPriceToggle(user, canEdit) {
-    const label = document.createElement('label');
-    label.style.display = 'inline-flex';
-    label.style.alignItems = 'center';
-    label.style.justifyContent = 'center';
-    label.style.width = '100%';
-    label.style.cursor = canEdit ? 'pointer' : 'not-allowed';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.checked = !!user.allow_price_update;
-    checkbox.disabled = !canEdit;
-    checkbox.title = 'Allow this user to access the Upload Price File page';
-
-    checkbox.addEventListener('change', async () => {
-        const desired = checkbox.checked;
-        checkbox.disabled = true;
-        try {
-            const response = await fetch(`${API_BASE_URL}/users/${user.id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ allow_price_update: desired ? 1 : 0 })
-            });
-            if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.message || errorData.error || 'Failed to update');
-            }
-            user.allow_price_update = desired ? 1 : 0;
-        } catch (error) {
-            console.error('Error updating allow_price_update:', error);
-            alert(`Error: ${error.message}`);
-            checkbox.checked = !desired; // revert the visual toggle
-        } finally {
-            checkbox.disabled = !canEdit;
-        }
-    });
-
-    label.appendChild(checkbox);
-    return label;
 }
 
 // Super-admin-only popup to set a new password for another user. The password

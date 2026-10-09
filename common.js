@@ -310,20 +310,6 @@ function dragPopup(overlay, popup, centerPopupVertically = true) {
     return popup;
 }
 
-function renderMainContainer(pageTitle) {
-    const mainContainer = document.createElement('div');
-    mainContainer.className = 'main-container';
-    
-    const mainHeader = document.createElement('div');
-    mainHeader.className = 'main-header';
-    const title = document.createElement('h2');
-    title.textContent = pageTitle;
-    mainHeader.appendChild(title);
-    mainContainer.appendChild(mainHeader);
-
-    return { mainHeader, mainContainer };
-}
-
 function createHeader(){
     const header = document.createElement('div');
     header.style.paddingBottom = '4px';
@@ -934,7 +920,7 @@ async function createCard(address, customer_code, opts = {}) {
         width: 'fit-content',
         // Extra top padding leaves room for the floating address/brand tab that
         // straddles the card's top edge (built at the end of this function).
-        padding: '8px 16px 16px',
+        padding: '18px 16px 16px',
         marginTop: '2px'
     });
 
@@ -1150,8 +1136,23 @@ function createRefreshConnStatusButton() {
 // when the cursor leaves both the anchor and the menu, on outside-click, on
 // Escape, or after an item is chosen. Generic — reusable for any per-element
 // action menu.
+// The root carries a CSS zoom (viewport-scale.js). Depending on the browser,
+// getBoundingClientRect() may report zoomed screen px while style.top/left are
+// applied in unzoomed CSS px. Returns that ratio (1 when they agree); divide
+// rect values by it before writing them back as positions.
+function getZoomRatio() {
+    const body = document.body;
+    return (body && body.offsetWidth && body.getBoundingClientRect().width / body.offsetWidth) || 1;
+}
+
 function createAnchoredMenu(anchorEl, items) {
     let menu = null;
+    let closeTimer = null;
+
+    // Hover-close is deferred briefly so the cursor can travel from the anchor
+    // into the menu (or back) without the menu vanishing on the way.
+    const cancelClose = () => { clearTimeout(closeTimer); closeTimer = null; };
+    const scheduleClose = () => { cancelClose(); closeTimer = setTimeout(close, 250); };
 
     const onDocClick = (e) => {
         if (menu && !menu.contains(e.target) && e.target !== anchorEl) close();
@@ -1159,6 +1160,7 @@ function createAnchoredMenu(anchorEl, items) {
     const onKey = (e) => { if (e.key === 'Escape') close(); };
 
     const close = () => {
+        cancelClose();
         if (!menu) return;
         menu.remove();
         menu = null;
@@ -1167,6 +1169,7 @@ function createAnchoredMenu(anchorEl, items) {
     };
 
     const open = () => {
+        cancelClose();
         if (menu) return;
         menu = document.createElement('div');
         Object.assign(menu.style, {
@@ -1208,20 +1211,18 @@ function createAnchoredMenu(anchorEl, items) {
             menu.appendChild(opt);
         });
 
-        // Close when the cursor leaves the menu for anywhere but the anchor.
-        menu.addEventListener('mouseleave', (e) => {
-            if (e.relatedTarget !== anchorEl && !anchorEl.contains(e.relatedTarget)) close();
-        });
+        menu.addEventListener('mouseenter', cancelClose);
+        menu.addEventListener('mouseleave', scheduleClose);
 
         document.body.appendChild(menu);
 
-        // Position flush under the anchor (no gap, so the cursor can move from
-        // the anchor into the menu without crossing dead space and dismissing
-        // it), nudged left if it would overflow the right edge.
+        // Position just under the anchor, nudged left if it would overflow the
+        // right edge (rect values converted to CSS px — see getZoomRatio).
         const a = anchorEl.getBoundingClientRect();
-        const m = menu.getBoundingClientRect();
-        const left = Math.min(a.left, window.innerWidth - m.width - 8);
-        menu.style.top = `${a.bottom}px`;
+        const ratio = getZoomRatio();
+        const viewportWidth = window.innerWidth / ratio;
+        const left = Math.min(a.left / ratio, viewportWidth - menu.offsetWidth - 8);
+        menu.style.top = `${a.bottom / ratio + 2}px`;
         menu.style.left = `${Math.max(8, left)}px`;
 
         // Defer outside-click wiring so the opening click doesn't instantly close it.
@@ -1231,9 +1232,7 @@ function createAnchoredMenu(anchorEl, items) {
 
     // Mouse: hover to open, leave (without heading into the menu) to close.
     anchorEl.addEventListener('mouseenter', open);
-    anchorEl.addEventListener('mouseleave', (e) => {
-        if (!menu || (e.relatedTarget !== menu && !menu.contains(e.relatedTarget))) close();
-    });
+    anchorEl.addEventListener('mouseleave', scheduleClose);
     // Touch / click: toggle.
     anchorEl.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1405,37 +1404,6 @@ async function updateResetCount(dispenserAddr, bypassCache = false) {
 
     const count = await fetchResetCount(dispenserAddr, { bypassCache });
     _applyBadgeCount(card.querySelector('.dispenser-reset-container img'), resetCountSpan, count);
-}
-
-function renderPageHeader(pageTitleText) {
-    const headerContainer = document.createElement('div');
-    headerContainer.style.display = 'flex';
-    headerContainer.style.justifyContent = 'space-between';
-    headerContainer.style.alignItems = 'center';
-    headerContainer.style.backgroundColor = 'var(--bg-surface)';
-    headerContainer.style.color = 'var(--text-primary)';
-    headerContainer.style.padding = '12px 16px';
-    headerContainer.style.border = '1px solid var(--border)';
-    headerContainer.style.borderRadius = '10px';
-    headerContainer.style.marginBottom = '12px';
-    headerContainer.style.boxShadow = 'var(--shadow-card)';
-
-    const pageTitle = document.createElement('h1');
-    pageTitle.style.fontSize = '20px';
-    pageTitle.textContent = pageTitleText;
-    headerContainer.appendChild(pageTitle);
-
-    const optionsContainer = document.createElement('div');
-    optionsContainer.style.display = 'flex';
-    optionsContainer.style.alignItems = 'center';
-
-    const gridContainer = document.createElement('div');
-    gridContainer.style.display = 'flex';
-    gridContainer.style.flexWrap = 'wrap';
-    gridContainer.style.gap = '10px';
-    gridContainer.style.justifyContent = 'flex-start';
-
-    return { headerContainer, optionsContainer, gridContainer };
 }
 
 // Generic Yes/No confirmation popup. Defaults read "Confirm Deletion" with a

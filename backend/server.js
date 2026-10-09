@@ -2,7 +2,6 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
-const multer = require('multer');
 const jwt = require('jsonwebtoken');
 const path = require('path');
 const fs = require('fs');
@@ -50,7 +49,7 @@ const {
     startLongOutageService } = require('./backend-services');
 
 const { txnFilters } = require('./stats-service');
-const { parsePriceSheet, stationPriceForProduct, archivePriceChanges } = require('./price-service');
+const { stationPriceForProduct } = require('./price-service');
 const { printFuelReceipt } = require('./printer-service');
 
 const { log } = require('console');
@@ -368,7 +367,7 @@ app.get('/api/auth/verify', async (req, res) => {
     
     // Get user from database
     const [users] = await pool.query(
-      'SELECT id, username, role, customer_code, is_active, allow_price_update FROM users WHERE id = ?',
+      'SELECT id, username, role, customer_code, is_active FROM users WHERE id = ?',
       [userId]
     );
 
@@ -395,8 +394,7 @@ app.get('/api/auth/verify', async (req, res) => {
         id: user.id,
         username: user.username,
         role: user.role,
-        customer_code: user.customer_code,
-        allow_price_update: user.allow_price_update
+        customer_code: user.customer_code
       }
     });
   } catch (error) {
@@ -498,7 +496,7 @@ app.get('/api/auth/station/:id', async (req, res) => {
 app.get('/api/users', async (req, res) => {
     try {
         const [users] = await pool.query(
-            'SELECT id, username, role, customer_code, allow_price_update, last_login, created_at FROM users'
+            'SELECT id, username, role, customer_code, last_login, created_at FROM users'
         );
         res.json(users);
     } catch (error) {
@@ -511,7 +509,7 @@ app.get('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const [users] = await pool.query(
-            'SELECT id, username, role, customer_code, is_active, allow_price_update, last_login, created_at FROM users WHERE id = ?',
+            'SELECT id, username, role, customer_code, is_active, last_login, created_at FROM users WHERE id = ?',
             [id]
         );
         
@@ -546,325 +544,6 @@ app.get('/api/stations', async (req, res) => {
     } catch (error) {
         console.error('Get stations error:', error);
         res.status(500).json({ error: 'Failed to fetch stations' });
-    }
-});
-
-// In-memory multer storage for the prices upload — file is parsed end-to-end
-// in the request handler and discarded; never touches disk. 5 MB cap is well
-// above the ~1 MB real files seen so far.
-const pricesUpload = multer({
-    storage: multer.memoryStorage(),
-    limits: { fileSize: 5 * 1024 * 1024 }
-});
-
-// In-handler gate for the Upload Price File page endpoints. Read fresh each call 
-// so a revoked grant takes effect at once rather than lingering until the 4h JWT 
-// expires. Returns true (and sends 401/403/500) when access is denied.
-async function denyUnlessPriceAccess(req, res) {
-    const userId = req.authUser?.id;
-    if (!userId) {
-        res.status(401).json({ error: 'Authentication required' });
-        return true;
-    }
-    try {
-        const [rows] = await pool.query(
-            'SELECT allow_price_update FROM users WHERE id = ?',
-            [userId]
-        );
-        if (rows.length && rows[0].allow_price_update) return false;
-    } catch (error) {
-        console.error('Price access check failed:', error);
-        res.status(500).json({ error: 'Server error' });
-        return true;
-    }
-    res.status(403).json({ error: 'Price-file access not granted' });
-    return true;
-}
-
-app.post('/api/admin/upload-prices', pricesUpload.single('file'), async (req, res) => {
-    if (await denyUnlessPriceAccess(req, res)) return;
-    if (!req.file) {
-        return res.status(400).json({ error: 'No file uploaded (field name must be "file")' });
-    }
-
-    let conn;
-    try {
-        const XLSX = require('xlsx');
-        const workbook = XLSX.read(req.file.buffer, { type: 'buffer' });
-
-        const sheetByProduct = {
-            PMG:  workbook.Sheets['PMG_PRICE_CHANGE'],
-            HSD:  workbook.Sheets['HSD_PRICE_CHANGE'],
-            HOBC: workbook.Sheets['HOBC_PRICE_CHANGE']
-        };
-        if (!sheetByProduct.PMG && !sheetByProduct.HSD && !sheetByProduct.HOBC) {
-            return res.status(400).json({ error: 'No PMG/HSD/HOBC price sheets found in this workbook' });
-        }
-
-        const pricesByProduct = {
-            PMG:  sheetByProduct.PMG  ? parsePriceSheet(sheetByProduct.PMG)  : new Map(),
-            HSD:  sheetByProduct.HSD  ? parsePriceSheet(sheetByProduct.HSD)  : new Map(),
-            HOBC: sheetByProduct.HOBC ? parsePriceSheet(sheetByProduct.HOBC) : new Map()
-        };
-
-        const [stationRows] = await pool.query('SELECT customer_code, station_id, city, district FROM stations');
-        const known = new Set(stationRows.map(r => r.customer_code));
-        const stationByCode = new Map(stationRows.map(r => [r.customer_code, r]));
-        const stationNameByCode = new Map(stationRows.map(r => [r.customer_code, r.station_id || '']));
-
-        // Which stations actually have a nozzle (DUC) for each product. A station
-        // is only flagged as missing-price / not-listed for a product if it has
-        // a DUC for that product — otherwise the price is irrelevant to it.
-        const [nozzleRows] = await pool.query(
-            `SELECT DISTINCT customer_code, UPPER(product) AS product
-               FROM nozzles
-              WHERE product IS NOT NULL AND product <> ''`
-        );
-        const ducCodesByProduct = { PMG: new Set(), HSD: new Set(), HOBC: new Set() };
-        for (const r of nozzleRows) {
-            const p = (r.product || '').toUpperCase();
-            if (ducCodesByProduct[p]) ducCodesByProduct[p].add(r.customer_code);
-        }
-
-        const updatedByProduct = { PMG: 0, HSD: 0, HOBC: 0 };
-        const archiveEntries = [];  // one per (station, product) actually written
-
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        try {
-            for (const product of ['PMG', 'HSD', 'HOBC']) {
-                const priceMap = pricesByProduct[product].prices;
-                if (!priceMap.size) continue;
-                const col = `price_${product.toLowerCase()}`;
-
-                for (const [code, price] of priceMap.entries()) {
-                    // Codes in the file but not in the DB are silently
-                    // skipped (no list returned for these).
-                    if (!known.has(code)) continue;
-                    await conn.query(
-                        `UPDATE stations SET \`${col}\` = ?, prices_updated_at = NOW() WHERE customer_code = ?`,
-                        [price, code]
-                    );
-                    updatedByProduct[product]++;
-                    const st = stationByCode.get(code);
-                    archiveEntries.push({
-                        customer_code: code,
-                        station_id: st?.station_id || null,
-                        city: st?.city || null,
-                        district: st?.district || null,
-                        product,
-                        price
-                    });
-                }
-            }
-
-            // Sync nozzles.actual_price from each station's matching product
-            // price. JOIN is one round trip per product, regardless of nozzle count.
-            for (const product of ['PMG', 'HSD', 'HOBC']) {
-                const col = `price_${product.toLowerCase()}`;
-                await conn.query(
-                    `UPDATE nozzles n
-                     JOIN stations s ON s.customer_code = n.customer_code
-                        SET n.actual_price = s.\`${col}\`
-                      WHERE UPPER(n.product) = ?`,
-                    [product]
-                );
-            }
-
-            // Log every written (station, product) price into the archive so the
-            // change history survives the next overwrite. Same transaction.
-            await archivePriceChanges(conn, archiveEntries, 'upload', req.authUser);
-
-            await conn.commit();
-        } catch (txErr) {
-            await conn.rollback();
-            throw txErr;
-        }
-
-        // Per product, split the stations that have a DUC for that product into
-        // two problem lists (skipping any product whose sheet wasn't in the file):
-        //   missingPrice — listed in the sheet but with no usable price.
-        //   notListed    — not present in the sheet at all.
-        const sheetsPresent = {
-            PMG:  !!sheetByProduct.PMG,
-            HSD:  !!sheetByProduct.HSD,
-            HOBC: !!sheetByProduct.HOBC
-        };
-        const missingPriceByProduct = { PMG: [], HSD: [], HOBC: [] };
-        const notListedByProduct    = { PMG: [], HSD: [], HOBC: [] };
-        const byCodeAsc = (a, b) => String(a.customer_code).localeCompare(String(b.customer_code));
-        for (const product of ['PMG', 'HSD', 'HOBC']) {
-            if (!sheetsPresent[product]) continue;
-            const { prices: priceMap, listed } = pricesByProduct[product];
-            const ducCodes = ducCodesByProduct[product];
-            for (const code of ducCodes) {
-                if (!known.has(code)) continue;  // nozzle without a station row — ignore
-                const entry = { customer_code: code, station_id: stationNameByCode.get(code) || '' };
-                if (!listed.has(code)) notListedByProduct[product].push(entry);
-                else if (!priceMap.has(code)) missingPriceByProduct[product].push(entry);
-            }
-            missingPriceByProduct[product].sort(byCodeAsc);
-            notListedByProduct[product].sort(byCodeAsc);
-        }
-
-        await logActivity(req, 'upload_prices', { entity_type: 'prices', details: {
-            file: req.file.originalname,
-            updated: updatedByProduct,
-            missing_price_counts: {
-                PMG: missingPriceByProduct.PMG.length,
-                HSD: missingPriceByProduct.HSD.length,
-                HOBC: missingPriceByProduct.HOBC.length
-            },
-            not_listed_counts: {
-                PMG: notListedByProduct.PMG.length,
-                HSD: notListedByProduct.HSD.length,
-                HOBC: notListedByProduct.HOBC.length
-            }
-        }});
-
-        res.json({
-            ok: true,
-            updated: updatedByProduct,
-            sheetsPresent,
-            missingPrice: missingPriceByProduct,
-            notListed: notListedByProduct
-        });
-    } catch (error) {
-        console.error('upload-prices failed:', error);
-        res.status(500).json({ error: error.message || 'Upload failed' });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Manual price entry from the Prices page. Same propagation as the file
-// upload (stations.price_* → nozzles.actual_price via JOIN), but for one
-// customer_code and any subset of the three products. NULL fields are
-// untouched; at least one must be present so we never write an empty update.
-app.post('/api/admin/prices/manual', async (req, res) => {
-    if (await denyUnlessPriceAccess(req, res)) return;
-
-    const { customer_code, price_pmg, price_hsd, price_hobc } = req.body || {};
-    if (!customer_code) {
-        return res.status(400).json({ error: 'customer_code is required' });
-    }
-
-    // Parse the three optional price inputs. Empty/null/undefined → not provided.
-    const raw = { pmg: price_pmg, hsd: price_hsd, hobc: price_hobc };
-    const parsed = { pmg: null, hsd: null, hobc: null };
-    for (const [k, v] of Object.entries(raw)) {
-        if (v == null || v === '') continue;
-        const n = Number(v);
-        if (!Number.isFinite(n) || n <= 0) {
-            return res.status(400).json({ error: `Invalid ${k.toUpperCase()} price: ${v}` });
-        }
-        parsed[k] = n;
-    }
-
-    if (parsed.pmg == null && parsed.hsd == null && parsed.hobc == null) {
-        return res.status(400).json({ error: 'At least one price must be provided' });
-    }
-
-    // Station must exist — bail loudly rather than silently no-op'ing.
-    const [stationRows] = await pool.query(
-        'SELECT customer_code, station_id, city, district FROM stations WHERE customer_code = ?',
-        [customer_code]
-    );
-    if (stationRows.length === 0) {
-        return res.status(404).json({ error: `Customer code ${customer_code} not found in stations` });
-    }
-    const station = stationRows[0];
-
-    let conn;
-    try {
-        conn = await pool.getConnection();
-        await conn.beginTransaction();
-        try {
-            // Build the UPDATE so we only touch columns the user actually
-            // entered — NULLs stay NULL, existing prices stay if not provided.
-            const fields = [];
-            const values = [];
-            for (const [k, n] of Object.entries(parsed)) {
-                if (n == null) continue;
-                fields.push(`price_${k} = ?`);
-                values.push(n);
-            }
-            fields.push('prices_updated_at = NOW()');
-            values.push(customer_code);
-            await conn.query(
-                `UPDATE stations SET ${fields.join(', ')} WHERE customer_code = ?`,
-                values
-            );
-
-            // Propagate to nozzles.actual_price for each product the user
-            // updated. Scoped to this customer_code only.
-            for (const [k, n] of Object.entries(parsed)) {
-                if (n == null) continue;
-                const product = k.toUpperCase();
-                const col = `price_${k}`;
-                await conn.query(
-                    `UPDATE nozzles n
-                     JOIN stations s ON s.customer_code = n.customer_code
-                        SET n.actual_price = s.\`${col}\`
-                      WHERE n.customer_code = ? AND UPPER(n.product) = ?`,
-                    [customer_code, product]
-                );
-            }
-
-            // Archive one row per product the user set, in the same transaction.
-            const archiveEntries = Object.entries(parsed)
-                .filter(([, n]) => n != null)
-                .map(([k, n]) => ({
-                    customer_code,
-                    station_id: station.station_id || null,
-                    city: station.city || null,
-                    district: station.district || null,
-                    product: k.toUpperCase(),
-                    price: n
-                }));
-            await archivePriceChanges(conn, archiveEntries, 'manual', req.authUser);
-
-            await conn.commit();
-        } catch (txErr) {
-            await conn.rollback();
-            throw txErr;
-        }
-
-        await logActivity(req, 'manual_price_entry', {
-            entity_type: 'prices',
-            entity_id: customer_code,
-            details: {
-                customer_code,
-                price_pmg: parsed.pmg,
-                price_hsd: parsed.hsd,
-                price_hobc: parsed.hobc
-            }
-        });
-
-        res.json({ ok: true, customer_code, updated: parsed });
-    } catch (error) {
-        console.error('manual-prices failed:', error);
-        res.status(500).json({ error: error.message || 'Manual price entry failed' });
-    } finally {
-        if (conn) conn.release();
-    }
-});
-
-// Listing for the Prices page. Returns one row per station with its current
-// PMG/HSD/HOBC prices and when they were last refreshed.
-app.get('/api/admin/prices', async (req, res) => {
-    if (await denyUnlessPriceAccess(req, res)) return;
-    try {
-        const [rows] = await pool.query(
-            `SELECT customer_code, station_id, city, division,
-                    price_pmg, price_hsd, price_hobc, prices_updated_at
-               FROM stations
-               ORDER BY customer_code`
-        );
-        res.json(rows);
-    } catch (error) {
-        console.error('Get prices error:', error);
-        res.status(500).json({ error: 'Failed to fetch prices' });
     }
 });
 
@@ -2021,7 +1700,7 @@ app.post('/api/auth/signin', signinLimiter, async (req, res) => {
 
     const [users] = await pool.query(
       `SELECT id, username, password, role, customer_code, is_active,
-              allow_price_update, last_login, created_at
+              last_login, created_at
        FROM users
        WHERE username = ?`,
       [username]
@@ -2146,13 +1825,10 @@ app.post('/api/users', async (req, res) => {
         }
         
         // Store a salted hash, never the plaintext password.
-        // Price-file access is granted by default only to super_admins; every
-        // other role starts disallowed and must be granted by a super_admin.
         const finalRole = role || 'viewer';
-        const allowPriceUpdate = finalRole === 'super_admin' ? 1 : 0;
         const [result] = await pool.query(
-            'INSERT INTO users (username, password, role, customer_code, is_active, allow_price_update) VALUES (?, ?, ?, ?, ?, ?)',
-            [username, hashPassword(password), finalRole, customer_code || null, 1, allowPriceUpdate]
+            'INSERT INTO users (username, password, role, customer_code, is_active) VALUES (?, ?, ?, ?, ?)',
+            [username, hashPassword(password), finalRole, customer_code || null, 1]
         );
 
         logActivity(req, 'user_create', {
@@ -2636,7 +2312,7 @@ app.post('/api/nozzles/delete-by-dispenser', async (req, res) => {
 app.put('/api/users/:id', async (req, res) => {
     try {
         const { id } = req.params;
-        const { username, role, customer_code, is_active, password, allow_price_update } = req.body;
+        const { username, role, customer_code, is_active, password } = req.body;
         
         // Check if user exists
         const [existing] = await pool.query('SELECT id FROM users WHERE id = ?', [id]);
@@ -2667,10 +2343,6 @@ app.put('/api/users/:id', async (req, res) => {
             updates.push('password = ?');
             values.push(hashPassword(password));
         }
-        if (allow_price_update !== undefined) {
-            updates.push('allow_price_update = ?');
-            values.push(allow_price_update ? 1 : 0);
-        }
 
         if (updates.length === 0) {
             return res.status(400).json({ error: 'No fields to update' });
@@ -2686,7 +2358,6 @@ app.put('/api/users/:id', async (req, res) => {
         if (customer_code !== undefined) changedKeys.push('customer_code');
         if (is_active !== undefined) changedKeys.push('is_active');
         if (password) changedKeys.push('password');
-        if (allow_price_update !== undefined) changedKeys.push('allow_price_update');
         logActivity(req, 'user_update', {
             entity_type: 'user', entity_id: id,
             details: { changed: changedKeys }

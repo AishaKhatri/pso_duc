@@ -102,10 +102,10 @@ const StationAuth = {
 
   clearAuth() {
     // Sign-out should drop credentials but keep the user's device/UI
-    // preferences — theme, sidebar collapse, and alarms-panel collapse are
+    // preferences — theme and sidebar collapse are
     // per-browser display choices, not session state, so they should survive
     // across sign-out instead of resetting on every login.
-    const preservedKeys = ['theme', 'sidebarCollapsed', 'alarmsPanelCollapsed'];
+    const preservedKeys = ['theme', 'sidebarCollapsed'];
     const preserved = {};
     preservedKeys.forEach(k => {
       const v = localStorage.getItem(k);

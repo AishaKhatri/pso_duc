@@ -20,6 +20,18 @@ async function showCommandDispenserPopup(options = {}) {
     header.appendChild(closeButton);
     popup.appendChild(header);
 
+    // Opened from a customer-filtered dispenser page: the station is already
+    // known, so skip the city/division/station/dispenser selectors and list
+    // every dispenser of that site with its nozzles in one compact view.
+    if (presetCustomerCode) {
+        popup.style.height = 'auto';
+        title.textContent = `Lock/Unlock — ${presetCustomerCode}`;
+        overlay.appendChild(popup);
+        document.body.appendChild(overlay);
+        await renderStationLockControls(popup, presetCustomerCode);
+        return;
+    }
+
     const makeSelectorBlock = (labelText, dropdown) => {
         const container = document.createElement('div');
         container.style.flex = '1 1 calc(50% - 10px)';
@@ -174,23 +186,6 @@ async function showCommandDispenserPopup(options = {}) {
         populateDivisionDropdown('all');
         populateStationDropdown('all', 'all');
 
-        // If invoked from a customer-filtered dispenser page, pre-select that station's
-        // city/division/station so the operator does not have to drill back down.
-        if (presetCustomerCode) {
-            const presetStation = stationsMap.get(presetCustomerCode);
-            if (presetStation && presetStation.dispensers.length > 0) {
-                if (presetStation.city) {
-                    citySelect.value = presetStation.city;
-                    populateDivisionDropdown(presetStation.city);
-                }
-                if (presetStation.division) {
-                    divisionSelect.value = presetStation.division;
-                }
-                populateStationDropdown(citySelect.value, divisionSelect.value);
-                stationSelect.value = presetCustomerCode;
-            }
-        }
-
         citySelect.addEventListener('change', () => {
             populateDivisionDropdown(citySelect.value);
             populateStationDropdown(citySelect.value, divisionSelect.value);
@@ -308,154 +303,125 @@ function showCommandStatusMessage(message, type) {
     statusContainer.appendChild(messageElement);
 }
 
+async function renderStationLockControls(popup, customerCode) {
+    const controlsContainer = document.createElement('div');
+    controlsContainer.id = 'dispenserControls';
+    popup.appendChild(controlsContainer);
+
+    const statusContainer = document.createElement('div');
+    statusContainer.id = 'commandStatus';
+    popup.appendChild(statusContainer);
+
+    controlsContainer.textContent = 'Loading…';
+    try {
+        const resp = await fetch(`${API_BASE_URL}/dispensers-full?customer_code=${encodeURIComponent(customerCode)}`);
+        if (!resp.ok) throw new Error('Failed to fetch dispensers');
+        const dispensers = (await resp.json()).filter(d => d.nozzles && d.nozzles.length > 0);
+
+        controlsContainer.textContent = '';
+        if (dispensers.length === 0) {
+            controlsContainer.textContent = 'No dispensers available for this station';
+            controlsContainer.style.padding = '14px';
+            controlsContainer.style.textAlign = 'center';
+            controlsContainer.style.color = 'var(--text-secondary)';
+            return;
+        }
+
+        dispensers.forEach((dispenser, index) => {
+            const city = dispenser.station?.city || '';
+            createNozzlesSection(dispenser, controlsContainer, customerCode, city, `Dispenser ${index + 1}`);
+        });
+    } catch (error) {
+        controlsContainer.textContent = '';
+        showCommandStatusMessage(`Error fetching data: ${error.message}`, 'error');
+    }
+}
+
 function showDispenserControls(dispenser, customerCode, city) {
     const controlsContainer = document.getElementById('dispenserControls');
     if (!controlsContainer) return;
-    
-    controlsContainer.innerHTML = '';
 
+    controlsContainer.innerHTML = '';
+    createNozzlesSection(dispenser, controlsContainer, customerCode, city);
+}
+
+// One block per dispenser: a small heading followed by one compact row per
+// nozzle (product badge, current state, Lock / Unlock buttons).
+function createNozzlesSection(dispenser, container, customerCode, city, heading = 'Nozzles') {
     const dispenserTopic = ensureDAddress(dispenser.address);
 
-    createNozzlesSection(dispenserTopic, dispenser.nozzles, controlsContainer, customerCode, city);
-}
+    const section = document.createElement('div');
+    section.style.marginBottom = '12px';
 
-function createControlRow(label, dropdownId, value, options, onConfirm) {
-    const controlRow = document.createElement('div');
-    controlRow.style.display = 'flex';
-    controlRow.style.alignItems = 'center';
-    controlRow.style.marginBottom = '12px';
-    controlRow.style.gap = '12px';
+    const title = document.createElement('div');
+    title.textContent = `${heading} (${dispenserTopic})`;
+    title.style.fontWeight = 'bold';
+    title.style.fontSize = '13px';
+    title.style.color = 'var(--text-heading)';
+    title.style.borderBottom = '1px solid var(--border)';
+    title.style.paddingBottom = '4px';
+    title.style.marginBottom = '6px';
+    section.appendChild(title);
 
-    const labelElement = document.createElement('label');
-    labelElement.textContent = label;
-    labelElement.style.fontWeight = 'bold';
-    labelElement.style.fontSize = '13px';
-
-    const dropdown = createDropdown();
-    dropdown.id = dropdownId;
-    dropdown.style.width = '100px';
-    dropdown.style.marginBottom = '0';
-
-    options.forEach(option => {
-        const optionElement = document.createElement('option');
-        optionElement.value = option.value;
-        optionElement.textContent = option.text;
-        if (option.value === value) {
-            optionElement.selected = true;
-        }
-        dropdown.appendChild(optionElement);
-    });
-
-    const confirmButton = createActionButton();
-    confirmButton.textContent = '✓';
-    confirmButton.style.padding = '4px 10px';
-    confirmButton.style.fontSize = '12px';
-    confirmButton.addEventListener('click', onConfirm);
-
-    controlRow.appendChild(labelElement);
-    controlRow.appendChild(dropdown);
-    controlRow.appendChild(confirmButton);
-
-    return { controlRow, dropdown, confirmButton };
-}
-
-function createNozzlesSection(dispenserTopic, nozzles, container, customerCode, city) {
-    const nozzlesTitle = document.createElement('h3');
-    nozzlesTitle.textContent = 'Nozzle Controls';
-    nozzlesTitle.style.marginTop = '0';
-    nozzlesTitle.style.borderBottom = '1px solid var(--border)';
-    nozzlesTitle.style.paddingBottom = '8px';
-    nozzlesTitle.style.color = 'var(--text-primary)';
-    container.appendChild(nozzlesTitle);
-
-    const nozzlesGrid = document.createElement('div');
-    nozzlesGrid.style.display = 'grid';
-    nozzlesGrid.style.gridTemplateColumns = 'repeat(2, 1fr)';
-    nozzlesGrid.style.gap = '15px';
-    nozzlesGrid.style.marginTop = '10px';
-
+    const nozzles = [...dispenser.nozzles].sort((a, b) => a.nozzle_id.localeCompare(b.nozzle_id, undefined, { numeric: true }));
     nozzles.forEach(nozzle => {
-        const product = normalizeFuelType(nozzle.product);
-        const nozzleCard = createNozzleCard(dispenserTopic, nozzle, customerCode, city, productColorConfig[product]);
-        nozzlesGrid.appendChild(nozzleCard);
+        section.appendChild(createNozzleLockRow(dispenserTopic, nozzle, customerCode, city));
     });
 
-    container.appendChild(nozzlesGrid);
+    container.appendChild(section);
 }
 
-function createNozzleCard(dispenserTopic, nozzle, customerCode, city, colorConfig) {
-    const nozzleCard = document.createElement('div');
-    nozzleCard.style.position = 'relative';
-    nozzleCard.style.borderRadius = '8px';
-    nozzleCard.style.background = 'var(--bg-surface)';
-    nozzleCard.style.fontFamily = 'Segoe UI, sans-serif';
-    nozzleCard.style.color = 'var(--text-primary)';
-    nozzleCard.style.boxShadow = 'var(--shadow-card)';
-    nozzleCard.style.overflow = 'hidden';
-    nozzleCard.style.padding = '0';
-    nozzleCard.style.border = nozzle.lock_unlock ? '2px solid var(--danger)' : '0.5px solid var(--border)';
-    nozzleCard.style.width = '100%';
-    nozzleCard.style.minWidth = '0';
+function createNozzleLockRow(dispenserTopic, nozzle, customerCode, city) {
+    const product = normalizeFuelType(nozzle.product);
+    const colorConfig = productColorConfig[product];
+    const [, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
+    const nozzleLabel = `${side}${number}`;
 
-    const header = document.createElement('div');
-    header.style.background = colorConfig.header;
-    header.style.color = '#111111';
-    header.style.padding = '4px 8px 4px';
-    header.style.display = 'flex';
-    header.style.alignItems = 'center';
-    header.style.justifyContent = 'space-between';
-    header.style.borderBottom = `4px solid ${colorConfig.accent}`;
+    const row = document.createElement('div');
+    row.style.display = 'flex';
+    row.style.alignItems = 'center';
+    row.style.gap = '8px';
+    row.style.padding = '3px 0';
 
-    const nozzleLeft = document.createElement('div');
-    nozzleLeft.style.display = 'flex';
-    nozzleLeft.style.alignItems = 'center';
-    nozzleLeft.style.gap = '8px';
+    const badge = document.createElement('span');
+    badge.textContent = `${nozzleLabel} · ${product}`;
+    badge.style.background = colorConfig.header;
+    badge.style.color = '#111111';
+    badge.style.fontWeight = 'bold';
+    badge.style.fontSize = '12px';
+    badge.style.padding = '3px 8px';
+    badge.style.borderRadius = '4px';
+    badge.style.minWidth = '80px';
+    badge.style.textAlign = 'center';
 
-    const nozzleIcon = document.createElement('img');
-    nozzleIcon.src = 'assets/graphics/nozzle-icon.png';
-    nozzleIcon.alt = 'Nozzle Icon';
-    nozzleIcon.style.width = '34px';
-    nozzleIcon.style.height = '34px';
-    nozzleIcon.style.objectFit = 'contain';
+    const state = document.createElement('span');
+    state.textContent = nozzle.lock_unlock ? 'Locked' : 'Unlocked';
+    state.style.flex = '1';
+    state.style.fontSize = '12px';
+    state.style.fontWeight = nozzle.lock_unlock ? 'bold' : 'normal';
+    state.style.color = nozzle.lock_unlock ? 'var(--danger)' : 'var(--text-secondary)';
 
-    const nozzleNumber = document.createElement('div');
-    nozzleNumber.style.fontSize = '36px';
-    nozzleNumber.style.fontWeight = 'bold';
-    const shortNozzleId = nozzle.nozzle_id.split('-').pop();
-    nozzleNumber.textContent = shortNozzleId.padStart(2, '0');
+    row.appendChild(badge);
+    row.appendChild(state);
 
-    nozzleLeft.appendChild(nozzleIcon);
-    nozzleLeft.appendChild(nozzleNumber);
-    header.appendChild(nozzleLeft);
-    nozzleCard.appendChild(header);
-
-    const content = document.createElement('div');
-    content.style.padding = '10px';
-
-    const [_, side, number] = nozzle.nozzle_id.match(/D\d+-([AB])(\d+)/);
-    const nozzleNum = parseInt(number);
-
-    const { controlRow: nozzleLockRow, dropdown: nozzleLockDropdown, confirmButton: nozzleLockButton } = createControlRow(
-        'Nozzle:',
-        `nozzleLock-${nozzle.nozzle_id}`,
-        nozzle.lock_unlock ? '1' : '0',
-        [
-            { value: '0', text: 'Unlock' },
-            { value: '1', text: 'Lock' }
-        ],
-        () => sendDispenserCommand(dispenserTopic, customerCode, city, {
+    [{ value: '1', text: 'Lock' }, { value: '0', text: 'Unlock' }].forEach(action => {
+        const button = createActionButton();
+        button.textContent = action.text;
+        button.style.padding = '4px 10px';
+        button.style.fontSize = '12px';
+        button.style.minWidth = '64px';
+        button.addEventListener('click', () => sendDispenserCommand(dispenserTopic, customerCode, city, {
             dis_addr: dispenserTopic,
             req_type: 0,
             side: side,
-            noz_number: nozzleNum,
+            noz_number: parseInt(number),
             msg_type: 4,
-            message: nozzleLockDropdown.value
-        }, nozzleLockButton, `Nozzle ${number} Lock ${nozzleLockDropdown.value === '0' ? 'Unlock' : 'Lock'}`)
-    );
-    content.appendChild(nozzleLockRow);
+            message: action.value
+        }, button, `Nozzle ${nozzleLabel} ${action.text}`));
+        row.appendChild(button);
+    });
 
-    nozzleCard.appendChild(content);
-    return nozzleCard;
+    return row;
 }
 
 function normalizeFuelType(product) {

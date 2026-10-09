@@ -52,7 +52,7 @@ function renderSidebar() {
     }
 
     // Super-admin-only tools group: a collapsible section holding page links
-    // (e.g. the price-file upload page, activity logs) and action buttons
+    // (e.g. activity logs) and action buttons
     // (e.g. Scan Dispensers) that only a super admin may use.
     let adminGroup = null;
     if (isSuperAdmin) {
@@ -60,7 +60,6 @@ function renderSidebar() {
             label: 'Admin Tools',
             icon: 'config-icon.png',
             children: [
-                { type: 'link', page: 'prices', label: 'Upload Price File', icon: 'prices-icon.png', url: 'prices.html' },
                 { type: 'link', page: 'activity-logs', label: 'Activity Logs', icon: 'activity-icon.svg', url: 'activity-logs.html' },
                 { type: 'link', page: 'duc-config', label: 'DUC Server Config', icon: 'config-icon.png', url: 'duc-config.html' },
                 { type: 'action', action: 'scan-dispensers', label: 'Scan Dispensers', icon: 'search-icon.svg' },
@@ -75,7 +74,6 @@ function renderSidebar() {
         'config-dispensers': 'dispensers',
         'user-management': 'users',
         'site-management': 'sites',
-        'prices': 'prices',
         'price-update': 'price-update',
         'activity-logs': 'activity-logs',
         'duc-config': 'duc-config',
@@ -217,8 +215,9 @@ function renderSidebarGroup(group, activePage) {
         if (!sidebarEl) return;
         const headerRect = header.getBoundingClientRect();
         const railRect = sidebarEl.getBoundingClientRect();
-        submenu.style.top = `${headerRect.top}px`;
-        submenu.style.left = `${railRect.right}px`;
+        const ratio = typeof getZoomRatio === 'function' ? getZoomRatio() : 1;
+        submenu.style.top = `${headerRect.top / ratio}px`;
+        submenu.style.left = `${railRect.right / ratio}px`;
     };
 
     const showFlyout = () => {

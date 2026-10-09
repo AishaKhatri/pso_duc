@@ -6,8 +6,7 @@ let allStationsData = [];
 
 // Shared filter state — module-scope so newly-rendered station sections (added
 // during the long render loop) can pick up filters the user has already
-// applied while the render is still in flight. Exposed on window so the
-// dispensers-page Alarms panel can apply the same filter to its mismatch list.
+// applied while the render is still in flight.
 const _filterState = {
     city: 'all',
     station: 'all',
@@ -15,7 +14,6 @@ const _filterState = {
     address: '',
     product: 'all'
 };
-if (typeof window !== 'undefined') window._filterState = _filterState;
 
 function _applyFilterToSection(stationSection) {
     if (!stationSection) return false;
@@ -415,8 +413,7 @@ function createStationContainer(stationCode, dispenserCount, stationInfo = {}) {
     scrollContainer.style.minWidth = '0';
     scrollContainer.style.scrollbarWidth = 'thin';
     
-    // Simple flat scroll buttons — same understated look as the alarms panel's
-    // collapse/expand toggle. Shown only when the strip overflows.
+    // Simple flat scroll buttons, shown only when the strip overflows.
     const makeScrollBtn = (glyph, delta) => {
         const btn = document.createElement('button');
         btn.type = 'button';
@@ -561,9 +558,6 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
                 if (_applyFilterToSection(stationSection)) anyStationVisible = true;
             }
             emptyMsg.style.display = anyStationVisible ? 'none' : 'block';
-            // Tell the alarms panel its current scan is stale — different
-            // filter selection means the user needs to re-run Check Prices.
-            window.dispatchEvent(new CustomEvent('dispenser-filters-changed'));
         };
         filterContainer = await createFilterContainer(groupedDispensers, applyFilters, actionsContainer);
         gridContainer.appendChild(filterContainer);
@@ -638,48 +632,8 @@ async function renderStationWiseDispensers(dispensers, gridContainer, createCard
     return { filterContainer };
 }
 
-// Update a specific dispenser card within its station
-async function updateStationDispenserCard(dispenser, updateCardFunction) {
-    const card = document.getElementById(`dispenser-${ensureDAddress(dispenser.address)}`);
-    if (card && typeof updateCardFunction === 'function') {
-        await updateCardFunction(dispenser);
-    }
-}
-
-// Re-render all dispensers maintaining station grouping
-async function refreshAllDispensers(gridContainer, createCardFunction, updateCardFunction, additionalParams = {}) {
-    try {
-        const dispensersResponse = await fetch(`${API_BASE_URL}/dispensers`);
-        if (!dispensersResponse.ok) throw new Error('Failed to fetch dispensers');
-        const dispensers = await dispensersResponse.json();
-        
-        // Clear the grid container
-        gridContainer.innerHTML = '';
-        
-        // Re-render with station grouping
-        await renderStationWiseDispensers(dispensers, gridContainer, createCardFunction, additionalParams);
-        
-        // Store dispensers for periodic updates
-        window.currentDispensers = dispensers;
-        
-        return dispensers;
-    } catch (error) {
-        console.error('Error refreshing dispensers:', error);
-        throw error;
-    }
-}
-
-// Get all dispensers grouped by station (for use in periodic updates)
-function getDispensersByStation() {
-    if (!window.currentDispensers) return {};
-    return groupDispensersByStation(window.currentDispensers);
-}
-
 // Make functions globally available
 window.groupDispensersByStation = groupDispensersByStation;
 window.createFilterContainer = createFilterContainer;
 window.createStationContainer = createStationContainer;
 window.renderStationWiseDispensers = renderStationWiseDispensers;
-window.updateStationDispenserCard = updateStationDispenserCard;
-window.refreshAllDispensers = refreshAllDispensers;
-window.getDispensersByStation = getDispensersByStation;
