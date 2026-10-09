@@ -45,23 +45,23 @@ document.addEventListener('DOMContentLoaded', () => {
   heading.style.fontSize = '24px';
   headerContainer.appendChild(heading);
 
-  // Theme toggle button
-  const themeBtn = document.createElement('button');
-  themeBtn.type = 'button';
-  themeBtn.style.marginLeft = 'auto';
-  themeBtn.style.background = 'transparent';
-  themeBtn.style.border = '1px solid var(--border)';
-  themeBtn.style.color = 'var(--text-primary)';
-  themeBtn.style.borderRadius = '50%';
-  themeBtn.style.width = '32px';
-  themeBtn.style.height = '32px';
-  themeBtn.style.cursor = 'pointer';
-  themeBtn.style.display = 'flex';
-  themeBtn.style.alignItems = 'center';
-  themeBtn.style.justifyContent = 'center';
-  themeBtn.style.fontSize = '16px';
-  wireThemeToggle(themeBtn);
-  headerContainer.appendChild(themeBtn);
+  // // Theme toggle button
+  // const themeBtn = document.createElement('button');
+  // themeBtn.type = 'button';
+  // themeBtn.style.marginLeft = 'auto';
+  // themeBtn.style.background = 'transparent';
+  // themeBtn.style.border = '1px solid var(--border)';
+  // themeBtn.style.color = 'var(--text-primary)';
+  // themeBtn.style.borderRadius = '50%';
+  // themeBtn.style.width = '32px';
+  // themeBtn.style.height = '32px';
+  // themeBtn.style.cursor = 'pointer';
+  // themeBtn.style.display = 'flex';
+  // themeBtn.style.alignItems = 'center';
+  // themeBtn.style.justifyContent = 'center';
+  // themeBtn.style.fontSize = '16px';
+  // wireThemeToggle(themeBtn);
+  // headerContainer.appendChild(themeBtn);
 
   container.appendChild(headerContainer);
 

@@ -66,11 +66,11 @@ function renderTopbar(pageTitle) {
     userContainer.style.position = 'relative';
 
     // Theme toggle (sun / moon)
-    const themeBtn = document.createElement('button');
-    themeBtn.className = 'theme-toggle-btn';
-    themeBtn.type = 'button';
-    wireThemeToggle(themeBtn, { aria: true });
-    userContainer.appendChild(themeBtn);
+    // const themeBtn = document.createElement('button');
+    // themeBtn.className = 'theme-toggle-btn';
+    // themeBtn.type = 'button';
+    // wireThemeToggle(themeBtn, { aria: true });
+    // userContainer.appendChild(themeBtn);
     
     // User initial circle
     const userCircle = document.createElement('div');
