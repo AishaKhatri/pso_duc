@@ -828,7 +828,9 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
             checkboxTd.appendChild(checkbox);
             row.appendChild(checkboxTd);
             
-            const logTime = log.unix_time ? new Date(log.unix_time * 1000).toLocaleString() : 'N/A';
+            const logTime = log.unix_time
+                ? new Date(log.unix_time * 1000).toLocaleString()
+                : (log.log_time || 'N/A');
             const errorCode = log.error_code || log.Code || 'N/A';
             const severity = log.severity || log.Sev || 'N/A';
             const file = log.file || log.File || 'N/A';
@@ -891,10 +893,16 @@ function createErrorsTable(errorLogs, dispenserAddress, onRefresh, currentFilter
     // Initial render
     renderTable();
     
-    // Filter dropdown handler - just re-render, don't fetch again
+    // Refetch on filter change (same as the reset-logs table): the list was
+    // loaded with showCleared matching the old filter, so switching to "All
+    // Errors" must pull the cleared rows from the server.
     filterDropdown.addEventListener('change', () => {
         currentFilterValue = filterDropdown.value;
-        renderTable();
+        if (typeof onRefresh === 'function') {
+            onRefresh(currentFilterValue === 'all');
+        } else {
+            renderTable();
+        }
     });
     
     markClearedBtn.addEventListener('click', async () => {
@@ -1213,7 +1221,7 @@ async function showDevStatusPopup(dispenserTopic, defaultTab = 'connectivity') {
         const gsmStatus = gsmResponse.status === 'fulfilled' && gsmResponse.value.ok ? await gsmResponse.value.json() : null;
         const wifiStatus = wifiResponse.status === 'fulfilled' && wifiResponse.value.ok ? await wifiResponse.value.json() : null;
         const mqttStatus = mqttResponse.status === 'fulfilled' && mqttResponse.value.ok ? await mqttResponse.value.json() : null;
-        const powerStatus = powerResponse.status === 'fulfilled' && powerResponse.value.ok ? await powerResponse.value.json() : null;
+        let powerStatus = powerResponse.status === 'fulfilled' && powerResponse.value.ok ? await powerResponse.value.json() : null;
         const errorLogs = errorsResponse.status === 'fulfilled' && errorsResponse.value.ok ? await errorsResponse.value.json() : null;
         const gsmConnData  = gsmConnResponse.status === 'fulfilled' && gsmConnResponse.value.ok ? await gsmConnResponse.value.json() : null;
         const wifiConnData  = wifiConnResponse.status === 'fulfilled' && wifiConnResponse.value.ok ? await wifiConnResponse.value.json() : null;

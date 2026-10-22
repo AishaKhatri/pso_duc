@@ -86,43 +86,60 @@ function errorWithTimestamp(...args) {
     errorLogStream.write(message + '\n');
 }
 
+// Today's date (YYYY-MM-DD) in this Node process's local timezone. Transaction
+// times are written through mysql2 as local datetimes, so "today" must be
+// computed the same way — not via toISOString() (UTC, which lands on yesterday
+// between local midnight and 05:00 PKT) or MySQL CURDATE() (the DB server's
+// timezone, which can differ when the DB is remote).
+function localDateString(d = new Date()) {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+}
+
 // Function to calculate today's sales from transactions table and update nozzles
 async function initializeDailyTotals() {
     try {
         logWithTimestamp(null, 'Initializing daily totals from transactions table...');
-        
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
-        
-        // Step 1: Reset all nozzles to 0 first
-        // logWithTimestamp('Resetting all nozzles to 0...');
-        await pool.query('UPDATE nozzles SET total_sales_today = 0.00');
-        
-        // Step 2: Get today's total sales for each nozzle from transactions table
-        const [results] = await pool.query(`
-            SELECT nozzle_id, SUM(amount) as daily_total 
-            FROM transactions 
-            WHERE DATE(time) = ? 
-            GROUP BY nozzle_id
-        `, [today]);
-        
-        logWithTimestamp(null, `Found ${results.length} nozzles with transactions today`);
-        
-        // Update each nozzle's total_amount with today's accumulated sales
-        for (const result of results) {
-            const { nozzle_id, daily_total } = result;
-            
-            await pool.query(`
-                UPDATE nozzles 
-                SET total_sales_today = ? 
-                WHERE nozzle_id = ?
-            `, [parseFloat(daily_total) || 0.00, nozzle_id]);
-        }
-        
-        logWithTimestamp(null, 'Daily totals initialized successfully');
+
+        // One statement: nozzles with no transactions today get 0. Joined on
+        // the full nozzle key so totals never bleed across stations.
+        const [result] = await pool.query(`
+            UPDATE nozzles n
+            LEFT JOIN (
+                SELECT customer_code, dispenser_id, nozzle_id, SUM(amount) AS daily_total
+                FROM transactions
+                WHERE DATE(time) = ?
+                GROUP BY customer_code, dispenser_id, nozzle_id
+            ) t ON t.customer_code = n.customer_code
+               AND t.dispenser_id  = n.dispenser_id
+               AND t.nozzle_id     = n.nozzle_id
+            SET n.total_sales_today = COALESCE(t.daily_total, 0)
+        `, [localDateString()]);
+
+        logWithTimestamp(null, `Daily totals initialized successfully (${result.affectedRows} nozzles changed)`);
         
     } catch (error) {
         errorWithTimestamp('Error initializing daily totals:', error.message);
     }
+}
+
+// Recompute one nozzle's total_sales_today from today's rows in the
+// transactions table. Used after storing a sales message instead of adding the
+// message's amounts to the counter — DUCs can resend backlogged (incl. previous
+// days') transactions, which an increment would wrongly fold into today.
+async function refreshNozzleSalesToday(customer_code, dispenser_id, nozzle_id) {
+    await pool.query(`
+        UPDATE nozzles
+        SET total_sales_today = (
+            SELECT COALESCE(SUM(amount), 0) FROM transactions
+            WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?
+              AND DATE(time) = ?
+        )
+        WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?
+    `, [customer_code, dispenser_id, nozzle_id, localDateString(),
+        customer_code, dispenser_id, nozzle_id]);
 }
 
 // Midnight reset function
@@ -643,6 +660,8 @@ module.exports = {
     logWithTimestamp,
     errorWithTimestamp,
     initializeDailyTotals,
+    localDateString,
+    refreshNozzleSalesToday,
     startMidnightResetService,
     resetDailyTotals,
     NotificationWebSocketServer,

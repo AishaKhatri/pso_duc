@@ -3,7 +3,7 @@ const chalk = require('chalk');
 const crypto = require('crypto');
 const pool = require('./db');
 const fs = require('fs').promises;
-const { getFormattedTimestamp, logPing, writeToLogFile, logPriceDebug, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql } = require('./backend-services');
+const { getFormattedTimestamp, logPing, writeToLogFile, logPriceDebug, logWithTimestamp, errorWithTimestamp, NotificationService, clearLongOutageForAddress, ensureDAddress, stripDAddress, addressOutSql, refreshNozzleSalesToday } = require('./backend-services');
 
 const HISTORY_RECORD_INTERVAL = 30 * 60 * 1000; // 30 minutes
 const ATG_SEND_INTERVAL = 10 * 60 * 1000; // 10 minutes
@@ -287,9 +287,8 @@ async function handleSalesMessage(customer_code, dispenser_id, nozzleId, message
         return;
     }
 
-    // Calculate total amount using reduce
-    const total_sales_today = transactions.reduce((sum, tx) => sum + tx.amount, 0);                
-    console.log(`Received ${transactions.length} transactions, total amount: ${total_sales_today}`);
+    const messageTotal = transactions.reduce((sum, tx) => sum + tx.amount, 0);
+    console.log(`Received ${transactions.length} transactions, total amount: ${messageTotal}`);
 
     // Process each transaction in the message for the transactions table
     for (const tx of transactions) {
@@ -308,9 +307,16 @@ async function handleSalesMessage(customer_code, dispenser_id, nozzleId, message
 
     await updateNozzleInDatabase(dispenser_id, nozzleId, {
         price: parseFloat(lastTransaction.amount) || 0.00,
-        quantity: parseFloat(lastTransaction.volume) || 0.00,
-        total_sales_today: total_sales_today
+        quantity: parseFloat(lastTransaction.volume) || 0.00
     }, false);
+
+    // Recompute (not increment) today's total from the stored rows, so
+    // resent or previous-day transactions in this message can't inflate it.
+    try {
+        await refreshNozzleSalesToday(customer_code, dispenser_id, nozzleId);
+    } catch (error) {
+        errorWithTimestamp('Error refreshing total_sales_today:', error.message);
+    }
 }
 
 function parseTransactionMessage(messageString) {
@@ -966,14 +972,6 @@ async function updateNozzleInDatabase(dispenser_id, nozzle_id, updateData, bypas
             fields.push('total_amount = ?');
             values.push(Math.min(parseFloat(updateData.total_amount), MAX_DECIMAL_VALUE));
         }
-        if (updateData.total_sales_today !== undefined) {
-            // Atomic increment in one statement — a read-then-write would let
-            // two concurrent msg_type=7 messages for the same nozzle lose one
-            // increment.
-            const amountToAdd = Math.min(parseFloat(updateData.total_sales_today), MAX_DECIMAL_VALUE);
-            fields.push('total_sales_today = LEAST(total_sales_today + ?, ?)');
-            values.push(amountToAdd, MAX_DECIMAL_VALUE);
-        }
         if (updateData.lock_unlock !== undefined) {
             fields.push('lock_unlock = ?');
             values.push(updateData.lock_unlock);
@@ -1057,6 +1055,17 @@ async function storeTransaction(customer_code, dispenser_id, nozzle_id, time, am
             errorWithTimestamp(`Nozzle not found: ${customer_code}/${dispenser_id}/${nozzle_id}`);
             return;
         }
+
+        // DUCs resend unacknowledged transactions; skip one already stored
+        // so a resend doesn't double-count sales.
+        const [existing] = await pool.query(
+            `SELECT 1 FROM transactions
+             WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?
+               AND time = ? AND amount = ? AND volume = ?
+             LIMIT 1`,
+            [customer_code, dispenser_id, nozzle_id, time, parseFloat(amount), parseFloat(volume)]
+        );
+        if (existing.length > 0) return;
 
         // Insert the transaction with customer_code
         await pool.query(

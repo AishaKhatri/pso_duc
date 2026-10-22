@@ -46,7 +46,8 @@ const {
     addressOutSql,
     describeMqttCommand,
     setLongOutageNotificationService,
-    startLongOutageService } = require('./backend-services');
+    startLongOutageService,
+    localDateString } = require('./backend-services');
 
 const { txnFilters } = require('./stats-service');
 const { stationPriceForProduct } = require('./price-service');
@@ -214,7 +215,9 @@ app.get('/api/dashboard-stats', async (req, res) => {
             });
         }
         const filterClause = f.clause;
-        const filterParams = f.params;
+        // Leading param is "today" (Node-local, matching how transaction
+        // times are stored) for the DATE(time) = ? in each query below.
+        const filterParams = [localDateString(), ...f.params];
 
         const [totalsRows] = await pool.query(
             `SELECT
@@ -222,7 +225,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
                 COALESCE(SUM(amount), 0) AS total_amount,
                 COALESCE(SUM(volume), 0) AS total_volume
              FROM transactions
-             WHERE DATE(time) = CURDATE() ${filterClause}`,
+             WHERE DATE(time) = ? ${filterClause}`,
             filterParams
         );
 
@@ -233,7 +236,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
                 COALESCE(SUM(amount), 0) AS amount,
                 COALESCE(SUM(volume), 0) AS volume
              FROM transactions
-             WHERE DATE(time) = CURDATE() ${filterClause}
+             WHERE DATE(time) = ? ${filterClause}
              GROUP BY HOUR(time)`,
             filterParams
         );
@@ -265,7 +268,7 @@ app.get('/api/dashboard-stats', async (req, res) => {
                ON n.customer_code = t.customer_code
               AND n.dispenser_id  = t.dispenser_id
               AND n.nozzle_id     = t.nozzle_id
-             WHERE DATE(t.time) = CURDATE() ${productFilterClause}
+             WHERE DATE(t.time) = ? ${productFilterClause}
              GROUP BY n.product`,
             filterParams
         );
@@ -1595,7 +1598,12 @@ app.get('/api/error-log/:address', async (req, res) => {
         // Parse the error_message JSON and structure the data
         const parsedErrors = errors.map(error => {
             try {
-                const parsedMessage = error.error_message;
+                // MySQL returns a JSON column already parsed; MariaDB (e.g. on
+                // the Orange Pi) stores JSON as LONGTEXT, so it arrives as a
+                // string and every field would read as undefined.
+                const parsedMessage = typeof error.error_message === 'string'
+                    ? JSON.parse(error.error_message)
+                    : (error.error_message || {});
                 return {
                     id: error.id,
                     customer_code: error.customer_code,

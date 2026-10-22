@@ -210,7 +210,10 @@ function renderHourlySalesLineChart(container, hourly) {
     container.appendChild(tooltip);
 }
 
-async function attachDispenserHourlyChart(dispenser, parent) {
+// Builds the chart block once and returns an async refresh() that re-fetches
+// and re-renders it; the periodic tick calls refresh() so the chart tracks new
+// sales without a page reload.
+function attachDispenserHourlyChart(dispenser, parent) {
     const wrap = document.createElement('div');
     wrap.style.marginTop = '10px';
     wrap.style.paddingTop = '10px';
@@ -243,30 +246,40 @@ async function attachDispenserHourlyChart(dispenser, parent) {
 
     parent.appendChild(wrap);
 
-    const hourly = await fetchDispenserHourly(dispenser.customer_code, dispenser.dispenser_id);
-    if (!hourly) {
-        chartContainer.textContent = 'No sales data available';
-        chartContainer.style.color = 'var(--text-secondary)';
-        chartContainer.style.fontSize = '12px';
-        chartContainer.style.padding = '20px';
-        chartContainer.style.textAlign = 'center';
-        return;
-    }
-    const peakHour = hourly.reduce((best, cur) => cur.amount > best.amount ? cur : best, hourly[0]);
-    peak.textContent = peakHour.amount > 0
-        ? `Peak: ${peakHour.hour.toString().padStart(2, '0')}:00 (Rs ${Math.round(peakHour.amount).toLocaleString()})`
-        : 'No transactions yet today';
+    // Last rendered payload; an unchanged tick skips the re-render so a
+    // pinned/hovered tooltip isn't wiped every 10s.
+    let lastKey = null;
 
-    renderHourlySalesLineChart(chartContainer, hourly);
+    const refresh = async () => {
+        const hourly = await fetchDispenserHourly(dispenser.customer_code, dispenser.dispenser_id);
+        // Keep the last good chart if a periodic fetch fails.
+        if (!hourly && lastKey !== null) return;
+        const key = JSON.stringify(hourly);
+        if (key === lastKey) return;
+        lastKey = key;
+
+        if (!hourly) {
+            chartContainer.textContent = 'No sales data available';
+            chartContainer.style.color = 'var(--text-secondary)';
+            chartContainer.style.fontSize = '12px';
+            chartContainer.style.padding = '20px';
+            chartContainer.style.textAlign = 'center';
+            return;
+        }
+        Object.assign(chartContainer.style, { color: '', fontSize: '', padding: '', textAlign: '' });
+        const peakHour = hourly.reduce((best, cur) => cur.amount > best.amount ? cur : best, hourly[0]);
+        peak.textContent = peakHour.amount > 0
+            ? `Peak: ${peakHour.hour.toString().padStart(2, '0')}:00 (Rs ${Math.round(peakHour.amount).toLocaleString()})`
+            : 'No transactions yet today';
+
+        renderHourlySalesLineChart(chartContainer, hourly);
+    };
+
+    refresh();
+    return refresh;
 }
 
 function buildStationDetailHeader(customerCode, station, stats, dispensers) {
-    const totalDucs = dispensers.length;
-    const onlineDucs = dispensers.filter(d => Number(d.conn_status) === 1).length;
-    const offlineDucs = totalDucs - onlineDucs;
-    const sales = stats?.today?.total_amount || 0;
-    const tx = stats?.today?.tx_count || 0;
-
     const wrap = document.createElement('div');
     wrap.className = 'station-header';
 
@@ -290,22 +303,36 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
 
     const stats_grid = document.createElement('div');
     stats_grid.className = 'station-header-stats';
-    const cells = [
-        { label: 'Total DUCs',     value: formatCount(totalDucs),                cls: '' },
-        { label: 'DUCs Online',    value: formatCount(onlineDucs),               cls: 'online' },
-        { label: 'DUCs Offline',   value: formatCount(offlineDucs),              cls: offlineDucs > 0 ? 'offline' : '' },
-        { label: 'Tx Today',       value: formatCount(tx),                       cls: '' },
-        { label: 'Sales Today',    value: formatCurrencyFull(sales),           cls: 'online' }
-    ];
-    cells.forEach(c => {
+    const cellEls = {};
+    ['Total DUCs', 'DUCs Online', 'DUCs Offline', 'Tx Today', 'Sales Today'].forEach(label => {
         const cell = document.createElement('div');
-        cell.className = `station-header-stat ${c.cls}`;
         cell.innerHTML = `
-            <div class="station-header-stat-label">${c.label}</div>
-            <div class="station-header-stat-value">${c.value}</div>
+            <div class="station-header-stat-label">${label}</div>
+            <div class="station-header-stat-value"></div>
         `;
+        cellEls[label] = { cell, value: cell.querySelector('.station-header-stat-value') };
         stats_grid.appendChild(cell);
     });
+
+    // Fills the stat cells; called once now and again by the periodic tick
+    // (stats is null on a failed fetch — the Tx/Sales cells keep their values).
+    const refreshStats = (newStats, newDispensers) => {
+        const totalDucs = newDispensers.length;
+        const onlineDucs = newDispensers.filter(d => Number(d.conn_status) === 1).length;
+        const offlineDucs = totalDucs - onlineDucs;
+        const set = (label, value, cls) => {
+            cellEls[label].cell.className = `station-header-stat ${cls}`;
+            cellEls[label].value.textContent = value;
+        };
+        set('Total DUCs', formatCount(totalDucs), '');
+        set('DUCs Online', formatCount(onlineDucs), 'online');
+        set('DUCs Offline', formatCount(offlineDucs), offlineDucs > 0 ? 'offline' : '');
+        if (newStats) {
+            set('Tx Today', formatCount(newStats.today?.tx_count || 0), '');
+            set('Sales Today', formatCurrencyFull(newStats.today?.total_amount || 0), 'online');
+        }
+    };
+    refreshStats(stats || { today: {} }, dispensers);
     right.appendChild(stats_grid);
     top.appendChild(right);
 
@@ -314,7 +341,7 @@ function buildStationDetailHeader(customerCode, station, stats, dispensers) {
     const optionsRow = document.createElement('div');
     optionsRow.className = 'station-header-options';
 
-    return { wrap, optionsContainer: optionsRow, refreshTimestamp };
+    return { wrap, optionsContainer: optionsRow, refreshTimestamp, refreshStats };
 }
 
 async function renderDispenser() {
@@ -364,7 +391,7 @@ async function renderDispenser() {
 
         // refreshTimestamp only exists in the single-station view, whose header
         // carries the "Last Updated" line; the periodic tick calls it if set.
-        let headerContainer = null, optionsContainer, refreshTimestamp = null;
+        let headerContainer = null, optionsContainer, refreshTimestamp = null, refreshStats = null;
 
         const gridContainer = document.createElement('div');
         gridContainer.style.display = 'flex';
@@ -389,6 +416,7 @@ async function renderDispenser() {
             headerContainer = header.wrap;
             optionsContainer = header.optionsContainer;
             refreshTimestamp = header.refreshTimestamp;
+            refreshStats = header.refreshStats;
             gridContainer.style.marginTop = '20px';
         } else {
             // Buttons live inside the filter row (rendered by renderStationWiseDispensers)
@@ -498,6 +526,9 @@ async function renderDispenser() {
                     const updatedDispensers = await updatedDispensersResponse.json();
 
                     await Promise.all(updatedDispensers.map(updateDispenserCard));
+                    if (refreshStats) {
+                        refreshStats(await fetchStationStats(customerCodeFilter), updatedDispensers);
+                    }
                     refreshTimestamp?.();
                 } catch (error) {
                     console.error('Error during periodic update:', error);
@@ -540,6 +571,8 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.dataset.address = dispenserTopic;
     card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
+    titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
+
     // Refresh icon sits to the right of the conn-status text; its hover/tap menu
     // offers "GET Data" and "Refresh Status". Available to every role.
     statusContainer.appendChild(createDispenserRefreshButton(dispenser));
@@ -563,6 +596,9 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.style.width = `${cardContentWidth}px`;
     card.style.minWidth = `${cardContentWidth}px`;
     card.style.maxWidth = `${cardContentWidth}px`;
+
+    // Remark below the nozzle cards (admin/super_admin can add one inline).
+    card.appendChild(buildDispenserRemarkSection(dispenser));
 
     gridContainer.appendChild(card);
 
@@ -609,7 +645,7 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
         });
 
         if (card._showHourlyChart) {
-            attachDispenserHourlyChart(card._dispenserData || dispenser, card);
+            card._refreshHourlyChart = attachDispenserHourlyChart(card._dispenserData || dispenser, card);
         }
     };
     card._materialize = materialize;
@@ -647,6 +683,11 @@ async function updateDispenserCard(dispenser) {
     }
 
     const dispenserTopic = ensureDAddress(dispenser.address);
+
+    if (typeof window.updateInterfaceLockStatus === 'function') {
+        window.updateInterfaceLockStatus(dispenserTopic, Number(dispenser.interface_lock_status) === 1 ? 1 : 0);
+    }
+    refreshDispenserRemarkSection(card, dispenser);
 
     if (typeof window.updateConnStatus === 'function') {
         window.updateConnStatus(dispenserTopic, Number(dispenser.conn_status), dispenser.connected_at);
@@ -705,7 +746,9 @@ async function updateDispenserCard(dispenser) {
             } catch (error) {
                 console.error('Error updating nozzle data:', error);
             }
-        })()
+        })(),
+        // Set by materialize() on single-station cards only.
+        card._refreshHourlyChart ? card._refreshHourlyChart() : Promise.resolve()
     ]);
 }
 

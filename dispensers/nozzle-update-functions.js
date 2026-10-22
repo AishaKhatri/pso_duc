@@ -79,8 +79,19 @@ function setNozzleLayoutType(nozzleId, layoutType) {
     nozzleLayoutType.set(nozzleId, layoutType);
 }
 
+// Swap the keypad/IR lock icon on a dispenser card (see
+// createInterfaceStatusIndicator). lockStatus: 1 = locked, 0 = unlocked.
+function updateInterfaceLockStatus(dispenserTopic, lockStatus) {
+    const lockIcon = document.querySelector(`div[data-address="${dispenserTopic}"] .interface-lock-icon`);
+    if (!lockIcon) return;
+    const isLocked = lockStatus === 1;
+    lockIcon.src = isLocked ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
+    lockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
+}
+
 async function sendGetCommandsForDispenser(dispenser) {
     const dis_addr = ensureDAddress(dispenser.address);
+    const interfaceType = String(dispenser.interface_type || 'ir').toLowerCase();
 
     // Which values to request.
     const messageTypesToRequest = {
@@ -124,6 +135,17 @@ async function sendGetCommandsForDispenser(dispenser) {
         const publishTopic = `pso/${city}/${customerCode}/duc/d${stripDAddress(dispenser.address)}`;
 
         const messagesToSend = [];
+
+        // Interface lock state is per dispenser, not per nozzle — request it
+        // once (side A / nozzle 1, as the lock command addresses it).
+        // msg_type 5 = keypad, 6 = IR.
+        const interfaceMsgType = interfaceType === 'keypad' ? 5 : 6;
+        messagesToSend.push({
+            topic: publishTopic,
+            message: { dis_addr, req_type: 1, side: 'A', noz_number: 1, msg_type: interfaceMsgType, message: "0" },
+            nozzleId: 'interface',
+            msg_type: interfaceMsgType
+        });
 
         ['A1', 'A2', 'B1', 'B2'].forEach(nozzleId => {
             if (existingNozzles.has(nozzleId)) {
@@ -190,5 +212,6 @@ async function sendGetCommandsForDispenser(dispenser) {
 window.NozzleData = NozzleData;
 window.nozzleStatusLabel = nozzleStatusLabel;
 window.setNozzleLayoutType = setNozzleLayoutType;
+window.updateInterfaceLockStatus = updateInterfaceLockStatus;
 window.updateNozzleUI = updateNozzleUI;
 window.sendGetCommandsForDispenser = sendGetCommandsForDispenser;

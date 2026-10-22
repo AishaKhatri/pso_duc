@@ -1081,6 +1081,175 @@ async function createCard(address, customer_code, opts = {}) {
     return { card, titleContainer, statusContainer };
 }
 
+// Remark block shown below a dispenser's nozzle cards. admin / super_admin see
+// the latest remark (or "No remark added.") plus an inline box to add a new
+// one; operators see it read-only, and only while the dispenser has a remark.
+// The full timeline (author + IP) lives in the device-status popup's
+// "Remarks" tab, linked from the header. The latest value comes from the
+// dispenser row returned by /api/dispensers[-full].
+function buildDispenserRemarkSection(dispenser) {
+    const role = window.StationAuth?.getUserInfo?.()?.role;
+    const canEdit = role === 'admin' || role === 'super_admin';
+    const address = ensureDAddress(dispenser.address);
+
+    const wrap = document.createElement('div');
+    wrap.className = 'dispenser-remark';
+    Object.assign(wrap.style, {
+        marginTop: '14px',
+        paddingTop: '10px',
+        borderTop: '1px solid var(--border-soft)'
+    });
+
+    // Header row: "Remark" label + link into the Remarks tab.
+    const headRow = document.createElement('div');
+    Object.assign(headRow.style, {
+        display: 'flex', justifyContent: 'space-between',
+        alignItems: 'center', marginBottom: '6px'
+    });
+    const label = document.createElement('div');
+    label.textContent = 'Remark';
+    Object.assign(label.style, { fontSize: '12px', fontWeight: '600', color: 'var(--text-secondary)' });
+    const historyLink = document.createElement('span');
+    historyLink.textContent = 'View history';
+    Object.assign(historyLink.style, { fontSize: '12px', color: 'var(--link)', cursor: 'pointer' });
+    historyLink.addEventListener('click', () => {
+        if (typeof window.showDevStatusPopup === 'function') {
+            window.showDevStatusPopup(address, 'remarks');
+        }
+    });
+    headRow.appendChild(label);
+    headRow.appendChild(historyLink);
+    wrap.appendChild(headRow);
+
+    // Latest remark + when it was added (author/IP live in the Remarks tab).
+    const current = document.createElement('div');
+    Object.assign(current.style, {
+        fontSize: '13px', whiteSpace: 'pre-wrap', wordBreak: 'break-word'
+    });
+    const meta = document.createElement('div');
+    Object.assign(meta.style, { fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' });
+    wrap.appendChild(current);
+    wrap.appendChild(meta);
+
+    // Fills the text/meta in place, so the periodic refresh never rebuilds the
+    // block (which would wipe a remark an admin is midway through typing).
+    wrap._setRemark = (remark, remarkAt) => {
+        const hasRemark = remark != null && String(remark).trim() !== '';
+        wrap.style.display = (hasRemark || canEdit) ? '' : 'none';
+        current.textContent = hasRemark ? remark : 'No remark added.';
+        current.style.color = hasRemark ? 'var(--text-primary)' : 'var(--text-secondary)';
+        current.style.fontStyle = hasRemark ? 'normal' : 'italic';
+        const dt = remarkAt ? new Date(remarkAt) : null;
+        meta.textContent = dt ? `Logged at: ${isNaN(dt.getTime()) ? remarkAt : dt.toLocaleString()}` : '';
+        meta.style.display = dt ? '' : 'none';
+    };
+    wrap._setRemark(dispenser.remark, dispenser.remark_at);
+
+    if (canEdit) {
+        const form = document.createElement('div');
+        Object.assign(form.style, { display: 'flex', gap: '6px', marginTop: '8px' });
+
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Add a remark…';
+        Object.assign(input.style, {
+            flex: '1', minWidth: '0', boxSizing: 'border-box',
+            padding: '5px 8px', border: '1px solid var(--border)', borderRadius: '4px',
+            background: 'var(--bg-surface-2)', color: 'var(--text-primary)',
+            fontSize: '13px', fontFamily: 'inherit'
+        });
+
+        const saveBtn = createActionButton();
+        saveBtn.textContent = 'Save';
+        saveBtn.style.padding = '4px 12px';
+        saveBtn.style.fontSize = '12px';
+
+        const save = async () => {
+            const value = input.value.trim();
+            if (!value || saveBtn.disabled) return;
+            saveBtn.disabled = true;
+            saveBtn.style.opacity = '0.6';
+            try {
+                const resp = await fetch(`${API_BASE_URL}/dispensers/${encodeURIComponent(address)}/remarks`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ remark: value })
+                });
+                const data = await resp.json().catch(() => ({}));
+                if (!resp.ok) throw new Error(data.error || `HTTP ${resp.status}`);
+                input.value = '';
+                wrap._setRemark(data.remark ?? value, data.created_at || new Date());
+                window.showNotification?.('Remark saved', 'success');
+            } catch (e) {
+                window.showNotification?.(`Failed to save remark: ${e.message}`, 'error');
+            } finally {
+                saveBtn.disabled = false;
+                saveBtn.style.opacity = '1';
+            }
+        };
+        saveBtn.addEventListener('click', save);
+        input.addEventListener('keydown', (e) => { if (e.key === 'Enter') save(); });
+
+        form.appendChild(input);
+        form.appendChild(saveBtn);
+        wrap.appendChild(form);
+    }
+
+    return wrap;
+}
+
+// Update a card's inline remark block from fresh dispenser data. Called by
+// the periodic refresh so a remark added via the popup (or by another user)
+// shows up without a page reload.
+function refreshDispenserRemarkSection(card, dispenser) {
+    const section = card?.querySelector('.dispenser-remark');
+    if (section?._setRemark) section._setRemark(dispenser.remark, dispenser.remark_at);
+}
+
+// Keypad / IR icon + lock state, centred in the card's title row.
+// interface_lock_status: 1 = locked, 0 = unlocked (matches the msg_type 5/6
+// command values).
+function createInterfaceStatusIndicator(dispenser) {
+    const container = document.createElement('div');
+    container.style.position = 'absolute';
+    container.style.top = '0';
+    container.style.left = '45%';
+    container.style.transform = 'translateX(-25%)';
+    container.style.display = 'flex';
+    container.style.alignItems = 'center';
+    container.style.gap = '8px';
+
+    const isKeypad = (dispenser.interface_type || '').toLowerCase() === 'keypad';
+    const iconSrc = isKeypad ? 'assets/graphics/keypad-icon.png' : 'assets/graphics/ir-control-icon.png';
+    const iconAlt = isKeypad ? 'Keypad' : 'IR Control';
+    // Keypad icon sits inside a thin bordered box (visual cue distinguishing
+    // it from the IR icon, which is rendered bare).
+    const interfaceIcon = createIconFromImage(iconSrc, iconAlt, isKeypad ? '16px' : '20px');
+
+    let iconNode = interfaceIcon;
+    if (isKeypad) {
+        const box = document.createElement('div');
+        box.style.border = '1px solid var(--text-primary)';
+        box.style.borderRadius = '4px';
+        box.style.padding = '2px';
+        box.style.display = 'flex';
+        box.style.alignItems = 'center';
+        box.style.justifyContent = 'center';
+        box.appendChild(interfaceIcon);
+        iconNode = box;
+    }
+
+    const isLocked = Number(dispenser.interface_lock_status) === 1;
+    const lockIcon = createIconFromImage('assets/graphics/green-lock.png', null, '20px');
+    lockIcon.className = 'interface-lock-icon';
+    lockIcon.src = isLocked ? 'assets/graphics/green-lock.png' : 'assets/graphics/red-unlock.png';
+    lockIcon.alt = isLocked ? 'Locked' : 'Unlocked';
+
+    container.appendChild(iconNode);
+    container.appendChild(lockIcon);
+    return container;
+}
+
 function createRefreshConnStatusButton() {
     const role = window.StationAuth?.getUserInfo?.()?.role;
     if (role !== 'super_admin') return null;
