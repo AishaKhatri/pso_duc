@@ -70,8 +70,9 @@ function _xlsxStylesXml() {
         + '</styleSheet>';
 }
 
-// worksheet XML from a matrix of { v, s } cells. Values written as inline
-// strings. `mergeRefs` is an array of A1-style ranges to merge.
+// worksheet XML from a matrix of { v, s } cells. Numbers are written as
+// numeric cells, other values as inline strings. `mergeRefs` is an array of
+// A1-style ranges to merge.
 function _xlsxSheetXml(matrix, mergeRefs) {
     let rows = '';
     for (let r = 0; r < matrix.length; r++) {
@@ -81,7 +82,11 @@ function _xlsxSheetXml(matrix, mergeRefs) {
         for (let c = 0; c < cols.length; c++) {
             const ref = _xlsxColRef(c) + rowNum;
             const { v, s } = cols[c];
-            cells += `<c r="${ref}" s="${s || 0}" t="inlineStr"><is><t xml:space="preserve">${_xmlEsc(v)}</t></is></c>`;
+            // Finite numbers become numeric cells (so Excel can sum/sort them);
+            // everything else is written as an inline string.
+            cells += (typeof v === 'number' && Number.isFinite(v))
+                ? `<c r="${ref}" s="${s || 0}"><v>${v}</v></c>`
+                : `<c r="${ref}" s="${s || 0}" t="inlineStr"><is><t xml:space="preserve">${_xmlEsc(v)}</t></is></c>`;
         }
         rows += `<row r="${rowNum}">${cells}</row>`;
     }
@@ -95,7 +100,30 @@ function _xlsxSheetXml(matrix, mergeRefs) {
         + `<sheetData>${rows}</sheetData>${mc}</worksheet>`;
 }
 
-function _buildXlsxBlob(sheetName, matrix, mergeRefs) {
+// Excel sheet names: max 31 chars, none of []:*?/\ and unique (case-insensitive).
+function _xlsxSheetNames(names) {
+    const used = new Set();
+    return names.map(raw => {
+        const base = (String(raw ?? '').replace(/[\[\]:*?\/\\]/g, '_').trim() || 'Sheet').slice(0, 31);
+        let name = base;
+        for (let i = 2; used.has(name.toLowerCase()); i++) {
+            const suffix = ` (${i})`;
+            name = base.slice(0, 31 - suffix.length) + suffix;
+        }
+        used.add(name.toLowerCase());
+        return name;
+    });
+}
+
+// `sheets` is an array of { name, matrix, mergeRefs } — one worksheet each.
+function _buildXlsxBlob(sheets) {
+    const names = _xlsxSheetNames(sheets.map(sh => sh.name));
+    const sheetOverrides = sheets.map((_, i) =>
+        `<Override PartName="/xl/worksheets/sheet${i + 1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join('');
+    const sheetEntries = names.map((n, i) =>
+        `<sheet name="${_xmlEsc(n).replace(/"/g, '&quot;')}" sheetId="${i + 1}" r:id="rId${i + 1}"/>`).join('');
+    const sheetRels = sheets.map((_, i) =>
+        `<Relationship Id="rId${i + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i + 1}.xml"/>`).join('');
     const files = [
         { name: '[Content_Types].xml', data:
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
@@ -103,7 +131,7 @@ function _buildXlsxBlob(sheetName, matrix, mergeRefs) {
             + '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
             + '<Default Extension="xml" ContentType="application/xml"/>'
             + '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            + '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+            + sheetOverrides
             + '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
             + '</Types>' },
         { name: '_rels/.rels', data:
@@ -114,25 +142,30 @@ function _buildXlsxBlob(sheetName, matrix, mergeRefs) {
         { name: 'xl/workbook.xml', data:
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             + '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            + `<sheets><sheet name="${_xmlEsc(sheetName).slice(0, 31)}" sheetId="1" r:id="rId1"/></sheets>`
+            + `<sheets>${sheetEntries}</sheets>`
             + '</workbook>' },
         { name: 'xl/_rels/workbook.xml.rels', data:
             '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             + '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            + '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            + '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
+            + sheetRels
+            + `<Relationship Id="rId${sheets.length + 1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>`
             + '</Relationships>' },
         { name: 'xl/styles.xml', data: _xlsxStylesXml() },
-        { name: 'xl/worksheets/sheet1.xml', data: _xlsxSheetXml(matrix, mergeRefs) }
+        ...sheets.map((sh, i) => ({ name: `xl/worksheets/sheet${i + 1}.xml`, data: _xlsxSheetXml(sh.matrix, sh.mergeRefs) }))
     ];
     const enc = new TextEncoder();
     return _zipStore(files.map(f => ({ name: f.name, data: enc.encode(f.data) })),
         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
 }
 
-// Build the .xlsx and trigger a browser download.
+// Build a single-sheet .xlsx and trigger a browser download.
 function downloadXlsx(filename, sheetName, matrix, mergeRefs) {
-    const blob = _buildXlsxBlob(sheetName, matrix, mergeRefs);
+    downloadXlsxSheets(filename, [{ name: sheetName, matrix, mergeRefs }]);
+}
+
+// Build a multi-sheet .xlsx ([{ name, matrix, mergeRefs }]) and trigger a download.
+function downloadXlsxSheets(filename, sheets) {
+    const blob = _buildXlsxBlob(sheets);
     const a = document.createElement('a');
     a.style.display = 'none';
     a.href = URL.createObjectURL(blob);

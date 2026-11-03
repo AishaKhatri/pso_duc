@@ -4,12 +4,6 @@
 const ACTIVITY_LOG_COLUMNS = ['Time', 'User', 'Role', 'IP', 'Action', 'Entity', 'Details'];
 const PRICE_UPDATE_ACTION = 'price_update_publish';
 
-function todayLocalISO() {
-    const d = new Date();
-    const tz = d.getTimezoneOffset() * 60000;
-    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
-}
-
 async function renderActivityLogs() {
     const content = document.getElementById('content');
     content.innerHTML = '';

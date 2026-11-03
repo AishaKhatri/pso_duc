@@ -52,6 +52,7 @@ const {
 const { txnFilters } = require('./stats-service');
 const { stationPriceForProduct } = require('./price-service');
 const { printFuelReceipt } = require('./printer-service');
+const { fetchNozzleHistoryForExport, MAX_EXPORT_ROWS } = require('./history-export-service');
 
 const { log } = require('console');
 const console = require('console');
@@ -1018,6 +1019,35 @@ app.get('/api/activity-log', async (req, res) => {
     } catch (error) {
         console.error('Get activity log error:', error);
         res.status(500).json({ error: 'Failed to fetch activity log' });
+    }
+});
+
+// Nozzle-history rows for the super_admin Export History page. from/to are
+// required; `dispenser_ids` (comma-separated dispensers.id) is optional — omit
+// it for every dispenser.
+app.get('/api/nozzle-history/export', async (req, res) => {
+    if (denyUnlessRole(req, res, 'super_admin')) return;
+    try {
+        const { from, to } = req.query;
+        if (!from || !to) {
+            return res.status(400).json({ error: 'from and to dates are required' });
+        }
+        const dispenserIds = String(req.query.dispenser_ids || '')
+            .split(',').map(s => parseInt(s, 10)).filter(Number.isInteger);
+        const result = await fetchNozzleHistoryForExport({ from, to, dispenserIds });
+        if (result.tooMany) {
+            return res.status(413).json({
+                error: `${result.tooMany} history rows match — the limit is ${MAX_EXPORT_ROWS}. Narrow the date range or select fewer dispensers.`
+            });
+        }
+        await logActivity(req, 'nozzle_history_export', {
+            entity_type: 'nozzle_history',
+            details: { from, to, dispenser_ids: dispenserIds.length ? dispenserIds : 'all', rows: result.rows.length }
+        });
+        res.json(result.rows);
+    } catch (error) {
+        console.error('Nozzle history export error:', error);
+        res.status(500).json({ error: 'Failed to fetch nozzle history' });
     }
 });
 

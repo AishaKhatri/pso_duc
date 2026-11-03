@@ -120,6 +120,14 @@ function createTextInput(opts = {}) {
     return applyInputStyles(input);
 }
 
+// Today's date in the browser's local timezone as YYYY-MM-DD (the value
+// format <input type="date"> expects).
+function todayLocalISO() {
+    const d = new Date();
+    const tz = d.getTimezoneOffset() * 60000;
+    return new Date(d.getTime() - tz).toISOString().slice(0, 10);
+}
+
 function createDateInput(value = '') {
     return createTextInput({ type: 'date', value });
 }
