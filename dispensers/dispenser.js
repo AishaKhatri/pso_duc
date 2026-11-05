@@ -571,8 +571,6 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.dataset.address = dispenserTopic;
     card.dataset.connStatus = String(Number(dispenser.conn_status) || 0);
 
-    titleContainer.appendChild(createInterfaceStatusIndicator(dispenser));
-
     // Refresh icon sits to the right of the conn-status text; its hover/tap menu
     // offers "GET Data" and "Refresh Status". Available to every role.
     statusContainer.appendChild(createDispenserRefreshButton(dispenser));
@@ -596,9 +594,6 @@ async function createDispenserCard(dispenser, gridContainer, params = {}) {
     card.style.width = `${cardContentWidth}px`;
     card.style.minWidth = `${cardContentWidth}px`;
     card.style.maxWidth = `${cardContentWidth}px`;
-
-    // Remark below the nozzle cards (admin/super_admin can add one inline).
-    card.appendChild(buildDispenserRemarkSection(dispenser));
 
     gridContainer.appendChild(card);
 
@@ -683,11 +678,6 @@ async function updateDispenserCard(dispenser) {
     }
 
     const dispenserTopic = ensureDAddress(dispenser.address);
-
-    if (typeof window.updateInterfaceLockStatus === 'function') {
-        window.updateInterfaceLockStatus(dispenserTopic, Number(dispenser.interface_lock_status) === 1 ? 1 : 0);
-    }
-    refreshDispenserRemarkSection(card, dispenser);
 
     if (typeof window.updateConnStatus === 'function') {
         window.updateConnStatus(dispenserTopic, Number(dispenser.conn_status), dispenser.connected_at);

@@ -363,71 +363,12 @@ function createNozzlesSection(dispenser, container, customerCode, city, heading 
     title.style.marginBottom = '6px';
     section.appendChild(title);
 
-    section.appendChild(createInterfaceLockRow(dispenserTopic, dispenser, customerCode, city));
-
     const nozzles = [...dispenser.nozzles].sort((a, b) => a.nozzle_id.localeCompare(b.nozzle_id, undefined, { numeric: true }));
     nozzles.forEach(nozzle => {
         section.appendChild(createNozzleLockRow(dispenserTopic, nozzle, customerCode, city));
     });
 
     container.appendChild(section);
-}
-
-// Keypad / IR (interface) lock row, shown above the dispenser's nozzle rows.
-// Same rights as nozzle lock — anyone who can open this popup. msg_type 5 is
-// keypad, 6 is IR; 1 = lock, 0 = unlock.
-function createInterfaceLockRow(dispenserTopic, dispenser, customerCode, city) {
-    const isKeypad = String(dispenser.interface_type || 'ir').toLowerCase() === 'keypad';
-    const interfaceLabel = isKeypad ? 'Keypad' : 'IR';
-    const msgType = isKeypad ? 5 : 6;
-    const isLocked = Number(dispenser.interface_lock_status) === 1;
-
-    const row = document.createElement('div');
-    row.style.display = 'flex';
-    row.style.alignItems = 'center';
-    row.style.gap = '8px';
-    row.style.padding = '3px 0';
-
-    const badge = document.createElement('span');
-    badge.textContent = interfaceLabel;
-    badge.style.background = 'var(--bg-surface-2)';
-    badge.style.color = 'var(--text-primary)';
-    badge.style.border = '1px solid var(--border)';
-    badge.style.fontWeight = 'bold';
-    badge.style.fontSize = '12px';
-    badge.style.padding = '2px 8px';
-    badge.style.borderRadius = '4px';
-    badge.style.minWidth = '80px';
-    badge.style.textAlign = 'center';
-
-    const state = document.createElement('span');
-    state.textContent = isLocked ? 'Locked' : 'Unlocked';
-    state.style.flex = '1';
-    state.style.fontSize = '12px';
-    state.style.fontWeight = isLocked ? 'bold' : 'normal';
-    state.style.color = isLocked ? 'var(--danger)' : 'var(--text-secondary)';
-
-    row.appendChild(badge);
-    row.appendChild(state);
-
-    [{ value: '1', text: 'Lock' }, { value: '0', text: 'Unlock' }].forEach(action => {
-        const button = createActionButton();
-        button.textContent = action.text;
-        button.style.padding = '4px 10px';
-        button.style.fontSize = '12px';
-        button.style.minWidth = '64px';
-        button.addEventListener('click', () => sendDispenserCommand(dispenserTopic, customerCode, city, {
-            dis_addr: dispenserTopic,
-            req_type: 0,
-            side: 'A',
-            noz_number: 1,
-            msg_type: msgType,
-            message: action.value
-        }, button, `${interfaceLabel} Interface ${action.text}`));
-        row.appendChild(button);
-    });
-
-    return row;
 }
 
 function createNozzleLockRow(dispenserTopic, nozzle, customerCode, city) {
