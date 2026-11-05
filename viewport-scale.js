@@ -52,7 +52,10 @@
         // binding axis on both panels, so the shorter one ends up wider than
         // 1280 once scaled (1024x600 -> 1365, 1080x600 -> 1440). Layouts that
         // must wrap identically on every panel subtract this from their width.
-        const slack = Math.max(0, window.innerWidth / scale - DESIGN_WIDTH);
+        // Only on screens smaller than the design box (scale < 1, i.e. the
+        // panels): on a larger monitor the extra width is real room to use, and
+        // subtracting it would cap the dispenser grid at two cards per row.
+        const slack = scale < 1 ? Math.max(0, window.innerWidth / scale - DESIGN_WIDTH) : 0;
         root.style.setProperty('--width-slack', slack.toFixed(2) + 'px');
 
         window.dispatchEvent(new CustomEvent('uiscalechange', { detail: { scale } }));

@@ -1056,8 +1056,8 @@ async function storeTransaction(customer_code, dispenser_id, nozzle_id, time, am
             return;
         }
 
-        // DUCs resend unacknowledged transactions; skip one already stored
-        // so a resend doesn't double-count sales.
+        // Prevent duplicate sales records; skip one already stored
+        // so a double-count sales doesn't occur.
         const [existing] = await pool.query(
             `SELECT 1 FROM transactions
              WHERE customer_code = ? AND dispenser_id = ? AND nozzle_id = ?

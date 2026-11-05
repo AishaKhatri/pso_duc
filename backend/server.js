@@ -67,7 +67,7 @@ app.set('trust proxy', 'loopback');
 // Security headers. CSP is left default — the frontend pulls Leaflet from
 // unpkg.com via <script src> tags, so a strict default-src 'self' policy
 // would break the map. Tighten this once those assets are vendored locally.
-app.use(helmet({ contentSecurityPolicy: false }));
+app.use(helmet({ contentSecurityPolicy: false, frameguard: false }));
 
 // CORS: empty CORS_ORIGINS means same-origin only (frontend and API share
 // this port). To allow other origins, set CORS_ORIGINS in .env to a
